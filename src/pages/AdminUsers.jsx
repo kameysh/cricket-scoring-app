@@ -11,6 +11,7 @@ const ROLE_LABELS = {
   scorer: 'Scorer',
   captain: 'Captain',
   viewer: 'Viewer',
+  player: 'Player',
 };
 
 function friendlyInviteError(msg = '') {
@@ -162,6 +163,7 @@ export default function AdminUsers() {
           <div>
             <label className="block text-xs font-medium text-ink-600 dark:text-ink-400 mb-1">Role</label>
             <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} className="field-input">
+              <option value="player">Player</option>
               <option value="viewer">Viewer</option>
               <option value="scorer">Scorer</option>
               <option value="captain">Captain</option>

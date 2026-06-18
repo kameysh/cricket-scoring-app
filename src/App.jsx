@@ -78,8 +78,8 @@ export default function App() {
             <Route path="/matches/:id" element={<LiveScoring />} />
           </Route>
 
-          {/* Admin + Captain */}
-          <Route element={<ProtectedRoute allowedRoles={['admin', 'captain']} />}>
+          {/* Admin + Captain + Player (PlayerEdit enforces own-profile check for player role) */}
+          <Route element={<ProtectedRoute allowedRoles={['admin', 'captain', 'player']} />}>
             <Route path="/players/new" element={<PlayerNew />} />
             <Route path="/players/:id/edit" element={<PlayerEdit />} />
           </Route>

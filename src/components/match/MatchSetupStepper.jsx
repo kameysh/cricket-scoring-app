@@ -31,6 +31,7 @@ export default function MatchSetupStepper() {
     tournament_id: '', venue_id: '', total_overs: 20, team_size: 11,
     team1_name: 'Team A', team2_name: 'Team B',
     team1Ids: [], team2Ids: [], jokerId: null,
+    team1CaptainId: null, team2CaptainId: null,
     toss_winner: '', toss_decision: '',
     last_man_standing: false, max_overs_per_bowler: '', super_over_enabled: false,
     powerplay_start: '', powerplay_end: '',
@@ -169,10 +170,10 @@ export default function MatchSetupStepper() {
       });
 
       const matchPlayers = [
-        ...form.team1Ids.map((id, idx) => ({ player_id: id, team: 1, batting_position: idx + 1 })),
-        ...form.team2Ids.map((id, idx) => ({ player_id: id, team: 2, batting_position: idx + 1 })),
+        ...form.team1Ids.map((id, idx) => ({ player_id: id, team: 1, batting_position: idx + 1, is_captain: id === form.team1CaptainId })),
+        ...form.team2Ids.map((id, idx) => ({ player_id: id, team: 2, batting_position: idx + 1, is_captain: id === form.team2CaptainId })),
       ];
-      if (form.jokerId) matchPlayers.push({ player_id: form.jokerId, team: 0, batting_position: null });
+      if (form.jokerId) matchPlayers.push({ player_id: form.jokerId, team: 0, batting_position: null, is_captain: false });
 
       await matchService.setMatchPlayers(match.id, matchPlayers);
 
@@ -337,6 +338,25 @@ export default function MatchSetupStepper() {
             onQuickAdd={name => handleQuickAddPlayer(1, name)}
             targetSize={Number(form.team_size) || 0}
           />
+          {form.team1Ids.length > 0 && (
+            <div className="px-1">
+              <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+                {form.team1_name} — Captain
+              </label>
+              <select
+                value={form.team1CaptainId || ''}
+                onChange={e => set({ team1CaptainId: e.target.value || null })}
+                className="field-input"
+              >
+                <option value="">Select captain (optional)</option>
+                {form.team1Ids.map(id => {
+                  const p = players.find(pl => pl.id === id);
+                  return p ? <option key={id} value={id}>{p.name}</option> : null;
+                })}
+              </select>
+            </div>
+          )}
+
           <TeamSelector
             teamLabel={form.team2_name}
             players={players}
@@ -346,6 +366,24 @@ export default function MatchSetupStepper() {
             onQuickAdd={name => handleQuickAddPlayer(2, name)}
             targetSize={Number(form.team_size) || 0}
           />
+          {form.team2Ids.length > 0 && (
+            <div className="px-1">
+              <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+                {form.team2_name} — Captain
+              </label>
+              <select
+                value={form.team2CaptainId || ''}
+                onChange={e => set({ team2CaptainId: e.target.value || null })}
+                className="field-input"
+              >
+                <option value="">Select captain (optional)</option>
+                {form.team2Ids.map(id => {
+                  const p = players.find(pl => pl.id === id);
+                  return p ? <option key={id} value={id}>{p.name}</option> : null;
+                })}
+              </select>
+            </div>
+          )}
 
           <div className="card p-4 space-y-3">
             <div className="flex items-center justify-between">

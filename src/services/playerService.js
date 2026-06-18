@@ -15,6 +15,12 @@ export async function getPlayer(id) {
   return data;
 }
 
+export async function getPlayerByUserId(userId) {
+  const { data, error } = await supabase.from('players').select('*').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  return data; // null if no player profile yet
+}
+
 export async function createPlayer(payload) {
   const { data, error } = await supabase.from('players').insert(payload).select().single();
   if (error) throw error;

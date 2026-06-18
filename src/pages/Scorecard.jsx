@@ -30,7 +30,7 @@ function buildStatsFromDeliveries(deliveries) {
   }
 
   // Dismissal info per batsman
-  const dismissalMap = new Map(); // pid → { type, bowlerName, fielderName }
+  const dismissalMap = new Map();
   for (const d of deliveries) {
     if (!d.is_wicket) continue;
     const outId = d.batsman_out_id || d.batsman_id;
@@ -67,7 +67,7 @@ function buildStatsFromDeliveries(deliveries) {
   }
 
   // Compute maidens per bowler per over
-  const overRuns = new Map(); // `${bowlerId}_${overNum}` → runs
+  const overRuns = new Map();
   for (const d of deliveries) {
     if (!d.bowler_id) continue;
     const key = `${d.bowler_id}_${d.over_number}`;
@@ -78,7 +78,7 @@ function buildStatsFromDeliveries(deliveries) {
       overRuns.set(key, overRuns.get(key) + total);
     }
   }
-  const maidenMap = new Map(); // bowlerId → maiden count
+  const maidenMap = new Map();
   for (const [key, runs] of overRuns) {
     const bowlerId = key.split('_')[0];
     if (runs === 0) maidenMap.set(bowlerId, (maidenMap.get(bowlerId) || 0) + 1);
@@ -102,7 +102,23 @@ function dismissalText(info) {
   }
 }
 
-function InningsBlock({ innings, deliveries }) {
+// playerMeta: Map<playerId, { isCaptain, isWicketKeeper }>
+function PlayerBadges({ pid, playerMeta }) {
+  const meta = playerMeta?.get(pid);
+  if (!meta) return null;
+  return (
+    <>
+      {meta.isCaptain && (
+        <span className="ml-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1 py-0.5 rounded">(C)</span>
+      )}
+      {meta.isWicketKeeper && (
+        <span className="ml-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1 py-0.5 rounded">(WK)</span>
+      )}
+    </>
+  );
+}
+
+function InningsBlock({ innings, deliveries, playerMeta }) {
   const { batOrder, batMap, dismissalMap, bowlOrder, bowlMap, maidenMap } = buildStatsFromDeliveries(deliveries);
 
   const extras = deliveries.reduce((acc, d) => {
@@ -145,7 +161,10 @@ function InningsBlock({ innings, deliveries }) {
               return (
                 <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
                   <td className="py-2 pr-1 font-medium">
-                    <PlayerLink id={pid} name={s.name} />
+                    <span className="inline-flex items-center gap-0.5 flex-wrap">
+                      <PlayerLink id={pid} name={s.name} />
+                      <PlayerBadges pid={pid} playerMeta={playerMeta} />
+                    </span>
                   </td>
                   <td className="py-2 px-1 text-gray-500 text-[11px]">{dismissalText(dis)}</td>
                   <td className="py-2 px-1 text-center font-semibold">{s.runs}</td>
@@ -197,7 +216,12 @@ function InningsBlock({ innings, deliveries }) {
               const maidens = maidenMap.get(pid) || 0;
               return (
                 <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
-                  <td className="py-2 pr-1 font-medium"><PlayerLink id={pid} name={s.name} /></td>
+                  <td className="py-2 pr-1 font-medium">
+                    <span className="inline-flex items-center gap-0.5">
+                      <PlayerLink id={pid} name={s.name} />
+                      <PlayerBadges pid={pid} playerMeta={playerMeta} />
+                    </span>
+                  </td>
                   <td className="py-2 px-1 text-center">{formatOvers(s.legal_balls)}</td>
                   <td className="py-2 px-1 text-center">{maidens}</td>
                   <td className="py-2 px-1 text-center">{s.runs}</td>
@@ -220,6 +244,7 @@ export default function Scorecard() {
   const [match, setMatch] = useState(null);
   const [inningsList, setInningsList] = useState([]);
   const [deliveriesMap, setDeliveriesMap] = useState({});
+  const [playerMeta, setPlayerMeta] = useState(new Map());
   const [activeTab, setActiveTab] = useState(0);
 
   useEffect(() => {
@@ -229,6 +254,17 @@ export default function Scorecard() {
       const all = {};
       for (const inn of list) all[inn.id] = await matchService.getDeliveries(inn.id);
       setDeliveriesMap(all);
+    });
+    // Build playerMeta: captain from match_players, WK from player.role
+    matchService.getMatchPlayers(id).then(rows => {
+      const meta = new Map();
+      for (const row of rows) {
+        meta.set(row.player_id, {
+          isCaptain: row.is_captain === true,
+          isWicketKeeper: row.players?.role === 'wicket_keeper',
+        });
+      }
+      setPlayerMeta(meta);
     });
   }, [id]);
 
@@ -250,7 +286,10 @@ export default function Scorecard() {
         ))}
       </div>
       {deliveriesMap[active?.id] && (
-        <InningsBlock innings={active} deliveries={deliveriesMap[active.id]} />
+        <InningsBlock innings={active} deliveries={deliveriesMap[active.id]} playerMeta={playerMeta} />
+      )}
+      {playerMeta.size > 0 && (
+        <p className="text-[11px] text-ink-400 text-center pt-1">(C) Captain · (WK) Wicket Keeper</p>
       )}
     </div>
   );

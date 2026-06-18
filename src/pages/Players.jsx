@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Plus, Search, Users, SlidersHorizontal, X, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePlayerStore } from '../stores/playerStore';
+import { useAuthStore } from '../stores/authStore';
 import { useRole } from '../hooks/useRole';
+import * as playerService from '../services/playerService';
 import PlayerCard from '../components/player/PlayerCard';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
@@ -65,7 +67,8 @@ function FilterChip({ label, active, onClick }) {
 export default function Players() {
   const navigate = useNavigate();
   const { players, loading, fetchPlayers, removeAllPlayers } = usePlayerStore();
-  const { canManagePlayers, isAdmin } = useRole();
+  const { canManagePlayers, isAdmin, isPlayer, userId } = useRole();
+  const [myPlayer, setMyPlayer] = useState(undefined); // undefined = loading, null = no profile
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [roleFilter, setRoleFilter] = useState('');
@@ -89,6 +92,12 @@ export default function Players() {
   }
 
   useEffect(() => { fetchPlayers(); }, []);
+
+  useEffect(() => {
+    if (isPlayer && userId) {
+      playerService.getPlayerByUserId(userId).then(setMyPlayer);
+    }
+  }, [isPlayer, userId]);
 
   const activeFilterCount = [roleFilter, battingFilter, bowlHandFilter, bowlTypeFilter].filter(Boolean).length;
 
@@ -141,13 +150,32 @@ export default function Players() {
               <Trash2 size={14} /> Delete All
             </button>
           )}
-          {canManagePlayers && (
+          {(canManagePlayers || (isPlayer && myPlayer === null)) && (
             <button onClick={() => navigate('/players/new')} className="btn-chip">
-              <Plus size={16} /> Add
+              <Plus size={16} /> {isPlayer && !canManagePlayers ? 'My Profile' : 'Add'}
             </button>
           )}
         </div>
       </div>
+
+      {/* Banner for player role: create or view own profile */}
+      {isPlayer && myPlayer === null && (
+        <div className="flex items-center justify-between p-4 rounded-xl bg-brand-green/10 border border-brand-green/30">
+          <div>
+            <p className="text-sm font-semibold text-brand-green">You haven't set up your player profile yet</p>
+            <p className="text-xs text-ink-500 mt-0.5">Add your cricket details to appear in the players list.</p>
+          </div>
+          <button onClick={() => navigate('/players/new')} className="shrink-0 ml-3 text-sm font-semibold text-white bg-brand-green px-3 py-1.5 rounded-lg">
+            Set up →
+          </button>
+        </div>
+      )}
+      {isPlayer && myPlayer && (
+        <Link to={`/players/${myPlayer.id}`} className="flex items-center justify-between p-3 rounded-xl bg-ink-50 dark:bg-white/5 border border-ink-100 dark:border-white/10">
+          <p className="text-sm font-medium text-ink-700 dark:text-ink-200">My profile: <span className="font-semibold">{myPlayer.name}</span></p>
+          <span className="text-xs text-brand-green font-semibold">View →</span>
+        </Link>
+      )}
 
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />

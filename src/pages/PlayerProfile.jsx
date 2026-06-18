@@ -19,7 +19,7 @@ const TABS = ['Batting', 'Bowling', 'Fielding', 'Match History'];
 export default function PlayerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canManagePlayers } = useRole();
+  const { canManagePlayers, userId } = useRole();
   const [player, setPlayer] = useState(null);
   const [careerStats, setCareerStats] = useState(null);
   const [tournamentOptions, setTournamentOptions] = useState([]);
@@ -100,7 +100,7 @@ export default function PlayerProfile() {
           </div>
           <p className="text-xs text-gray-500">{[player.batting_style, player.bowling_style].filter(Boolean).join(' · ')}</p>
         </div>
-        {canManagePlayers && (
+        {(canManagePlayers || (player?.user_id && player.user_id === userId)) && (
           <Link to={`/players/${id}/edit`} className="p-2 rounded-lg border border-gray-300 dark:border-gray-600">
             <Pencil size={16} />
           </Link>
