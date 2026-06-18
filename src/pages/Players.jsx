@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Users, SlidersHorizontal, X } from 'lucide-react';
+import { Plus, Search, Users, SlidersHorizontal, X, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { usePlayerStore } from '../stores/playerStore';
 import { useRole } from '../hooks/useRole';
 import PlayerCard from '../components/player/PlayerCard';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 
 const ROLE_LABELS = {
   batsman: 'Batsman',
@@ -62,14 +64,29 @@ function FilterChip({ label, active, onClick }) {
 
 export default function Players() {
   const navigate = useNavigate();
-  const { players, loading, fetchPlayers } = usePlayerStore();
-  const { canManagePlayers } = useRole();
+  const { players, loading, fetchPlayers, removeAllPlayers } = usePlayerStore();
+  const { canManagePlayers, isAdmin } = useRole();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [roleFilter, setRoleFilter] = useState('');
   const [battingFilter, setBattingFilter] = useState('');
   const [bowlHandFilter, setBowlHandFilter] = useState('');
   const [bowlTypeFilter, setBowlTypeFilter] = useState('');
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
+  async function handleDeleteAll() {
+    setDeletingAll(true);
+    try {
+      await removeAllPlayers();
+      setDeleteAllOpen(false);
+      toast.success('All players removed');
+    } catch (e) {
+      toast.error(e.message || 'Failed to delete players');
+    } finally {
+      setDeletingAll(false);
+    }
+  }
 
   useEffect(() => { fetchPlayers(); }, []);
 
@@ -119,6 +136,11 @@ export default function Players() {
               </span>
             )}
           </button>
+          {isAdmin && players.length > 0 && (
+            <button onClick={() => setDeleteAllOpen(true)} className="btn-chip !text-red-500 !border-red-200 dark:!border-red-500/30">
+              <Trash2 size={14} /> Delete All
+            </button>
+          )}
           {canManagePlayers && (
             <button onClick={() => navigate('/players/new')} className="btn-chip">
               <Plus size={16} /> Add
@@ -188,6 +210,16 @@ export default function Players() {
       ) : (
         <div className="space-y-2">{filtered.map(p => <PlayerCard key={p.id} player={p} />)}</div>
       )}
+
+      <ConfirmDialog
+        open={deleteAllOpen}
+        danger
+        title="Delete all players?"
+        message={`This will remove all ${players.length} player${players.length !== 1 ? 's' : ''}. Players with match history will be deactivated instead of permanently deleted.`}
+        confirmLabel={deletingAll ? 'Deleting…' : 'Delete All'}
+        onConfirm={handleDeleteAll}
+        onCancel={() => setDeleteAllOpen(false)}
+      />
     </div>
   );
 }

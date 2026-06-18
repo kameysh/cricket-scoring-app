@@ -53,6 +53,31 @@ export async function uploadPlayerPhoto(file, playerId) {
   return data.publicUrl;
 }
 
+export async function deleteAllPlayers() {
+  // Soft-delete players that have match history (preserve stats)
+  const { data: used, error: usedErr } = await supabase
+    .from('match_players')
+    .select('player_id');
+  if (usedErr) throw usedErr;
+
+  const usedIds = [...new Set((used || []).map(r => r.player_id))];
+
+  if (usedIds.length > 0) {
+    const { error } = await supabase.from('players').update({ is_active: false }).in('id', usedIds);
+    if (error) throw error;
+  }
+
+  // Hard-delete players with no match history
+  if (usedIds.length > 0) {
+    const { error } = await supabase.from('players').delete().not('id', 'in', usedIds);
+    if (error) throw error;
+  } else {
+    // No players have match history — hard-delete all
+    const { error } = await supabase.from('players').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (error) throw error;
+  }
+}
+
 export async function getCareerStats(playerId) {
   const { data, error } = await supabase
     .from('player_career_stats')

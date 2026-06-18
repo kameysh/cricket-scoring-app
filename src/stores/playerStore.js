@@ -38,4 +38,9 @@ export const usePlayerStore = create((set, get) => ({
     }
     return result;
   },
+
+  async removeAllPlayers() {
+    await playerService.deleteAllPlayers();
+    await get().fetchPlayers();
+  },
 }));
