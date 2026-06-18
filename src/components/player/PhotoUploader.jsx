@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { Camera } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 
-const MAX_BYTES = 2 * 1024 * 1024;
+const MAX_BYTES = 8 * 1024 * 1024;
 
 export default function PhotoUploader({ name, value, onChange }) {
   const [preview, setPreview] = useState(value || null);
@@ -12,7 +12,7 @@ export default function PhotoUploader({ name, value, onChange }) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > MAX_BYTES) {
-      toast.error('Photo must be 2MB or smaller');
+      toast.error('Photo must be 8MB or smaller');
       return;
     }
     setPreview(URL.createObjectURL(file));
