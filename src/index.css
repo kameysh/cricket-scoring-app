@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: #fafafb;
+}
+
+html.dark {
+  background: #131314;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.tabular-nums {
+  font-feature-settings: 'tnum';
+}
+
+@layer components {
+  /* Inputs: large radius, hairline border, no harsh focus ring — quiet until used */
+  .field-input {
+    @apply w-full px-4 py-3 rounded-2xl border border-ink-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-ink-900 dark:text-white placeholder:text-ink-400 text-[15px] transition-all focus:outline-none focus:border-ink-300 dark:focus:border-white/20 focus:ring-4 focus:ring-ink-100 dark:focus:ring-white/5;
+  }
+  .field-label {
+    @apply block text-sm font-medium text-ink-600 dark:text-ink-300 mb-1.5;
+  }
+
+  /* Pill buttons — the one Gemini-style signature: fully rounded, gradient reserved for primary emphasis */
+  .btn-primary {
+    @apply py-3 rounded-full bg-gradient-to-r from-brand-green via-brand-teal to-brand-blue bg-brand text-white font-semibold shadow-pill active:scale-[0.97] transition-all hover:shadow-card-hover disabled:opacity-35 disabled:shadow-none disabled:active:scale-100;
+  }
+  .btn-secondary {
+    @apply py-3 rounded-full border border-ink-200 dark:border-white/15 text-ink-800 dark:text-ink-100 font-semibold active:scale-[0.97] transition-all hover:bg-ink-50 dark:hover:bg-white/5;
+  }
+  .btn-chip {
+    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-ink-900 dark:bg-white text-white dark:text-ink-900 text-sm font-semibold active:scale-95 transition-transform shadow-pill;
+  }
+
+  /* Cards: flat, borderless, soft diffuse shadow, generous radius */
+  .card {
+    @apply bg-white dark:bg-ink-800 rounded-3xl shadow-card;
+  }
+  .quick-add-panel {
+    @apply mt-2 p-3.5 rounded-2xl bg-ink-50 dark:bg-white/5 space-y-2;
+  }
+
+  /* Gradient text — the one place color shows up, used sparingly */
+  .text-brand {
+    @apply bg-gradient-to-r from-brand-green via-brand-teal to-brand-blue bg-clip-text text-transparent;
+  }
+}
+
+/* thin, unobtrusive scrollbars for horizontally scrolling chip rows */
+.scrollbar-thin::-webkit-scrollbar {
+  height: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(19, 19, 20, 0.15);
+  border-radius: 4px;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.page-transition {
+  animation: fadeIn 0.2s ease-out;
+}
