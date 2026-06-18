@@ -235,15 +235,17 @@ export default function LiveScoring() {
   useEffect(() => {
     const firstInnings = innings.find(i => i.innings_number === 1);
     if (!firstInnings || currentInnings?.innings_number !== 2) return;
+    let cancelled = false;
     (async () => {
       try {
         const [cards, dels] = await Promise.all([
           matchService.getScorecards(firstInnings.id),
           matchService.getDeliveries(firstInnings.id),
         ]);
-        setFirstInningsData({ innings: firstInnings, batting: cards.batting, bowling: cards.bowling, deliveries: dels });
+        if (!cancelled) setFirstInningsData({ innings: firstInnings, batting: cards.batting, bowling: cards.bowling, deliveries: dels });
       } catch { /* non-critical — panel stays empty */ }
     })();
+    return () => { cancelled = true; };
   }, [innings.length, currentInnings?.innings_number]);
 
   const battingTeam = currentInnings?.batting_team;

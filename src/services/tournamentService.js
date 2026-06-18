@@ -35,8 +35,8 @@ export async function deleteTournament(id) {
     .eq('tournament_id', id)
     .eq('status', 'live');
   if (count && count > 0) throw new Error('Cannot delete tournament with a live match');
-  // Remove upcoming matches; keep completed/no_result/abandoned as historical record
-  await supabase.from('matches').delete().eq('tournament_id', id).eq('status', 'upcoming');
+  // Remove upcoming + paused matches; keep completed/no_result/abandoned as historical record
+  await supabase.from('matches').delete().eq('tournament_id', id).in('status', ['upcoming', 'paused']);
   const { error } = await supabase.from('tournaments').update({ is_deleted: true }).eq('id', id);
   if (error) throw error;
 }

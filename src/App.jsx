@@ -26,6 +26,7 @@ import Scorecard from './pages/Scorecard';
 import MatchSummary from './pages/MatchSummary';
 import AdminUsers from './pages/AdminUsers';
 import AcceptInvite from './pages/AcceptInvite';
+import ResetPassword from './pages/ResetPassword';
 
 export default function App() {
   const location = useLocation();
@@ -37,8 +38,14 @@ export default function App() {
 
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.includes('type=invite') || hash.includes('type=recovery')) {
+    if (!hash) return;
+    if (hash.includes('type=invite')) {
       navigate('/accept-invite' + hash, { replace: true });
+    } else if (hash.includes('type=recovery')) {
+      navigate('/reset-password' + hash, { replace: true });
+    } else if (hash.includes('access_token')) {
+      // Unknown token type — send to login to avoid being stuck
+      navigate('/login', { replace: true });
     }
   }, []);
 
@@ -49,6 +56,7 @@ export default function App() {
           {/* Public */}
           <Route path="/login" element={<Login />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/matches/:id/scorecard" element={<Scorecard />} />
           <Route path="/matches/:id/summary" element={<MatchSummary />} />
           <Route path="/players/:id" element={<PlayerProfile />} />
