@@ -49,7 +49,7 @@ function getCardStyle(offset, dragFrac = 0, transitionMs = 350) {
   };
 }
 
-export default function PlayerCarousel({ players, activeIndex, onChangeIndex, onSelect, statsMap = {}, onDelete }) {
+export default function PlayerCarousel({ players, activeIndex, onChangeIndex, onSelect, statsMap = {}, onDelete, compareMode = false, selectedIds = [] }) {
   const containerRef   = useRef(null);
   const dragStartX     = useRef(null);
   const dragStartY     = useRef(null);
@@ -69,6 +69,7 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
   const n = players.length;
 
   useEffect(() => { setFlipped(false); setActiveBadge(null); }, [activeIndex]);
+  useEffect(() => { if (compareMode) { setFlipped(false); setActiveBadge(null); } }, [compareMode]);
 
   function wrap(idx) { return ((idx % n) + n) % n; }
 
@@ -232,6 +233,7 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
     if (isDragging.current) return;
     if (offset !== 0) { haptic(); onChangeIndex(wrap(activeIndex + offset)); return; }
     if (activeBadge) { setActiveBadge(null); return; }
+    if (compareMode) { onSelect(playerId); return; }
     flipActive(playerId);
   }
 
@@ -311,7 +313,7 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                   ? '0 8px 24px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)'
                   : '0 4px 12px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)',
               }}
-              className="absolute rounded-3xl overflow-hidden cursor-pointer"
+              className={`absolute rounded-3xl overflow-hidden cursor-pointer ${compareMode && selectedIds.includes(player.id) ? 'ring-4 ring-brand-green ring-offset-2' : ''}`}
             >
               {/* Flip wrapper */}
               <div style={{
@@ -345,6 +347,21 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                       <PlayerAvatar name={player.name} photoUrl={player.photo_url} size={110} />
                     </div>
                   </div>
+
+                  {/* Compare mode indicator — top-right corner badge */}
+                  {compareMode && isActive && (
+                    selectedIds.includes(player.id) ? (
+                      <div className="absolute top-4 right-4 z-10 flex items-center gap-1 bg-brand-green text-white rounded-full px-2.5 py-1 shadow-md pointer-events-none">
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <span className="text-[10px] font-bold leading-none">Selected</span>
+                      </div>
+                    ) : (
+                      <div className="absolute top-4 right-4 z-10 flex items-center gap-1 bg-black/50 text-white rounded-full px-2.5 py-1 pointer-events-none">
+                        <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><circle cx="4.5" cy="4.5" r="3.5" stroke="white" strokeWidth="1.2"/><path d="M4.5 2.5v2l1 1" stroke="white" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                        <span className="text-[10px] font-semibold leading-none">Tap</span>
+                      </div>
+                    )
+                  )}
 
                   {/* Info zone */}
                   <div className="relative flex flex-col flex-1 px-3 pt-4 pb-3">

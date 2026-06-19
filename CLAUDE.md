@@ -131,10 +131,20 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - Two ConfirmDialogs: one for single player delete, one for delete-all
 - `activeCarouselIndex` state resets to 0 whenever search/filter changes
 - **OG / Guest toggle:** two full-width buttons directly below search bar (`playerTypeFilter` state: `'' | 'og' | 'guest'`); clicking the active button deselects; stacks with search and filter panel; counts toward `activeFilterCount` badge on Filter button
+- **Compare mode:** ⚔ icon button (3rd element in OG/Guest row) toggles `compareMode`. In compare mode a banner appears with player chips + "Go ⚔" button. Tapping a carousel card selects it (no flip); **re-tapping a selected card deselects it** (promotes p2→p1 if needed). When both selected, sheet opens automatically. `PlayerVsSheet` renders at page root with `p1`, `p2`, `p1Stats`, `p2Stats` props.
+- **Player count display:** inline `text-sm tabular-nums whitespace-nowrap` — shows plain number when unfiltered, `19 / 28` style (bold count + lighter total) when search/filter active. No pill/badge — scales cleanly to triple digits.
+
+### `src/components/player/PlayerVsSheet.jsx`
+- Props: `{ p1, p2, p1Stats, p2Stats, onClose }`
+- Fetches `getPlayerVsPlayer(p1.id, p2.id)` on mount — two queries (p1 bat vs p2 bowl, p2 bat vs p1 bowl), wides filtered in JS not Supabase (Supabase `.neq` excludes NULL rows)
+- Renders inside `BottomSheet` with `heightClass="h-auto" noScroll` — everything fits without scrolling
+- **Header:** avatars + names + role + ⚔ icon (no sticky needed since no scroll)
+- **Direct Matchup:** `BattleCard` per direction when deliveries exist; amber "No shared match history" card otherwise
+- **Career:** `StatRow` grid (P1 value | label | P2 value); green highlight on winner; `lowerIsBetter=true` for bowling Avg and Econ
 
 ### `src/components/player/PlayerCarousel.jsx`
 - **Circular infinite-loop** 3D card carousel — pure CSS transforms, no external library
-- Props: `players[]`, `activeIndex`, `onChangeIndex(idx)`, `onSelect(playerId)`, `statsMap = {}`
+- Props: `players[]`, `activeIndex`, `onChangeIndex(idx)`, `onSelect(playerId)`, `statsMap = {}`, `compareMode = false`, `selectedIds = []`
 - `circularOffset(idx)` returns shortest-path offset so wrapping side cards appear on the correct side
 - `wrap(idx)` helper: `((idx % n) + n) % n` — used in prev/next/swipe/click
 - **Left/right arrow buttons** — circular white buttons (`w-9 h-9`) absolutely positioned at vertical center of the card container; shown only when `n > 1`; alternative to swiping
@@ -143,6 +153,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - **Back face (flip on tap of center card):** dark slate gradient (`#0f172a → #1e293b`), name/role header, 3×2 stat grid (Batting: Avg/SR/HS; Bowling: Avg/Economy/Best), full-width green "View Profile →" button pinned at bottom
 - Detailed back-face stats fetched lazily via `playerService.getCareerStats()` on first flip; cached in `detailCache`
 - Swiping resets flip to front on the new active card
+- **Compare mode:** `compareMode` prop bypasses flip — `handleCardClick` calls `onSelect(playerId)` instead of `flipActive`. Entering compare mode resets flip+badge via `useEffect([compareMode])`. Selected cards get a green "✓ Selected" badge top-right; unselected active card gets a "Tap" badge.
 - No rubber band — drag is unclamped (circular, no edges); soft resistance past `THRESHOLD = 0.75` only
 - Fast flicks that would cross the wrap point do a single-step jump (no multi-step animation across boundary)
 - **Mobile swipe fix:** React registers `touchmove` as passive — `e.preventDefault()` has no effect. Fixed with native `addEventListener('touchmove', handler, { passive: false })`. Gesture direction locked in first 5px (H vs V); only horizontal blocks page scroll.
@@ -364,6 +375,11 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `Matches.jsx` | Header buttons overflowed off screen on mobile | "Delete All" → icon-only Trash2; "Compare" → plain text with bg-ink-100; "New" → btn-primary |
 | `Teams.jsx` + `teamService.js` + `App.jsx` + `BottomNav.jsx` | No dedicated place to manage team names; team dropdowns in match setup had no suggestions | New `/teams` page (linked in admin sheet in BottomNav); `teamService.js` with `listTeams/addTeam/deleteTeam/getTeamPlayers/setTeamPlayers/updateTeamName`; `MatchSetupStepper` loads `globalTeams` and shows as `<select>` when teams exist; `HeadToHead` merges registered teams with past match teams |
 | `LiveScoring.jsx` | Keeper could be selected as bowler with no prompt — WK cannot field and bowl simultaneously | `handleBowlerSelect` checks `bowlerId === keeper` after setting — triggers `keeperBowlingPrompt` ConfirmDialog; "Change Keeper" opens keeper modal; "Keep as Is" dismisses |
+| `Players.jsx` + `PlayerCarousel.jsx` + `PlayerVsSheet.jsx` + `playerService.js` | No player-vs-player comparison feature | Added compare mode: ⚔ button toggles mode, carousel cards select instead of flip, `PlayerVsSheet` shows direct matchup (delivery stats) + career side-by-side. Fixed: wides filtered in JS not Supabase neq (NULL exclusion bug). |
+| `BottomSheet.jsx` | Background page scrolled behind open sheet on mobile | Added `document.body.style.overflow = 'hidden'` lock via `useEffect([open])`; restored on close. Added `noScroll` prop for sheets that should never scroll internally. |
+| `Players.jsx` | "19 of 28" count wrapped inside pill on narrow screens; wouldn't scale to triple digits | Removed pill entirely; count is now inline `tabular-nums whitespace-nowrap` text — plain number when unfiltered, `19 / 28` (bold/lighter) when filtered. |
+| `Players.jsx` | Re-tapping a selected player in compare mode showed "Already selected" toast instead of deselecting | `handleSelectForCompare` now deselects on re-tap: clears p1 (promoting p2→p1) or clears p2. |
+| `PlayerCarousel.jsx` | "Tap" badge clipped by card's `rounded-3xl` corner at `top-3 right-3` | Moved to `top-4 right-4` with slightly more padding; badge now clear of rounded corner. |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:

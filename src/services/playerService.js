@@ -239,3 +239,32 @@ export async function getHeadToHeadAll(batsmanId) {
     .map(e => ({ ...e, sr: e.balls > 0 ? (e.runs / e.balls) * 100 : 0, dotPct: e.balls > 0 ? (e.dots / e.balls) * 100 : 0 }))
     .sort((a, b) => b.balls - a.balls);
 }
+
+export async function getPlayerVsPlayer(p1Id, p2Id) {
+  // Fetch all deliveries then filter wides in JS — Supabase .neq('extra_type','wide')
+  // uses SQL != which excludes NULL rows (normal balls), same pattern as getHeadToHeadAll.
+  const [r1, r2] = await Promise.all([
+    supabase.from('deliveries')
+      .select('runs_off_bat, extra_type, is_wicket, wicket_type, run_type')
+      .eq('batsman_id', p1Id).eq('bowler_id', p2Id),
+    supabase.from('deliveries')
+      .select('runs_off_bat, extra_type, is_wicket, wicket_type, run_type')
+      .eq('batsman_id', p2Id).eq('bowler_id', p1Id),
+  ]);
+
+  const agg = (rows) => {
+    const legal = rows.filter(d => d.extra_type !== 'wide');
+    const balls = legal.length;
+    const runs = legal.reduce((s, d) => s + (d.runs_off_bat || 0), 0);
+    const dismissed = legal.filter(d => d.is_wicket &&
+      ['bowled', 'caught', 'lbw', 'stumped', 'hit_wicket'].includes(d.wicket_type)).length;
+    const dots = legal.filter(d => d.run_type === 'dot').length;
+    const fours = legal.filter(d => d.run_type === 'four').length;
+    const sixes = legal.filter(d => d.run_type === 'six').length;
+    const sr = balls > 0 ? ((runs / balls) * 100).toFixed(1) : '—';
+    const dotPct = balls > 0 ? Math.round((dots / balls) * 100) : 0;
+    return { balls, runs, dismissed, sr, dotPct, fours, sixes };
+  };
+
+  return { p1AsBat: agg(r1.data || []), p2AsBat: agg(r2.data || []) };
+}

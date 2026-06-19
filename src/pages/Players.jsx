@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Plus, Search, Users, SlidersHorizontal, X, Trash2 } from 'lucide-react';
+import { Plus, Search, Users, SlidersHorizontal, X, Trash2, Swords } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePlayerStore } from '../stores/playerStore';
 import { useRole } from '../hooks/useRole';
 import { useAuthStore } from '../stores/authStore';
 import * as playerService from '../services/playerService';
 import PlayerCarousel from '../components/player/PlayerCarousel';
+import PlayerAvatar from '../components/player/PlayerAvatar';
+import PlayerVsSheet from '../components/player/PlayerVsSheet';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
@@ -59,6 +61,10 @@ export default function Players() {
   const [deletingAll, setDeletingAll] = useState(false);
   const [deletePlayerTarget, setDeletePlayerTarget] = useState(null);
   const [deletingPlayer, setDeletingPlayer] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
+  const [p1Id, setP1Id] = useState(null);
+  const [p2Id, setP2Id] = useState(null);
+  const [vsOpen, setVsOpen] = useState(false);
 
   useEffect(() => {
     fetchPlayers();
@@ -74,6 +80,24 @@ export default function Players() {
   }, [isPlayer, userId]);
 
   useEffect(() => { setActiveCarouselIndex(0); }, [search, roleFilter, battingFilter, bowlHandFilter, bowlTypeFilter, playerTypeFilter]);
+
+  useEffect(() => { if (p1Id && p2Id) setVsOpen(true); }, [p1Id, p2Id]);
+
+  function toggleCompare() {
+    setCompareMode(v => !v);
+    setP1Id(null);
+    setP2Id(null);
+    setVsOpen(false);
+  }
+
+  function handleSelectForCompare(playerId) {
+    // Re-tap deselects the player
+    if (p1Id === playerId) { setP1Id(p2Id); setP2Id(null); setVsOpen(false); return; }
+    if (p2Id === playerId) { setP2Id(null); setVsOpen(false); return; }
+    if (!p1Id) { setP1Id(playerId); return; }
+    if (!p2Id) { setP2Id(playerId); return; }
+    toast('Tap ✕ on a chip to swap a player.', { icon: '⚔️' });
+  }
 
   const activeFilterCount = [roleFilter, battingFilter, bowlHandFilter, bowlTypeFilter, playerTypeFilter].filter(Boolean).length;
 
@@ -124,8 +148,10 @@ export default function Players() {
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Players</h1>
           {!loading && (
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-              {activeFilterCount || search ? `${filtered.length} of ${players.length}` : players.length}
+            <span className="text-sm font-semibold text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap">
+              {activeFilterCount || search
+                ? <>{filtered.length}<span className="font-normal text-xs"> / {players.length}</span></>
+                : players.length}
             </span>
           )}
         </div>
@@ -185,7 +211,7 @@ export default function Players() {
           placeholder="Search players…" className="field-input !pl-10" />
       </div>
 
-      {/* OG / Guest toggle */}
+      {/* OG / Guest / Compare toggle row */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => setPlayerTypeFilter(v => v === 'og' ? '' : 'og')}
@@ -194,9 +220,7 @@ export default function Players() {
               ? 'bg-ink-900 dark:bg-white text-white dark:text-ink-900'
               : 'bg-ink-100 dark:bg-white/10 text-ink-600 dark:text-ink-300'
           }`}
-        >
-          OG Players
-        </button>
+        >OG Players</button>
         <button
           onClick={() => setPlayerTypeFilter(v => v === 'guest' ? '' : 'guest')}
           className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${
@@ -204,10 +228,59 @@ export default function Players() {
               ? 'bg-amber-500 text-white'
               : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
           }`}
-        >
-          Guest Players
-        </button>
+        >Guest</button>
+        <button
+          onClick={toggleCompare}
+          title={compareMode ? 'Exit compare mode' : 'Compare two players'}
+          className={`shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition-colors ${
+            compareMode
+              ? 'bg-brand-green text-white'
+              : 'bg-ink-100 dark:bg-white/10 text-ink-600 dark:text-ink-300'
+          }`}
+        ><Swords size={16} /></button>
       </div>
+
+      {/* Compare mode — slim banner */}
+      {compareMode && (() => {
+        const pp1 = p1Id ? players.find(pl => pl.id === p1Id) : null;
+        const pp2 = p2Id ? players.find(pl => pl.id === p2Id) : null;
+        const PlayerChip = ({ player, onRemove }) => (
+          <div className="flex items-center gap-1 bg-white dark:bg-white/10 rounded-lg px-2 py-1 min-w-0 max-w-[100px]">
+            <PlayerAvatar name={player?.name ?? ''} photoUrl={player?.photo_url} size={16} />
+            <span className="text-[11px] font-semibold truncate">{player?.name?.split(' ')[0] ?? '?'}</span>
+            <button onClick={onRemove} className="shrink-0 text-ink-400 ml-0.5"><X size={10} /></button>
+          </div>
+        );
+        return (
+          <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-brand-green/8 border border-brand-green/20">
+            <Swords size={13} className="text-brand-green shrink-0" />
+            {/* Center: instruction or chips */}
+            <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+              {!p1Id && !p2Id && <p className="text-xs text-ink-600 dark:text-ink-300">Tap a card to pick Player 1</p>}
+              {p1Id && !p2Id && (
+                <>
+                  <PlayerChip player={pp1} onRemove={() => { setP1Id(null); setVsOpen(false); }} />
+                  <p className="text-xs text-ink-400">· tap another</p>
+                </>
+              )}
+              {p1Id && p2Id && (
+                <>
+                  <PlayerChip player={pp1} onRemove={() => { setP1Id(null); setVsOpen(false); }} />
+                  <span className="text-[10px] font-bold text-ink-400 shrink-0">vs</span>
+                  <PlayerChip player={pp2} onRemove={() => { setP2Id(null); setVsOpen(false); }} />
+                </>
+              )}
+            </div>
+            {/* Right: Go button */}
+            {p1Id && p2Id && (
+              <button
+                onClick={() => setVsOpen(true)}
+                className="shrink-0 bg-brand-green text-white text-[11px] font-bold px-2.5 py-1 rounded-lg"
+              >Go ⚔</button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Filters */}
       {showFilters && (
@@ -267,13 +340,32 @@ export default function Players() {
               players={filtered}
               activeIndex={activeCarouselIndex}
               onChangeIndex={setActiveCarouselIndex}
-              onSelect={id => navigate(`/players/${id}`)}
+              onSelect={id => {
+                if (compareMode) { handleSelectForCompare(id); }
+                else { navigate(`/players/${id}`); }
+              }}
               statsMap={statsMap}
               onDelete={isSuperAdmin ? (player) => setDeletePlayerTarget(player) : undefined}
+              compareMode={compareMode}
+              selectedIds={[p1Id, p2Id].filter(Boolean)}
             />
           </div>
         )}
       </div>
+
+      {vsOpen && p1Id && p2Id && (() => {
+        const p1 = players.find(p => p.id === p1Id);
+        const p2 = players.find(p => p.id === p2Id);
+        if (!p1 || !p2) return null;
+        return (
+          <PlayerVsSheet
+            p1={p1} p2={p2}
+            p1Stats={statsMap[p1Id]}
+            p2Stats={statsMap[p2Id]}
+            onClose={() => setVsOpen(false)}
+          />
+        );
+      })()}
 
       <ConfirmDialog open={!!deletePlayerTarget} danger
         title={`Delete ${deletePlayerTarget?.name}?`}

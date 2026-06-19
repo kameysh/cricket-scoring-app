@@ -1,6 +1,14 @@
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-export default function BottomSheet({ open, onClose, title, heightClass = 'h-[70vh]', children }) {
+export default function BottomSheet({ open, onClose, title, heightClass = 'h-[70vh]', noScroll = false, children }) {
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -16,7 +24,7 @@ export default function BottomSheet({ open, onClose, title, heightClass = 'h-[70
             <X size={20} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">{children}</div>
+        <div className={`flex-1 ${noScroll ? 'overflow-hidden' : 'overflow-y-auto'} px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]`}>{children}</div>
       </div>
     </div>
   );
