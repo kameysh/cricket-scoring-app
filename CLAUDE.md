@@ -100,6 +100,16 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 
 ## Key Pages & Components
 
+### `src/pages/Home.jsx`
+- Fetches 3 data sources in parallel via `Promise.all`: `matchService.listMatches()`, `playerService.getAllCareerStats()`, `tournamentService.listTournaments()`
+- **Sections (top to bottom):**
+  1. **Header** — app name + role-aware CTA: `canScore` → "+ New Match", `isPlayer` → "My Profile", others → nothing
+  2. **Live Match Hero** — shown only when `status === 'live' || 'paused'`; green gradient card with "Resume Scoring" (canScore) + "View Scorecard" buttons
+  3. **Quick Stats Strip** — 2×2 grid: Matches count, Players count, Top Scorer (tap → player profile), Top Wickets (tap → player profile). Shows "—" when no data.
+  4. **Active Tournament Banner** — shown when any tournament has `status !== 'completed'`; taps to `/tournaments/:id`
+  5. **Recent Matches** — last 3 completed matches via `<MatchCard>`; "See all" link if >3 exist; role-aware empty state message
+- `StatPill` helper component rendered inline — renders as `<button>` when `onClick` prop provided, plain `<div>` otherwise
+
 ### `src/pages/Players.jsx`
 - Header: Players count + Filter button + Delete All (trash icon, admin only) + Add button
 - Delete All is **icon-only** (no text) to avoid mobile overflow
