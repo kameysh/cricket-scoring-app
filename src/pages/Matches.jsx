@@ -53,19 +53,18 @@ export default function Matches() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Matches</h1>
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate('/h2h')} className="btn-chip">
+          <button onClick={() => navigate('/h2h')}
+            className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-ink-100 dark:bg-white/10 text-ink-700 dark:text-ink-200">
             <ArrowLeftRight size={14} /> Compare
           </button>
           {isAdmin && matches.length > 0 && (
-            <button
-              onClick={() => setDeleteAllOpen(true)}
-              className="btn-chip !text-red-500 !border-red-200 dark:!border-red-800 hover:!bg-red-50 dark:hover:!bg-red-500/10"
-            >
-              <Trash2 size={14} /> Delete All
+            <button onClick={() => setDeleteAllOpen(true)} title="Delete all matches"
+              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+              <Trash2 size={17} />
             </button>
           )}
           {canScore && (
-            <button onClick={() => navigate('/matches/new')} className="btn-chip">
+            <button onClick={() => navigate('/matches/new')} className="btn-primary !py-1.5 !px-4 flex items-center gap-1.5 text-sm">
               <Plus size={16} /> New
             </button>
           )}

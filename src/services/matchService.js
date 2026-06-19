@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { calcMotmScore } from '../lib/cricketUtils';
+import { pickMotm } from '../lib/cricketUtils';
 
 export async function listMatches() {
   const { data, error } = await supabase
@@ -97,9 +97,9 @@ export async function completeInnings(inningsId, endReason = null) {
 
 export async function getScorecards(inningsId) {
   const [batting, bowling, fielding] = await Promise.all([
-    supabase.from('batting_scorecards').select('*, players(name)').eq('innings_id', inningsId).order('batting_position'),
-    supabase.from('bowling_scorecards').select('*, players(name)').eq('innings_id', inningsId),
-    supabase.from('fielding_scorecards').select('*, players(name)').eq('innings_id', inningsId),
+    supabase.from('batting_scorecards').select('*, players!player_id(name)').eq('innings_id', inningsId).order('batting_position'),
+    supabase.from('bowling_scorecards').select('*, players!player_id(name)').eq('innings_id', inningsId),
+    supabase.from('fielding_scorecards').select('*, players!player_id(name)').eq('innings_id', inningsId),
   ]);
   return { batting: batting.data || [], bowling: bowling.data || [], fielding: fielding.data || [] };
 }
@@ -152,15 +152,12 @@ export async function autoAssignManOfMatch(matchId) {
       allBowling.push(...cards.bowling);
       allFielding.push(...(cards.fielding || []));
     }));
-    const seen = new Set();
-    let bestId = null, bestScore = -1;
-    for (const mp of allPlayers) {
-      const pid = mp.player_id;
-      if (seen.has(pid)) continue;
-      seen.add(pid);
-      const score = calcMotmScore(pid, allBatting, allBowling, allFielding);
-      if (score > bestScore) { bestScore = score; bestId = pid; }
-    }
+    const match = await getMatch(matchId);
+    const winningTeam = match.winning_team_name === match.team1_name ? 1
+      : match.winning_team_name === match.team2_name ? 2 : null;
+    const playerTeams = new Map(allPlayers.map(mp => [mp.player_id, mp.team]));
+    const uniqueIds = [...new Set(allPlayers.map(mp => mp.player_id))];
+    const bestId = pickMotm(uniqueIds, allBatting, allBowling, allFielding, playerTeams, winningTeam);
     if (bestId) await updateMatch(matchId, { man_of_match_id: bestId });
   } catch { /* non-critical */ }
 }
@@ -187,11 +184,7 @@ export async function autoAssignManOfSeries(tournamentId) {
     }));
   }));
 
-  let bestId = null, bestScore = -1;
-  for (const pid of allPlayerIds) {
-    const score = calcMotmScore(pid, allBatting, allBowling, allFielding);
-    if (score > bestScore) { bestScore = score; bestId = pid; }
-  }
+  const bestId = pickMotm([...allPlayerIds], allBatting, allBowling, allFielding, new Map(), null);
   if (bestId) {
     const { error } = await supabase.from('tournaments').update({ man_of_series_id: bestId }).eq('id', tournamentId);
     if (error) throw error;

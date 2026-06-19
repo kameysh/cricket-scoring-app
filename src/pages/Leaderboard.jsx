@@ -214,7 +214,7 @@ export default function Leaderboard() {
     .sort(sorter(sortKey));
 
   const bowlingRows = stats
-    .filter(s => (s.bowl_innings||0) > 0 && (s.bowl_wickets||0) > 0)
+    .filter(s => (s.bowl_legal_balls||0) > 0)
     .sort(sorter(sortKey));
 
   const mvpRows = stats

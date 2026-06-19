@@ -215,11 +215,22 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - `getH2HTopPerformers(matchIds)`: innings IDs → parallel batting + bowling scorecards → aggregate by player → top 3 each
 - `autoAssignManOfMatch(matchId)`: collects all innings scorecards + match players → scores each via `calcMotmScore` → writes `man_of_match_id` to match. Non-throwing (wrapped in try/catch).
 - `autoAssignManOfSeries(tournamentId)`: queries all completed matches in tournament → aggregates all scorecards → scores each unique player → writes `man_of_series_id` to tournament. Throws on DB error (caller catches).
+- Both `autoAssignManOfMatch` and `autoAssignManOfSeries` use `pickMotm()` from cricketUtils.
+- `autoAssignManOfMatch` resolves `winningTeam` (1 or 2) from `winning_team_name` vs `team1_name`/`team2_name` and passes it to `pickMotm` for tie-breaking.
+- `autoAssignManOfSeries` passes `winningTeam = null` — MoS is purely stats-based across all matches.
+
+### `src/lib/cricketUtils.js` — `pickMotm()` and `calcMotmScore()`
+- **`calcMotmScore(playerId, battingCards, bowlingCards, fieldingCards)`** — per-match impact score (used for display in MoTM picker dropdown)
+  - Batting: runs×1, fours×1 bonus, sixes×2 bonus, milestones (+5/+15/+30), SR bonus min 6 balls (≥200=+20, ≥150=+12, ≥125=+6), not-out bonus +5 (runs≥10), duck penalty −5
+  - Bowling: wickets×25, maidens×6, haul bonus (+10 for 3-fer, +20 for 5-fer), economy bonus min 6 legal balls (≤5=+15, ≤6=+10, ≤8=+5) — applies even with 0 wickets
+  - Fielding: catches×8, stumpings×10, run_outs×8
+- **`pickMotm(playerIds, battingCards, bowlingCards, fieldingCards, playerTeams, winningTeam)`** — picks best player using full tiebreaker chain: pts → winning team → runs → wickets → SR → economy. Returns null if all players score 0.
+- **`calcMotmDetail(playerId, battingCards, bowlingCards)`** — returns `{ runs, wickets, sr, econ }` for tiebreaker comparison (internal use only)
 
 ### `src/pages/Leaderboard.jsx`
 - Route: `/leaderboard` (any logged-in user)
 - Three tabs: **Batting** (runs → avg → SR), **Bowling** (wickets → avg → economy), **MVP** (weighted points)
-- Only shows players with at least one innings in the relevant category; 0-wicket players excluded from Bowling tab
+- Bowling tab shows all players who have bowled at least one legal ball (`bowl_legal_balls > 0`) — not just wicket-takers
 - Column headers are tappable to re-sort; second tap reverses direction
 - Realtime: subscribes to `postgres_changes UPDATE` on `player_career_stats` — refreshes automatically when an innings completes
 - Live indicator (green pulsing dot) shown when any match has `status = 'in_progress'`
@@ -264,10 +275,13 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - R column: red if wickets, green if ≥10 runs
 
 ### `src/pages/MatchSummary.jsx`
-- MoTM shown as gold card with Trophy icon when `match.man_of_match_id` is set
+- MoTM shown as gold card with Trophy icon + pts badge (`scoredPlayers` useMemo)
 - Off-screen 400px div (`cardRef`) captures rich share card: result, MoTM, top scorer, top bowler
 - Single "Share Result" button: Web Share API (mobile) → clipboard copy (desktop) → PNG download fallback
-- MoTM selector auto-suggests best performer by `calcMotmScore` when not yet set
+- `scoredPlayers` useMemo: deduped match players scored via `calcMotmScore`, sorted desc — shown in override dropdown with `— N pts` suffix
+- `canScore` users see "Override Man of the Match" select; `handleMotmChange` writes directly to `matches.man_of_match_id`
+- **Hooks order fix:** `scoredPlayers` useMemo must be declared before `if (!match) return null` to avoid Rules-of-Hooks violation
+- `getScorecards` uses `players!player_id(name)` disambiguation — `batting_scorecards` has 3 FK refs to players; plain `players(name)` causes Supabase ambiguity error returning null silently
 
 ### `src/components/player/PlayerForm.jsx`
 - **Redesigned (June 2026):** replaced dropdowns with pill selectors; `PhotoUploader` inlined directly — no separate component
@@ -342,6 +356,11 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `TournamentSetup.jsx` | Series match creation had no captain or keeper selection | Added `captainIds` + `keeperIds` state; Captain/Keeper selects per team (shown when squad has players, series only); `canCreateMatches` requires both; `is_captain`/`is_keeper` flags passed to `setMatchPlayers` |
 | `MatchSetupStepper.jsx` | Joker section had misaligned subtitle (pushed right via `justify-between`) | Subtitle moved below title as a `<p>` tag |
 | `PlayerForm.jsx` | Form was plain dropdowns — poor mobile UX | Full redesign: hero photo section, pill selectors for role/batting/bowling, card sections with icon labels |
+| `cricketUtils.js` + `matchService.js` | MoTM auto-assign picked first player alphabetically when all scores were 0 (bestScore=-1 floor); also wrong player on pts tie | Introduced `pickMotm()` with full tiebreaker chain: pts → winning team → runs → wickets → SR → economy. `calcMotmDetail()` extracts tiebreaker stats. Formula also improved: SR min balls 10→6, added ≥200 SR tier (+20), economy bonus now applies even without wickets |
+| `matchService.js` `getScorecards` | `batting_scorecards` has 3 FK refs to players (`player_id`, `bowler_id`, `fielder_id`) — `select('*, players(name)')` returned null silently (Supabase ambiguity error) → all MoTM scores showed 0 pts | Changed to `players!player_id(name)` to explicitly disambiguate the join |
+| `Leaderboard.jsx` | Bowling tab filtered `bowl_wickets > 0` — bowlers who hadn't taken a wicket were invisible | Changed filter to `bowl_legal_balls > 0` — any bowler who delivered at least one ball appears |
+| `MatchSummary.jsx` | `scoredPlayers` useMemo declared after `if (!match) return null` — violated Rules of Hooks, crashed the page | Moved useMemo above the early return |
+| `Matches.jsx` | Header buttons overflowed off screen on mobile | "Delete All" → icon-only Trash2; "Compare" → plain text with bg-ink-100; "New" → btn-primary |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:

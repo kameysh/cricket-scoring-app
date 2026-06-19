@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Share2, Trash2, Trophy } from 'lucide-react';
+import { Share2, Trash2, Trophy, ChevronDown } from 'lucide-react';
 import * as matchService from '../services/matchService';
+import { calcMotmScore } from '../lib/cricketUtils';
+import { useRole } from '../hooks/useRole';
 import PlayerLink from '../components/player/PlayerLink';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 
@@ -14,9 +16,11 @@ export default function MatchSummary() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [savingMotm, setSavingMotm] = useState(false);
   const [battingCards, setBattingCards] = useState([]);
   const [bowlingCards, setBowlingCards] = useState([]);
   const [fieldingCards, setFieldingCards] = useState([]);
+  const { canScore } = useRole();
   const cardRef = useRef(null);
 
   useEffect(() => {
@@ -44,6 +48,20 @@ export default function MatchSummary() {
     });
   }, [id]);
 
+  // Score every player for the MoTM picker — must be before early return (Rules of Hooks)
+  const scoredPlayers = useMemo(() => {
+    if (!matchPlayers.length) return [];
+    const seen = new Set();
+    return matchPlayers
+      .filter(mp => { if (seen.has(mp.player_id)) return false; seen.add(mp.player_id); return true; })
+      .map(mp => ({
+        id: mp.player_id,
+        name: mp.players?.name || mp.player_id,
+        pts: calcMotmScore(mp.player_id, battingCards, bowlingCards, fieldingCards),
+      }))
+      .sort((a, b) => b.pts - a.pts);
+  }, [matchPlayers, battingCards, bowlingCards, fieldingCards]);
+
   if (!match) return null;
 
   const motmName = matchPlayers.find(mp => mp.player_id === match.man_of_match_id)?.players?.name;
@@ -53,6 +71,18 @@ export default function MatchSummary() {
     .sort((a, b) => (b.wickets || 0) - (a.wickets || 0) || (a.runs_conceded || 0) - (b.runs_conceded || 0))[0];
   const topScorerName = matchPlayers.find(mp => mp.player_id === topScorer?.player_id)?.players?.name;
   const topBowlerName = matchPlayers.find(mp => mp.player_id === topBowler?.player_id)?.players?.name;
+
+  async function handleMotmChange(playerId) {
+    if (!playerId || savingMotm) return;
+    setSavingMotm(true);
+    try {
+      await matchService.updateMatch(id, { man_of_match_id: playerId });
+      setMatch(m => ({ ...m, man_of_match_id: playerId }));
+      const name = scoredPlayers.find(p => p.id === playerId)?.name;
+      toast.success(`${name} set as Man of the Match`);
+    } catch { toast.error('Failed to update Man of the Match'); }
+    finally { setSavingMotm(false); }
+  }
 
   async function handleDelete() {
     if (deleting) return;
@@ -169,16 +199,47 @@ export default function MatchSummary() {
         <p className="text-center text-[10px] opacity-40">Cricket Scoring App</p>
       </div>
 
-      {/* MoTM display — gold card */}
-      {match.man_of_match_id && (
-        <div className="flex items-center gap-3 p-4 rounded-2xl bg-cricket-gold/10 border border-cricket-gold/30">
-          <Trophy size={20} className="text-cricket-gold shrink-0" />
-          <div>
-            <p className="text-[11px] font-semibold text-cricket-gold uppercase tracking-wider">Man of the Match</p>
-            <PlayerLink id={match.man_of_match_id} name={motmName} className="font-bold text-ink-900 dark:text-white" />
+      {/* MoTM — gold card + scorer override picker */}
+      <div className="space-y-2">
+        {match.man_of_match_id && (
+          <div className="flex items-center gap-3 p-4 rounded-2xl bg-cricket-gold/10 border border-cricket-gold/30">
+            <Trophy size={20} className="text-cricket-gold shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold text-cricket-gold uppercase tracking-wider">Man of the Match</p>
+              <PlayerLink id={match.man_of_match_id} name={motmName} className="font-bold text-ink-900 dark:text-white" />
+            </div>
+            {scoredPlayers.find(p => p.id === match.man_of_match_id) && (
+              <span className="shrink-0 text-xs font-bold px-2 py-1 rounded-full bg-cricket-gold/20 text-cricket-gold">
+                {scoredPlayers.find(p => p.id === match.man_of_match_id).pts} pts
+              </span>
+            )}
           </div>
-        </div>
-      )}
+        )}
+
+        {canScore && scoredPlayers.length > 0 && (
+          <div className="relative">
+            <label className="block text-[11px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
+              {match.man_of_match_id ? 'Override Man of the Match' : 'Select Man of the Match'}
+            </label>
+            <div className="relative">
+              <select
+                value={match.man_of_match_id || ''}
+                onChange={e => handleMotmChange(e.target.value)}
+                disabled={savingMotm}
+                className="field-input appearance-none pr-8 disabled:opacity-50"
+              >
+                <option value="">— Select player —</option>
+                {scoredPlayers.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}{p.pts > 0 ? ` — ${p.pts} pts` : ' — 0 pts'}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
+            </div>
+          </div>
+        )}
+      </div>
 
       <button
         onClick={shareResult}

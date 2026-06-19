@@ -334,27 +334,38 @@ export function calcMotmScore(playerId, battingCards, bowlingCards, fieldingCard
   let score = 0;
 
   for (const b of battingCards.filter(c => c.player_id === playerId)) {
-    score += b.runs || 0;
+    const runs = b.runs || 0;
+    const balls = b.balls_faced || 0;
+    score += runs;
     score += (b.fours || 0) * 1;
     score += (b.sixes || 0) * 2;
-    if ((b.balls_faced || 0) >= 10) {
-      const sr = calcStrikeRate(b.runs, b.balls_faced);
-      if (sr >= 150) score += 15;
-      else if (sr >= 125) score += 8;
+    if (runs >= 100) score += 30;
+    else if (runs >= 50) score += 15;
+    else if (runs >= 30) score += 5;
+    // SR bonus — min 6 balls, tuned for gully/T10 matches
+    if (balls >= 6) {
+      const sr = calcStrikeRate(runs, balls);
+      if (sr >= 200) score += 20;
+      else if (sr >= 150) score += 12;
+      else if (sr >= 125) score += 6;
     }
-    if ((b.runs || 0) >= 100) score += 30;
-    else if ((b.runs || 0) >= 50) score += 15;
-    if (b.status && b.status !== 'out' && b.status !== 'retired_out') score += 5;
+    const isNotOut = b.status && b.status !== 'out' && b.status !== 'retired_out';
+    if (isNotOut && runs >= 10) score += 5;
+    if (runs === 0 && b.status === 'out') score -= 5;
   }
 
   for (const bwl of bowlingCards.filter(c => c.player_id === playerId)) {
-    score += (bwl.wickets || 0) * 25;
+    const wkts = bwl.wickets || 0;
+    const legal = bwl.legal_balls || 0;
+    score += wkts * 25;
     score += (bwl.maidens || 0) * 6;
-    if ((bwl.wickets || 0) >= 5) score += 20;
-    else if ((bwl.wickets || 0) >= 3) score += 10;
-    if ((bwl.legal_balls || 0) >= 12) {
-      const econ = calcEconomy(bwl.runs_conceded, bwl.legal_balls);
-      if (econ !== null && econ <= 6) score += 10;
+    if (wkts >= 5) score += 20;
+    else if (wkts >= 3) score += 10;
+    // Economy bonus applies even without wickets — rewards tight bowling
+    if (legal >= 6) {
+      const econ = calcEconomy(bwl.runs_conceded, legal);
+      if (econ !== null && econ <= 5) score += 15;
+      else if (econ !== null && econ <= 6) score += 10;
       else if (econ !== null && econ <= 8) score += 5;
     }
   }
@@ -366,4 +377,49 @@ export function calcMotmScore(playerId, battingCards, bowlingCards, fieldingCard
   }
 
   return score;
+}
+
+// Tiebreaker object used by autoAssign — not displayed to users
+export function calcMotmDetail(playerId, battingCards, bowlingCards) {
+  let runs = 0, wickets = 0, balls = 0, runsConc = 0, legalBalls = 0;
+  for (const b of battingCards.filter(c => c.player_id === playerId)) {
+    runs += b.runs || 0;
+    balls += b.balls_faced || 0;
+  }
+  for (const bwl of bowlingCards.filter(c => c.player_id === playerId)) {
+    wickets += bwl.wickets || 0;
+    runsConc += bwl.runs_conceded || 0;
+    legalBalls += bwl.legal_balls || 0;
+  }
+  const sr = balls >= 6 ? (runs / balls) * 100 : 0;
+  const econ = legalBalls >= 6 ? (runsConc / legalBalls) * 6 : 999;
+  return { runs, wickets, sr, econ };
+}
+
+// Compare two candidates — returns true if a is strictly better than b.
+// winningTeam: 1 | 2 | null — when set, winner's team players preferred on pts tie.
+function motmBetter(a, b, winningTeam) {
+  if (a.pts !== b.pts) return a.pts > b.pts;
+  // On pts tie, prefer player from the winning team
+  if (winningTeam) {
+    const aWinner = a.team === winningTeam;
+    const bWinner = b.team === winningTeam;
+    if (aWinner !== bWinner) return aWinner;
+  }
+  if (a.runs !== b.runs) return a.runs > b.runs;
+  if (a.wickets !== b.wickets) return a.wickets > b.wickets;
+  if (Math.abs(a.sr - b.sr) > 0.01) return a.sr > b.sr;
+  return a.econ < b.econ;
+}
+
+// playerTeams: Map<playerId, 1|2> — optional, used for winning-team tiebreak
+export function pickMotm(playerIds, battingCards, bowlingCards, fieldingCards, playerTeams = new Map(), winningTeam = null) {
+  let best = null;
+  for (const pid of playerIds) {
+    const pts = calcMotmScore(pid, battingCards, bowlingCards, fieldingCards);
+    const { runs, wickets, sr, econ } = calcMotmDetail(pid, battingCards, bowlingCards);
+    const candidate = { pid, pts, runs, wickets, sr, econ, team: playerTeams.get(pid) ?? null };
+    if (!best || motmBetter(candidate, best, winningTeam)) best = candidate;
+  }
+  return best && best.pts > 0 ? best.pid : null;
 }
