@@ -53,6 +53,7 @@ export default function Players() {
   const [battingFilter, setBattingFilter] = useState('');
   const [bowlHandFilter, setBowlHandFilter] = useState('');
   const [bowlTypeFilter, setBowlTypeFilter] = useState('');
+  const [playerTypeFilter, setPlayerTypeFilter] = useState(''); // '' | 'og' | 'guest'
   const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
@@ -72,9 +73,9 @@ export default function Players() {
     if (isPlayer && userId) playerService.getPlayerByUserId(userId).then(setMyPlayer);
   }, [isPlayer, userId]);
 
-  useEffect(() => { setActiveCarouselIndex(0); }, [search, roleFilter, battingFilter, bowlHandFilter, bowlTypeFilter]);
+  useEffect(() => { setActiveCarouselIndex(0); }, [search, roleFilter, battingFilter, bowlHandFilter, bowlTypeFilter, playerTypeFilter]);
 
-  const activeFilterCount = [roleFilter, battingFilter, bowlHandFilter, bowlTypeFilter].filter(Boolean).length;
+  const activeFilterCount = [roleFilter, battingFilter, bowlHandFilter, bowlTypeFilter, playerTypeFilter].filter(Boolean).length;
 
   const filtered = players.filter(p => {
     if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -82,6 +83,8 @@ export default function Players() {
     if (battingFilter && p.batting_style !== battingFilter) return false;
     if (bowlHandFilter && getBowlHand(p.bowling_style) !== bowlHandFilter) return false;
     if (bowlTypeFilter && getBowlType(p.bowling_style) !== bowlTypeFilter) return false;
+    if (playerTypeFilter === 'guest' && !p.is_guest) return false;
+    if (playerTypeFilter === 'og' && p.is_guest) return false;
     return true;
   });
 
@@ -182,13 +185,37 @@ export default function Players() {
           placeholder="Search players…" className="field-input !pl-10" />
       </div>
 
+      {/* OG / Guest toggle */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setPlayerTypeFilter(v => v === 'og' ? '' : 'og')}
+          className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${
+            playerTypeFilter === 'og'
+              ? 'bg-ink-900 dark:bg-white text-white dark:text-ink-900'
+              : 'bg-ink-100 dark:bg-white/10 text-ink-600 dark:text-ink-300'
+          }`}
+        >
+          OG Players
+        </button>
+        <button
+          onClick={() => setPlayerTypeFilter(v => v === 'guest' ? '' : 'guest')}
+          className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${
+            playerTypeFilter === 'guest'
+              ? 'bg-amber-500 text-white'
+              : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
+          }`}
+        >
+          Guest Players
+        </button>
+      </div>
+
       {/* Filters */}
       {showFilters && (
         <div className="card p-3 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-ink-500 dark:text-ink-400 uppercase tracking-wide">Filters</span>
             {activeFilterCount > 0 && (
-              <button onClick={() => { setRoleFilter(''); setBattingFilter(''); setBowlHandFilter(''); setBowlTypeFilter(''); }}
+              <button onClick={() => { setRoleFilter(''); setBattingFilter(''); setBowlHandFilter(''); setBowlTypeFilter(''); setPlayerTypeFilter(''); }}
                 className="flex items-center gap-1 text-xs text-red-500"><X size={12} /> Clear all</button>
             )}
           </div>

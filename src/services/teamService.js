@@ -19,6 +19,22 @@ export async function addTeam(name, isGuest = false) {
   return data;
 }
 
+export async function updateTeamName(id, oldName, newName) {
+  const trimmed = newName.trim();
+  // Update the team record
+  const { error: teamErr } = await supabase
+    .from('teams')
+    .update({ name: trimmed })
+    .eq('id', id);
+  if (teamErr) throw teamErr;
+
+  // Backfill all matches that used the old name
+  await Promise.all([
+    supabase.from('matches').update({ team1_name: trimmed }).eq('team1_name', oldName),
+    supabase.from('matches').update({ team2_name: trimmed }).eq('team2_name', oldName),
+  ]);
+}
+
 export async function deleteTeam(id) {
   const { error } = await supabase.from('teams').delete().eq('id', id);
   if (error) throw error;

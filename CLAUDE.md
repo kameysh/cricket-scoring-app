@@ -130,6 +130,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - Fetches `getAllCareerStats()` on mount, builds `statsMap = { [player_id]: stats }`, passed to carousel
 - Two ConfirmDialogs: one for single player delete, one for delete-all
 - `activeCarouselIndex` state resets to 0 whenever search/filter changes
+- **OG / Guest toggle:** two full-width buttons directly below search bar (`playerTypeFilter` state: `'' | 'og' | 'guest'`); clicking the active button deselects; stacks with search and filter panel; counts toward `activeFilterCount` badge on Filter button
 
 ### `src/components/player/PlayerCarousel.jsx`
 - **Circular infinite-loop** 3D card carousel — pure CSS transforms, no external library
@@ -322,6 +323,8 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `PlayerCarousel.jsx` | Tapping badge again to dismiss triggered card flip instead of closing popover | `handleCardClick` checks `activeBadge` first — dismisses overlay without flipping |
 | `useRole.js` + `App.jsx` | Captain role had `canManagePlayers: true` — could edit any player's profile | `canManagePlayers` narrowed to admin only; new `canCreatePlayer` flag for admin/scorer/captain/player; viewer blocked at route level |
 | `Teams.jsx` + `teamService.js` + `021_team_players.sql` | No way to pre-define a guest team's player roster for auto-fill in match setup | Added `is_guest` flag to teams, `team_players` join table, roster manager UI in Teams page, auto-populate in `MatchSetupStepper` on guest team selection |
+| `Teams.jsx` + `teamService.js` | No way to rename a team or update historical match records | Added inline rename (pencil icon → input + confirm/cancel); `updateTeamName()` updates team row then backfills `team1_name`/`team2_name` on all matches |
+| `Players.jsx` | Guest filter was buried inside the filter panel — not prominent enough | Replaced with two full-width toggle buttons (OG Players / Guest Players) directly below search bar; `playerTypeFilter` state replaces `guestFilter` boolean |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:
