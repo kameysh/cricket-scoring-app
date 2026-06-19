@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import UndoButton from './UndoButton';
 
 const RUN_BUTTONS = [0, 1, 2, 3, 4, 6];
@@ -19,20 +20,19 @@ function runButtonClass(r) {
 
 export default function BallInputPanel({ onRuns, onExtra, onWicket, onUndo, undoDisabled }) {
   const [extraSheet, setExtraSheet] = useState(null);
-  const [extraRuns, setExtraRuns] = useState(0);
 
   function openExtra(key) {
     if (key === 'penalty_batting') {
       onExtra(key, 5);
       return;
     }
-    setExtraRuns(0);
     setExtraSheet(key);
   }
 
-  function confirmExtra() {
-    onExtra(extraSheet, extraRuns);
+  function selectExtraRuns(n) {
+    const key = extraSheet;
     setExtraSheet(null);
+    onExtra(key, n);
   }
 
   return (
@@ -66,26 +66,24 @@ export default function BallInputPanel({ onRuns, onExtra, onWicket, onUndo, undo
         <UndoButton disabled={undoDisabled} onClick={onUndo} />
       </div>
 
-      {extraSheet && (
+      {extraSheet && createPortal(
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setExtraSheet(null)}>
-          <div className="bg-white dark:bg-ink-800 w-full rounded-t-3xl p-4" onClick={e => e.stopPropagation()}>
-            <h4 className="font-semibold mb-3 capitalize text-ink-900 dark:text-white">{extraSheet.replace('_', ' ')} — extra runs</h4>
-            <div className="grid grid-cols-5 gap-2 mb-4">
+          <div className="bg-white dark:bg-ink-800 w-full rounded-t-3xl px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()}>
+            <h4 className="font-semibold mb-3 capitalize text-ink-900 dark:text-white">{extraSheet.replace('_', ' ')} — select runs</h4>
+            <div className="grid grid-cols-6 gap-2">
               {[0, 1, 2, 3, 4, 5].map(n => (
                 <button
                   key={n}
-                  onClick={() => setExtraRuns(n)}
-                  className={`min-h-[44px] rounded-xl font-semibold transition-colors ${extraRuns === n ? 'bg-ink-900 dark:bg-white text-white dark:text-ink-900' : 'bg-ink-100 dark:bg-white/10 text-ink-700 dark:text-ink-100'}`}
+                  onClick={() => selectExtraRuns(n)}
+                  className="min-h-[52px] rounded-xl font-bold text-base bg-ink-900 dark:bg-white text-white dark:text-ink-900 active:scale-95 transition-transform"
                 >
                   {n}
                 </button>
               ))}
             </div>
-            <button onClick={confirmExtra} className="btn-primary w-full">
-              Confirm
-            </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

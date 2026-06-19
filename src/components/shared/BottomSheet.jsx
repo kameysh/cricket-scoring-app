@@ -16,7 +16,7 @@ export default function BottomSheet({ open, onClose, title, heightClass = 'h-[70
             <X size={20} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">{children}</div>
       </div>
     </div>
   );

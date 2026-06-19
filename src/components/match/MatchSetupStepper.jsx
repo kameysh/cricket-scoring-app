@@ -33,7 +33,7 @@ export default function MatchSetupStepper() {
     team1Ids: [], team2Ids: [], jokerId: null,
     team1CaptainId: null, team2CaptainId: null,
     toss_winner: '', toss_decision: '',
-    last_man_standing: false, max_overs_per_bowler: '', super_over_enabled: false,
+    last_man_standing: false, max_overs_per_bowler: '', super_over_enabled: false, free_hit_on_no_ball: false,
     powerplay_start: '', powerplay_end: '',
   });
 
@@ -79,8 +79,10 @@ export default function MatchSetupStepper() {
     // No joker: both teams must be full
     // With joker: exactly one team may be one player short (joker fills that side)
     //             OR both teams full (joker is a super-sub, not filling a gap)
-    if (!form.jokerId) return t1full && t2full;
-    return (t1full && t2full) || (t1full && t2short) || (t2full && t1short);
+    const teamsValid = !form.jokerId
+      ? t1full && t2full
+      : (t1full && t2full) || (t1full && t2short) || (t2full && t1short);
+    return teamsValid && !!form.team1CaptainId && !!form.team2CaptainId;
   }, [form]);
 
   const step3Valid = useMemo(() => !!form.toss_winner && !!form.toss_decision, [form]);
@@ -161,6 +163,7 @@ export default function MatchSetupStepper() {
         max_overs_per_bowler: form.max_overs_per_bowler ? Number(form.max_overs_per_bowler) : null,
         last_man_standing: form.last_man_standing,
         super_over_enabled: form.super_over_enabled,
+        free_hit_on_no_ball: form.free_hit_on_no_ball,
         powerplay_start: form.powerplay_start ? Number(form.powerplay_start) : null,
         powerplay_end: form.powerplay_end ? Number(form.powerplay_end) : null,
         toss_winner: form.toss_winner,
@@ -348,7 +351,7 @@ export default function MatchSetupStepper() {
                 onChange={e => set({ team1CaptainId: e.target.value || null })}
                 className="field-input"
               >
-                <option value="">Select captain (optional)</option>
+                <option value="">Select captain *</option>
                 {form.team1Ids.map(id => {
                   const p = players.find(pl => pl.id === id);
                   return p ? <option key={id} value={id}>{p.name}</option> : null;
@@ -376,7 +379,7 @@ export default function MatchSetupStepper() {
                 onChange={e => set({ team2CaptainId: e.target.value || null })}
                 className="field-input"
               >
-                <option value="">Select captain (optional)</option>
+                <option value="">Select captain *</option>
                 {form.team2Ids.map(id => {
                   const p = players.find(pl => pl.id === id);
                   return p ? <option key={id} value={id}>{p.name}</option> : null;
@@ -439,6 +442,10 @@ export default function MatchSetupStepper() {
             <label className="flex items-center gap-2.5 text-sm text-ink-700 dark:text-ink-100">
               <input type="checkbox" checked={form.super_over_enabled} onChange={e => set({ super_over_enabled: e.target.checked })} className="w-4 h-4 rounded accent-cricket-green" />
               Enable super over on tie
+            </label>
+            <label className="flex items-center gap-2.5 text-sm text-ink-700 dark:text-ink-100">
+              <input type="checkbox" checked={form.free_hit_on_no_ball} onChange={e => set({ free_hit_on_no_ball: e.target.checked })} className="w-4 h-4 rounded accent-cricket-green" />
+              Free hit on no ball
             </label>
           </div>
           <div>

@@ -549,8 +549,19 @@ export default function LiveScoring() {
   async function handleExtra(extraType, extraRuns) {
     if (await needOpeners()) return;
     if (!bowler) { toast.error('Select a bowler'); return; }
-    const runsOffBat = extraType === 'bye' || extraType === 'leg_bye' ? 0 : 0;
-    await store.scoreBall({ runsOffBat, extraType, extraRuns: extraType === 'wide' || extraType === 'no_ball' ? Math.max(extraRuns, 1) : extraRuns });
+    try {
+      let runsOffBat = 0;
+      let finalExtraRuns = extraRuns;
+      if (extraType === 'no_ball') {
+        runsOffBat = extraRuns;   // runs scored by batsman (count to their score)
+        finalExtraRuns = 1;        // no-ball penalty is always 1
+      } else if (extraType === 'wide') {
+        finalExtraRuns = extraRuns + 1; // 1 base penalty + additional runs
+      }
+      await store.scoreBall({ runsOffBat, extraType, extraRuns: finalExtraRuns });
+    } catch (e) {
+      toast.error(e?.message || 'Failed to record extra');
+    }
   }
 
   function handleWicketConfirm({ wicketType, fielderId, batsmanOutId: outId, crossed }) {

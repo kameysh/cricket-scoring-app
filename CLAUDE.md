@@ -65,6 +65,7 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 010 | `010_player_delete_policy.sql` | **Admin DELETE policy on players table** |
 | 011 | `011_player_self_insert.sql` | Player-role users can insert their own profile |
 | 012 | `012_missing_rls_policies.sql` | **DELETE policies for venues + tournaments; replace blanket allow_all on match_players, scorecards, match_events, tournament_players, career/tournament stats** |
+| 013 | `013_free_hit_setting.sql` | **`free_hit_on_no_ball boolean default false` added to `matches` — opt-in free hit per match** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -209,6 +210,13 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `PlayerEdit.jsx` | Auth check ran after DB fetch — unauthorized users triggered a player data fetch before being redirected | Rewritten to wait for auth loading to complete, then run permission check before fetching player |
 | `migrations/012` | `venues` and `tournaments` had no DELETE policy; 8 tables still on blanket `allow_all` from migration 001 | Added DELETE policies for venues/tournaments; replaced `allow_all` with role-scoped policies on all remaining tables |
 | `LiveScoring.jsx` | `MatchResultBanner` and MoTM BottomSheet both opened simultaneously — banner's "Continue" navigated without MoTM | Removed `setMotmOpen(true)` from win path; banner's `onClose` now closes banner then opens MoTM |
+| `MatchSetupStepper.jsx` | Captain selection was optional — matches could start without captains assigned | `step2Valid` now requires `!!form.team1CaptainId && !!form.team2CaptainId`; dropdowns changed to `"Select captain *"` |
+| `BallInputPanel.jsx` | Extras modal did not close or log on tap — two-step confirm UX confused users; iOS Safari nested `position:fixed` clipped modal below screen | Removed Confirm button — tapping run number calls `onExtra` and closes modal immediately; modal rendered via `createPortal(…, document.body)` to escape iOS Safari fixed-parent clipping |
+| `BallInputPanel.jsx` | Modal was clipped inside parent `position:fixed` div on iOS Safari — run buttons invisible | Used `createPortal` to render extra selection sheet directly on `document.body` |
+| `BottomSheet.jsx` | Content overlapped iPhone home indicator (missing safe-area padding) | Content div: `p-4` → `px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]` |
+| `LiveScoring.jsx` | No Ball: selected runs went to `extra_runs` (penalty), never to `runs_off_bat`; chip showed plain "nb" always | `handleExtra`: for No Ball, `runsOffBat = extraRuns`, `finalExtraRuns = 1`; chip now shows "nb+2" when batsman scored |
+| `LiveScoring.jsx` | Wide: `Math.max(extraRuns, 1)` meant selecting 1 gave `extra_runs=1` (base only), chip showed "wd" instead of "wd+1" | Changed to `extraRuns + 1` — always adds 1 base penalty; select 0→wd, select 2→wd+2 |
+| `MatchSetupStepper.jsx` + `matchStore.js` + `migrations/013` | Free hit always triggered after every no ball — not appropriate for gully cricket | Added `free_hit_on_no_ball boolean default false` column to `matches`; checkbox in Rules step; `newFreeHit` and rehydration gated on `!!match.free_hit_on_no_ball` |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:

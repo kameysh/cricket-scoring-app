@@ -61,7 +61,7 @@ export const useMatchStore = create((set, get) => ({
       striker: lastBall?.striker_after || null,
       nonStriker: lastBall?.non_striker_after || null,
       bowler: lastBall?.bowler_id || null,
-      freeHit: lastBall?.extra_type === 'no_ball' && lastBall?.is_legal_delivery === false,
+      freeHit: !!match.free_hit_on_no_ball && lastBall?.extra_type === 'no_ball' && lastBall?.is_legal_delivery === false,
       undoAvailable: deliveries.length > 0,
       isLoading: false,
     });
@@ -158,7 +158,7 @@ export const useMatchStore = create((set, get) => ({
     let newStriker = isWicket ? striker : (result.swap ? nonStriker : striker);
     let newNonStriker = isWicket ? nonStriker : (result.swap ? striker : nonStriker);
 
-    const newFreeHit = extraType === 'no_ball';
+    const newFreeHit = !!match.free_hit_on_no_ball && extraType === 'no_ball';
 
     const newDeliveries = [...deliveries, { ...result, over_number: overNumber, ball_number: ballNumber, runs_off_bat: runsOffBat, extra_type: extraType, extra_runs: extraRuns, total_runs_on_delivery: runsOffBat + extraRuns, is_wicket: isWicket, wicket_type: wicketType, batsman_out_id: batsmanOutId, bowler_id: bowler, batsman_id: striker, is_legal_delivery: result.isLegal }];
 
