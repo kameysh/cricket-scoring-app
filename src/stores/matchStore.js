@@ -26,6 +26,7 @@ export const useMatchStore = create((set, get) => ({
   nonStriker: null,
   bowler: null,
   prevBowler: null,
+  keeper: null,
   freeHit: false,
   ballsSinceWicket: [],
   undoAvailable: false,
@@ -55,12 +56,16 @@ export const useMatchStore = create((set, get) => ({
       deliveries = await matchService.getDeliveries(currentInnings.id);
     }
     const lastBall = deliveries[deliveries.length - 1];
+    const lastInnings = innings[innings.length - 1];
+    const bowlingTeam = lastInnings ? (lastInnings.batting_team === 1 ? 2 : 1) : null;
+    const keeperMp = matchPlayers.find(mp => mp.is_keeper && (mp.team === bowlingTeam || mp.team === 0));
     set({
       match, matchPlayers, innings, currentInnings,
       battingScorecards, bowlingScorecards, fieldingScorecards, deliveries,
       striker: lastBall?.striker_after || null,
       nonStriker: lastBall?.non_striker_after || null,
       bowler: lastBall?.bowler_id || null,
+      keeper: keeperMp?.players?.id || null,
       freeHit: !!match.free_hit_on_no_ball && lastBall?.extra_type === 'no_ball' && lastBall?.is_legal_delivery === false,
       undoAvailable: deliveries.length > 0,
       isLoading: false,
@@ -69,10 +74,12 @@ export const useMatchStore = create((set, get) => ({
   },
 
   async startInnings(battingTeam, target = null) {
-    const { match, innings } = get();
+    const { match, innings, matchPlayers } = get();
     const inningsNumber = innings.length + 1;
     const newInnings = await matchService.createInnings(match.id, inningsNumber, battingTeam, target);
-    set({ innings: [...innings, newInnings], currentInnings: newInnings, battingScorecards: [], bowlingScorecards: [], fieldingScorecards: [], deliveries: [], striker: null, nonStriker: null, bowler: null, prevBowler: null, freeHit: false });
+    const newBowlingTeam = battingTeam === 1 ? 2 : 1;
+    const keeperMp = matchPlayers.find(mp => mp.is_keeper && (mp.team === newBowlingTeam || mp.team === 0));
+    set({ innings: [...innings, newInnings], currentInnings: newInnings, battingScorecards: [], bowlingScorecards: [], fieldingScorecards: [], deliveries: [], striker: null, nonStriker: null, bowler: null, prevBowler: null, keeper: keeperMp?.players?.id || null, freeHit: false });
     return newInnings;
   },
 
@@ -82,6 +89,10 @@ export const useMatchStore = create((set, get) => ({
 
   setBowler(bowlerId) {
     set({ bowler: bowlerId, prevBowler: get().bowler });
+  },
+
+  setKeeper(keeperId) {
+    set({ keeper: keeperId });
   },
 
   swapStriker() {
@@ -255,7 +266,7 @@ export const useMatchStore = create((set, get) => ({
     set({
       match: null, matchPlayers: [], innings: [], currentInnings: null,
       battingScorecards: [], bowlingScorecards: [], fieldingScorecards: [], deliveries: [],
-      striker: null, nonStriker: null, bowler: null, prevBowler: null, freeHit: false,
+      striker: null, nonStriker: null, bowler: null, prevBowler: null, keeper: null, freeHit: false,
       undoAvailable: false, jokerCalledIn: false, statsDrawerPlayerId: null,
     });
   },

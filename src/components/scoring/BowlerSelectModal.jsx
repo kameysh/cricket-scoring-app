@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import BottomSheet from '../shared/BottomSheet';
 import PlayerLink from '../player/PlayerLink';
 
-export default function BowlerSelectModal({ open, onClose, eligible, onSelect, forcedBowler }) {
+export default function BowlerSelectModal({ open, onClose, eligible, onSelect, forcedBowler, title = 'Select Next Bowler' }) {
   useEffect(() => {
     if (open && eligible.length === 1) {
       onSelect(eligible[0].id);
@@ -17,7 +17,7 @@ export default function BowlerSelectModal({ open, onClose, eligible, onSelect, f
   if (eligible.length <= 1 && (eligible.length === 1 || forcedBowler)) return null;
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Select Next Bowler" heightClass="h-[60vh]">
+    <BottomSheet open={open} onClose={onClose} title={title} heightClass="h-[60vh]">
       <div className="space-y-1">
         {eligible.map(c => (
           <div key={c.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">

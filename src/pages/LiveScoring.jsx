@@ -215,11 +215,12 @@ export default function LiveScoring() {
   const navigate = useNavigate();
   const { isOnline } = useOfflineSync();
   const store = useMatchStore();
-  const { match, matchPlayers, currentInnings, innings, battingScorecards, bowlingScorecards, striker, nonStriker, bowler, prevBowler, freeHit, deliveries, undoAvailable } = store;
+  const { match, matchPlayers, currentInnings, innings, battingScorecards, bowlingScorecards, striker, nonStriker, bowler, prevBowler, keeper, freeHit, deliveries, undoAvailable } = store;
 
   const [wicketOpen, setWicketOpen] = useState(false);
   const [newBatsmanOpen, setNewBatsmanOpen] = useState(false);
   const [bowlerModalOpen, setBowlerModalOpen] = useState(false);
+  const [keeperModalOpen, setKeeperModalOpen] = useState(false);
   const [result, setResult] = useState(null);
   const [abandonOpen, setAbandonOpen] = useState(false);
   const [firstInningsData, setFirstInningsData] = useState(null);
@@ -437,6 +438,7 @@ export default function LiveScoring() {
   const strikerObj = battingTeamPlayers.find(p => p.id === striker);
   const nonStrikerObj = battingTeamPlayers.find(p => p.id === nonStriker);
   const bowlerObj = bowlingTeamPlayers.find(p => p.id === bowler);
+  const keeperObj = bowlingTeamPlayers.find(p => p.id === keeper);
   const bowlerCard = bowlingScorecards.find(b => b.player_id === bowler);
 
   // Compute live batting + bowling stats from deliveries (DB scorecards lag mid-over)
@@ -604,6 +606,11 @@ export default function LiveScoring() {
     setBowlerModalOpen(false);
   }
 
+  function handleKeeperSelect(keeperId) {
+    store.setKeeper(keeperId);
+    setKeeperModalOpen(false);
+  }
+
   async function handleAbandon() {
     await matchService.deleteMatch(id);
     navigate('/matches');
@@ -719,6 +726,23 @@ export default function LiveScoring() {
           </button>
         )}
 
+        <div className="card p-3 flex items-center justify-between gap-2">
+          <span className="text-sm">
+            Keeper:{' '}
+            {keeperObj ? (
+              <strong>{keeperObj.name}</strong>
+            ) : (
+              <span className="text-ink-400">Not set</span>
+            )}
+            {keeper && keeper === bowler && (
+              <span className="ml-2 text-[11px] text-amber-600 dark:text-amber-400 font-semibold">· bowling</span>
+            )}
+          </span>
+          <button onClick={() => setKeeperModalOpen(true)} className="flex-shrink-0 text-xs font-medium text-brand-green hover:underline">
+            Change
+          </button>
+        </div>
+
         <JokerPanel
           joker={joker}
           isBatting={jokerId === striker || jokerId === nonStriker}
@@ -818,6 +842,7 @@ export default function LiveScoring() {
         isFreeHit={freeHit}
         isNoBall={false}
         batsmenOnField={[strikerObj, nonStrikerObj].filter(Boolean)}
+        keeperId={keeper}
       />
       <NewBatsmanModal
         open={newBatsmanOpen}
@@ -832,6 +857,7 @@ export default function LiveScoring() {
         onSelect={handleNewBatsman}
       />
       <BowlerSelectModal open={bowlerModalOpen} onClose={() => setBowlerModalOpen(false)} eligible={eligibleBowlers} onSelect={handleBowlerSelect} forcedBowler={bowlingTeamPlayers.find(p => p.id === prevBowler)} />
+      <BowlerSelectModal open={keeperModalOpen} onClose={() => setKeeperModalOpen(false)} eligible={bowlingTeamPlayers} onSelect={handleKeeperSelect} title="Select Wicket Keeper" />
       <MatchResultBanner summary={result} onClose={() => { setResult(null); setMotmOpen(true); }} />
       <PlayerStatsDrawer />
       <ConfirmDialog

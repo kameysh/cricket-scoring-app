@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, ChevronUp, ChevronDown, Activity } from 'lucide-react';
+import { Trophy, ChevronUp, ChevronDown, Activity, X, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import * as playerService from '../services/playerService';
 import PlayerAvatar from '../components/player/PlayerAvatar';
@@ -60,6 +61,77 @@ const SORTS = {
   },
 };
 
+const MVP_FORMULA = [
+  { icon: '🏏', label: 'Run scored',    pts: '+0.5 pts each',  note: '100 runs = 50 pts' },
+  { icon: '🎳', label: 'Wicket taken',  pts: '+20 pts each',   note: '5 wickets = 100 pts' },
+  { icon: '4️⃣', label: 'Four hit',      pts: '+1 pt each',     note: 'boundary bonus' },
+  { icon: '6️⃣', label: 'Six hit',       pts: '+2 pts each',    note: 'big hit bonus' },
+  { icon: '⭐', label: 'Half-century',  pts: '+10 pts',        note: '50+ in an innings' },
+  { icon: '💯', label: 'Century',       pts: '+25 pts',        note: '100+ in an innings' },
+  { icon: '🧤', label: 'Catch',         pts: '+5 pts each',    note: 'fielding credit' },
+  { icon: '🥅', label: 'Stumping',      pts: '+5 pts each',    note: 'keeper credit' },
+  { icon: '🏃', label: 'Run out',       pts: '+3 pts each',    note: 'direct or assisted' },
+];
+
+function MvpFormulaModal({ onClose }) {
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-ink-900 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-gradient-to-r from-brand-green to-brand-teal px-5 pt-5 pb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles size={16} className="text-white/80" />
+                <span className="text-white/80 text-xs font-semibold uppercase tracking-widest">How it works</span>
+              </div>
+              <h2 className="text-white text-lg font-bold leading-tight">MVP Score Formula</h2>
+              <p className="text-white/70 text-xs mt-1">Every action on the field earns points. The player with the highest total is crowned MVP.</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors shrink-0 mt-0.5"
+            >
+              <X size={14} className="text-white" />
+            </button>
+          </div>
+        </div>
+
+        {/* Formula rows */}
+        <div className="px-5 py-4 space-y-1">
+          {MVP_FORMULA.map(row => (
+            <div key={row.label} className="flex items-center gap-3 py-2 border-b border-ink-50 dark:border-white/5 last:border-0">
+              <span className="text-xl w-7 text-center shrink-0">{row.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-ink-900 dark:text-white">{row.label}</p>
+                <p className="text-[11px] text-ink-400">{row.note}</p>
+              </div>
+              <span className="text-xs font-bold text-brand-green whitespace-nowrap">{row.pts}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-5">
+          <div className="bg-ink-50 dark:bg-white/5 rounded-xl px-4 py-3">
+            <p className="text-[11px] text-ink-500 dark:text-ink-400 text-center leading-relaxed">
+              MVP score accumulates across <span className="font-semibold text-ink-700 dark:text-ink-200">all matches</span> — not just a single game. Consistent all-round performers rise to the top.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 const RANK_STYLES = [
   'bg-yellow-400 text-yellow-900',   // 1st
   'bg-gray-300 text-gray-800',       // 2nd
@@ -97,6 +169,7 @@ export default function Leaderboard() {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('desc');
   const [liveMatch, setLiveMatch] = useState(false);
+  const [mvpFormulaOpen, setMvpFormulaOpen] = useState(false);
 
   useEffect(() => {
     // Initial load
@@ -204,6 +277,21 @@ export default function Leaderboard() {
           </button>
         ))}
       </div>
+
+      {tab === 'mvp' && (
+        <div className="flex items-center justify-end -mt-2">
+          <button
+            type="button"
+            onClick={() => setMvpFormulaOpen(true)}
+            className="flex items-center gap-1 text-xs text-brand-green font-medium hover:underline underline-offset-2"
+          >
+            <Sparkles size={12} />
+            How is MVP calculated?
+          </button>
+        </div>
+      )}
+
+      {mvpFormulaOpen && <MvpFormulaModal onClose={() => setMvpFormulaOpen(false)} />}
 
       {loading ? (
         <LoadingSkeleton rows={6} />

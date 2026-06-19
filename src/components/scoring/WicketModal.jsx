@@ -18,7 +18,7 @@ const ALL_TYPES = [
 const FREE_HIT_ALLOWED = ['run_out', 'hit_wicket', 'obstructing'];
 const NO_BALL_ALLOWED = ['run_out'];
 
-export default function WicketModal({ open, onClose, onConfirm, fielders, isFreeHit, isNoBall, batsmenOnField }) {
+export default function WicketModal({ open, onClose, onConfirm, fielders, isFreeHit, isNoBall, batsmenOnField, keeperId }) {
   const [type, setType] = useState(null);
   const [fielderId, setFielderId] = useState('');
   const [batsmanOutId, setBatsmanOutId] = useState(batsmenOnField?.[0]?.id || '');
@@ -32,6 +32,13 @@ export default function WicketModal({ open, onClose, onConfirm, fielders, isFree
       setCrossed(null);
     }
   }, [open, batsmenOnField]);
+
+  // Auto-populate keeper as fielder when stumped is selected
+  useEffect(() => {
+    if (type === 'stumped' && keeperId && !fielderId) {
+      setFielderId(keeperId);
+    }
+  }, [type]);
 
   const types = ALL_TYPES.filter(t => {
     if (isFreeHit) return FREE_HIT_ALLOWED.includes(t.key);
