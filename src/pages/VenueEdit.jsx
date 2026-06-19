@@ -13,6 +13,8 @@ export default function VenueEdit() {
   const [form, setForm] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  if (!isAdmin) { navigate('/'); return null; }
+
   useEffect(() => { venueService.getVenue(id).then(setForm); }, [id]);
 
   async function handleSubmit(e) {

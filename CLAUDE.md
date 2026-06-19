@@ -63,6 +63,8 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 008 | `008_fix_fk_cascades.sql` | **CASCADE delete on player_career_stats and player_tournament_stats** |
 | 009 | `009_storage_policies.sql` | **Storage RLS for player-photos bucket + players UPDATE policy** |
 | 010 | `010_player_delete_policy.sql` | **Admin DELETE policy on players table** |
+| 011 | `011_player_self_insert.sql` | Player-role users can insert their own profile |
+| 012 | `012_missing_rls_policies.sql` | **DELETE policies for venues + tournaments; replace blanket allow_all on match_players, scorecards, match_events, tournament_players, career/tournament stats** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -171,6 +173,9 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `AdminUsers.jsx` | Name/email/role aligned inconsistently across rows | Redesigned card: avatar left, name+email+role pill stacked vertically, trash top-right |
 | `PlayerCarousel.jsx` | Tapping center card navigated immediately to profile | Added CSS 3D flip — front shows avatar/name/role, back shows stats + "View Profile" button |
 | `PlayerNew.jsx` | Player-role user could navigate to `/players/new` and hit DB unique constraint error on second profile | On mount, calls `getPlayerByUserId()` — if profile exists, redirects to it with info toast; `return null` while checking prevents form flash |
+| `Venues.jsx` | Non-admin users could click venue cards and navigate to edit page (route wall, but confusing UX) | Cards are now plain `<div>` for non-admins; only admins get clickable `<button>` |
+| `PlayerEdit.jsx` | Auth check ran after DB fetch — unauthorized users triggered a player data fetch before being redirected | Rewritten to wait for auth loading to complete, then run permission check before fetching player |
+| `migrations/012` | `venues` and `tournaments` had no DELETE policy; 8 tables still on blanket `allow_all` from migration 001 | Added DELETE policies for venues/tournaments; replaced `allow_all` with role-scoped policies on all remaining tables |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:

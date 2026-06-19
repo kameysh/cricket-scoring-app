@@ -32,10 +32,17 @@ export default function Venues() {
       ) : (
         <div className="space-y-2">
           {venues.map(v => (
-            <button key={v.id} onClick={() => navigate(`/venues/${v.id}/edit`)} className="w-full text-left card p-4">
-              <p className="font-semibold text-gray-900 dark:text-white">{v.name}</p>
-              <p className="text-xs text-gray-500">{v.city}, {v.country}{v.capacity ? ` · Cap. ${v.capacity}` : ''}</p>
-            </button>
+            canManageVenues ? (
+              <button key={v.id} onClick={() => navigate(`/venues/${v.id}/edit`)} className="w-full text-left card p-4">
+                <p className="font-semibold text-gray-900 dark:text-white">{v.name}</p>
+                <p className="text-xs text-gray-500">{v.city}, {v.country}{v.capacity ? ` · Cap. ${v.capacity}` : ''}</p>
+              </button>
+            ) : (
+              <div key={v.id} className="w-full text-left card p-4">
+                <p className="font-semibold text-gray-900 dark:text-white">{v.name}</p>
+                <p className="text-xs text-gray-500">{v.city}, {v.country}{v.capacity ? ` · Cap. ${v.capacity}` : ''}</p>
+              </div>
+            )
           ))}
         </div>
       )}
