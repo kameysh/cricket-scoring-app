@@ -161,6 +161,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - **Auto MoTM:** When match ends (win condition or manual 2nd innings end), `matchService.autoAssignManOfMatch(id)` is called automatically — fetches all innings/scorecards, scores each player via `calcMotmScore`, saves highest scorer to `matches.man_of_match_id`. No manual picker.
 - **Read-only guard:** `useEffect` on `[match]` — if `match.status === 'completed'` and current user is not `kameshwaran26@gmail.com`, redirects to `/matches/${id}/summary` immediately. Only Kamesh can access a completed match in scoring view.
 - **MatchResultBanner:** `onClose` navigates to summary (no longer opens MoTM BottomSheet).
+- **WK/Bowler conflict:** `handleBowlerSelect` checks if selected bowler === keeper after setting — if so, sets `keeperBowlingPrompt` state which shows a `ConfirmDialog` asking to change keeper. "Change Keeper" opens `keeperModalOpen`; "Keep as Is" dismisses.
 
 ### `src/components/player/FormSparkline.jsx`
 - Props: `{ history: Array }` — filters batting rows from match history, slices last 10, renders `LineChart` (recharts) of runs
@@ -187,8 +188,8 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - ConfirmDialog used for delete confirmation (no inline confirm block in the row)
 
 ### `src/pages/Teams.jsx`
-- Route: `/teams` (admin only)
-- Admin can add teams with optional **Guest team** toggle; guest teams get an amber badge
+- Route: `/teams` (any logged-in user; add requires admin/scorer, delete requires admin)
+- Admin/scorer can add teams with optional **Guest team** toggle; guest teams get an amber badge
 - Tapping a team card expands it to show a player roster manager — search + tap to add/remove players, saves immediately via `setTeamPlayers`
 - Guest toggle shown below the add form (applies to the next team being created)
 - Teams auto-populate in match and tournament setup dropdowns; guest teams shown with ★ suffix
@@ -361,6 +362,8 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `Leaderboard.jsx` | Bowling tab filtered `bowl_wickets > 0` — bowlers who hadn't taken a wicket were invisible | Changed filter to `bowl_legal_balls > 0` — any bowler who delivered at least one ball appears |
 | `MatchSummary.jsx` | `scoredPlayers` useMemo declared after `if (!match) return null` — violated Rules of Hooks, crashed the page | Moved useMemo above the early return |
 | `Matches.jsx` | Header buttons overflowed off screen on mobile | "Delete All" → icon-only Trash2; "Compare" → plain text with bg-ink-100; "New" → btn-primary |
+| `Teams.jsx` + `teamService.js` + `App.jsx` + `BottomNav.jsx` | No dedicated place to manage team names; team dropdowns in match setup had no suggestions | New `/teams` page (linked in admin sheet in BottomNav); `teamService.js` with `listTeams/addTeam/deleteTeam/getTeamPlayers/setTeamPlayers/updateTeamName`; `MatchSetupStepper` loads `globalTeams` and shows as `<select>` when teams exist; `HeadToHead` merges registered teams with past match teams |
+| `LiveScoring.jsx` | Keeper could be selected as bowler with no prompt — WK cannot field and bowl simultaneously | `handleBowlerSelect` checks `bowlerId === keeper` after setting — triggers `keeperBowlingPrompt` ConfirmDialog; "Change Keeper" opens keeper modal; "Keep as Is" dismisses |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:
