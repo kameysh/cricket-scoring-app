@@ -146,8 +146,12 @@ export default function Players() {
             )}
           </button>
           {isAdmin && players.length > 0 && (
-            <button onClick={() => setDeleteAllOpen(true)} className="btn-chip !text-red-500 !border-red-200 dark:!border-red-500/30">
-              <Trash2 size={14} /> Delete All
+            <button
+              onClick={() => setDeleteAllOpen(true)}
+              title="Delete all players"
+              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+            >
+              <Trash2 size={17} />
             </button>
           )}
           {(canManagePlayers || (isPlayer && myPlayer === null)) && (

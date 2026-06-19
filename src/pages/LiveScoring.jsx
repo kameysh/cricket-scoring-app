@@ -227,6 +227,7 @@ export default function LiveScoring() {
   const [batsmanOutId, setBatsmanOutId] = useState(null);
   const [winConfirmOpen, setWinConfirmOpen] = useState(false);
   const [winConfirmInfo, setWinConfirmInfo] = useState(null);
+  const [oversLimitOpen, setOversLimitOpen] = useState(false);
   const endingMatchRef = useRef(false);
 
   useEffect(() => { store.loadMatch(id); return () => store.reset(); }, [id]);
@@ -330,6 +331,15 @@ export default function LiveScoring() {
     }
   }, [winInfo]);
 
+  // Auto-show end-innings modal when overs limit is reached
+  useEffect(() => {
+    if (!currentInnings || currentInnings.is_completed || !match || !match.total_overs) return;
+    if (winConfirmOpen) return; // innings 2 win modal takes priority
+    if (currentInnings.total_legal_balls > 0 && currentInnings.total_legal_balls >= match.total_overs * 6) {
+      setOversLimitOpen(true);
+    }
+  }, [currentInnings?.total_legal_balls, match?.total_overs, winConfirmOpen]);
+
   async function confirmEndMatch() {
     endingMatchRef.current = true;
     setWinConfirmOpen(false);
@@ -352,6 +362,16 @@ export default function LiveScoring() {
     endingMatchRef.current = false;
     setWinConfirmOpen(false);
     setWinConfirmInfo(null);
+    await store.undo();
+  }
+
+  async function handleOversLimitEndInnings() {
+    setOversLimitOpen(false);
+    await handleEndInnings();
+  }
+
+  async function undoFromOversLimit() {
+    setOversLimitOpen(false);
     await store.undo();
   }
 
@@ -670,6 +690,28 @@ export default function LiveScoring() {
         onConfirm={handleAbandon}
         onCancel={() => setAbandonOpen(false)}
       />
+
+      <BottomSheet open={oversLimitOpen} onClose={() => {}} title={`${match.total_overs} Overs Complete`} heightClass="h-auto">
+        <div className="space-y-4 pb-2">
+          <p className="text-sm text-center text-ink-600 dark:text-ink-300">
+            All {match.total_overs} overs have been bowled. End the innings to continue, or undo the last ball if a re-bowl is needed.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={undoFromOversLimit}
+              className="py-3 rounded-xl border border-ink-200 dark:border-white/10 text-sm font-semibold text-ink-700 dark:text-ink-200"
+            >
+              ↩ Undo Last Ball
+            </button>
+            <button
+              onClick={handleOversLimitEndInnings}
+              className="py-3 rounded-xl bg-brand-green text-white text-sm font-semibold"
+            >
+              End Innings
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
 
       <BottomSheet open={winConfirmOpen} onClose={() => {}} title="Match Result" heightClass="h-auto">
         <div className="space-y-4 pb-2">
