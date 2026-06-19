@@ -17,13 +17,11 @@ export default function PlayerNew() {
 
   // 'checking' | 'claim' | 'ready'
   const [phase, setPhase] = useState(isPlayer ? 'checking' : 'ready');
-  const [claimCandidate, setClaimCandidate] = useState(null); // player row to claim
-  const [claiming, setClaiming] = useState(false);
 
   // Admin path: unlinked player-role users for optional linking
   const [appUsers, setAppUsers] = useState([]);
 
-  // ── Player-role: check for existing profile or claimable row ──
+  // ── Player-role: check for existing profile ──
   useEffect(() => {
     if (!isPlayer || !userId) { setPhase('ready'); return; }
 
@@ -33,25 +31,8 @@ export default function PlayerNew() {
         navigate(`/players/${existing.id}`, { replace: true });
         return;
       }
-
-      // Look for an unclaimed player whose name matches this user's full name
-      const fullName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || '';
-      if (!fullName) { setPhase('ready'); return; }
-
-      supabase
-        .from('players')
-        .select('*')
-        .is('user_id', null)
-        .ilike('name', fullName.trim())
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) {
-            setClaimCandidate(data);
-            setPhase('claim');
-          } else {
-            setPhase('ready');
-          }
-        });
+      // No linked profile found — show "ask admin" message
+      setPhase('no_profile');
     });
   }, [isPlayer, userId]);
 
@@ -69,25 +50,7 @@ export default function PlayerNew() {
     });
   }, [canManagePlayers]);
 
-  async function handleClaim() {
-    setClaiming(true);
-    try {
-      const { error } = await supabase
-        .from('players')
-        .update({ user_id: userId })
-        .eq('id', claimCandidate.id)
-        .is('user_id', null);
-      if (error) throw error;
-      toast.success('Profile linked to your account!');
-      navigate(`/players/${claimCandidate.id}`);
-    } catch (e) {
-      toast.error(e.message || 'Failed to claim profile');
-    } finally {
-      setClaiming(false);
-    }
-  }
-
-  async function handleSubmit(data, photoFile) {
+async function handleSubmit(data, photoFile) {
     try {
       // player-role: always bind to their own userId
       // admin: user_id comes from the optional link dropdown (may be undefined)
@@ -106,43 +69,27 @@ export default function PlayerNew() {
 
   if (phase === 'checking') return null;
 
-  // ── Claim screen ──
-  if (phase === 'claim' && claimCandidate) {
+  // ── No linked profile — ask admin to link ──
+  if (phase === 'no_profile') {
     return (
       <div className="p-4 page-transition">
         <div className="flex flex-col items-center text-center gap-4 mt-8">
-          <div className="w-16 h-16 rounded-full bg-brand-green/10 flex items-center justify-center">
-            <UserCheck size={32} className="text-brand-green" />
+          <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-500/15 flex items-center justify-center">
+            <UserCheck size={32} className="text-amber-500" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-ink-900 dark:text-white">Is this your profile?</h1>
-            <p className="text-sm text-ink-500 mt-1">We found an existing player profile matching your name.</p>
+            <h1 className="text-xl font-bold text-ink-900 dark:text-white">No profile linked yet</h1>
+            <p className="text-sm text-ink-500 mt-2 leading-relaxed">
+              Ask your admin to create your player profile and link it to your account
+              (<span className="font-medium text-ink-700 dark:text-ink-300">{user?.email}</span>).
+            </p>
           </div>
-
-          <div className="w-full card p-4 text-left space-y-1.5">
-            <p className="font-bold text-ink-900 dark:text-white text-lg">{claimCandidate.name}</p>
-            {claimCandidate.role && (
-              <p className="text-sm text-ink-500 capitalize">{claimCandidate.role.replace('_', ' ')}</p>
-            )}
-            {claimCandidate.batting_style && (
-              <p className="text-xs text-ink-400">{claimCandidate.batting_style} · {claimCandidate.bowling_style || 'No bowling style'}</p>
-            )}
-          </div>
-
-          <div className="w-full space-y-2">
-            <button
-              onClick={handleClaim}
-              disabled={claiming}
-              className="btn-primary w-full disabled:opacity-50"
-            >
-              {claiming ? 'Linking…' : 'Yes, this is me — Link profile'}
-            </button>
-            <button
-              onClick={() => setPhase('ready')}
-              className="w-full py-2.5 rounded-xl border border-ink-200 dark:border-white/10 text-sm font-medium text-ink-600 dark:text-ink-300"
-            >
-              No, create a new profile
-            </button>
+          <div className="w-full p-4 rounded-xl bg-ink-50 dark:bg-white/5 border border-ink-100 dark:border-white/10 text-left text-sm text-ink-500 space-y-1">
+            <p className="font-semibold text-ink-700 dark:text-ink-300">How it works</p>
+            <p>1. Admin goes to Players → Add Player</p>
+            <p>2. Fills in your cricket details</p>
+            <p>3. Selects your email in "Link to user account"</p>
+            <p>4. Your profile will appear here automatically</p>
           </div>
         </div>
       </div>
