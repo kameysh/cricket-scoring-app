@@ -5,14 +5,12 @@ import { Share2, Trash2, Trophy } from 'lucide-react';
 import * as matchService from '../services/matchService';
 import PlayerLink from '../components/player/PlayerLink';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
-import { calcMotmScore } from '../lib/cricketUtils';
 
 export default function MatchSummary() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [match, setMatch] = useState(null);
   const [matchPlayers, setMatchPlayers] = useState([]);
-  const [momId, setMomId] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -22,7 +20,13 @@ export default function MatchSummary() {
   const cardRef = useRef(null);
 
   useEffect(() => {
-    matchService.getMatch(id).then(setMatch);
+    matchService.getMatch(id).then(m => {
+      setMatch(m);
+      // Auto-assign MoTM for legacy matches completed before auto-assign was added
+      if (m?.status === 'completed' && !m.man_of_match_id) {
+        matchService.autoAssignManOfMatch(id).then(() => matchService.getMatch(id).then(setMatch));
+      }
+    });
     matchService.getMatchPlayers(id).then(setMatchPlayers);
     matchService.getInnings(id).then(async inns => {
       try {
@@ -40,20 +44,8 @@ export default function MatchSummary() {
     });
   }, [id]);
 
-  // Auto-suggest MOTM once scorecards are loaded
-  useEffect(() => {
-    if (!match || match.man_of_match_id || matchPlayers.length === 0) return;
-    const scores = matchPlayers.map(mp => ({
-      id: mp.player_id,
-      score: calcMotmScore(mp.player_id, battingCards, bowlingCards, fieldingCards),
-    }));
-    const best = scores.sort((a, b) => b.score - a.score)[0];
-    if (best && best.score > 0) setMomId(best.id);
-  }, [match, matchPlayers, battingCards, bowlingCards, fieldingCards]);
-
   if (!match) return null;
 
-  const needsMom = match.status === 'completed' && !match.man_of_match_id;
   const motmName = matchPlayers.find(mp => mp.player_id === match.man_of_match_id)?.players?.name;
   const topScorer = [...battingCards].sort((a, b) => (b.runs || 0) - (a.runs || 0))[0];
   const topBowler = [...bowlingCards]
@@ -72,13 +64,6 @@ export default function MatchSummary() {
       toast.error(e.message || 'Failed to delete match');
       setDeleting(false);
     }
-  }
-
-  async function saveMom() {
-    if (!momId) { toast.error('Select Man of the Match'); return; }
-    await matchService.updateMatch(id, { man_of_match_id: momId });
-    setMatch({ ...match, man_of_match_id: momId });
-    toast.success('Man of the Match saved');
   }
 
   async function shareResult() {
@@ -192,28 +177,6 @@ export default function MatchSummary() {
             <p className="text-[11px] font-semibold text-cricket-gold uppercase tracking-wider">Man of the Match</p>
             <PlayerLink id={match.man_of_match_id} name={motmName} className="font-bold text-ink-900 dark:text-white" />
           </div>
-        </div>
-      )}
-
-      {/* MoTM selector (if not yet set) */}
-      {needsMom && (
-        <div className="card p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">Man of the Match</p>
-            {battingCards.length > 0 && <span className="text-xs text-ink-400">Auto-suggested by performance</span>}
-          </div>
-          <select value={momId} onChange={e => setMomId(e.target.value)} className="field-input">
-            <option value="">Select player</option>
-            {matchPlayers
-              .map(mp => ({ ...mp, score: calcMotmScore(mp.player_id, battingCards, bowlingCards, fieldingCards) }))
-              .sort((a, b) => b.score - a.score)
-              .map(mp => (
-                <option key={mp.player_id} value={mp.player_id}>
-                  {mp.players?.name}{mp.score > 0 ? ` (${mp.score} pts)` : ''}
-                </option>
-              ))}
-          </select>
-          <button onClick={saveMom} className="btn-primary w-full !py-2.5">Confirm</button>
         </div>
       )}
 

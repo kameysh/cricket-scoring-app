@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BarChart3, Pencil } from 'lucide-react';
+import { BarChart3, Pencil, Trophy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as tournamentService from '../services/tournamentService';
 import * as matchService from '../services/matchService';
@@ -31,6 +31,8 @@ export default function TournamentDetail() {
   const [points, setPoints] = useState([]);
   const [teams, setTeams] = useState([]);
 
+  const [completing, setCompleting] = useState(false);
+
   // Toss sheet state
   const [startMatchId, setStartMatchId] = useState(null);
   const [tossWinner, setTossWinner] = useState('');
@@ -43,6 +45,21 @@ export default function TournamentDetail() {
     tournamentService.getPointsTable(id).then(setPoints);
     tournamentService.getTournamentTeams(id).then(setTeams);
   }, [id]);
+
+  async function handleCompleteTournament() {
+    setCompleting(true);
+    try {
+      await matchService.autoAssignManOfSeries(id);
+      await tournamentService.updateTournament(id, { status: 'completed' });
+      const fresh = await tournamentService.getTournament(id);
+      setTournament(fresh);
+      toast.success('Tournament completed — Man of Series assigned!');
+    } catch (e) {
+      toast.error(e.message || 'Failed to complete tournament');
+    } finally {
+      setCompleting(false);
+    }
+  }
 
   function openToss(matchId) {
     setStartMatchId(matchId);
@@ -101,6 +118,15 @@ export default function TournamentDetail() {
           <Link to={`/tournaments/${id}/stats`} className="p-2 rounded-lg border border-gray-300 dark:border-gray-600">
             <BarChart3 size={18} />
           </Link>
+          {canManageTournaments && tournament.status !== 'completed' && matches.length > 0 && matches.every(m => m.status === 'completed') && (
+            <button
+              onClick={handleCompleteTournament}
+              disabled={completing}
+              className="px-3 py-2 rounded-lg text-xs font-semibold bg-brand-green text-white disabled:opacity-50"
+            >
+              {completing ? '…' : '✓ Complete'}
+            </button>
+          )}
           {canManageTournaments && (
             <Link to={`/tournaments/${id}/edit`} className="p-2 rounded-lg border border-gray-300 dark:border-gray-600">
               <Pencil size={18} />
@@ -108,6 +134,17 @@ export default function TournamentDetail() {
           )}
         </div>
       </div>
+
+      {/* Man of the Series */}
+      {tournament.man_of_series && (
+        <div className="flex items-center gap-3 p-4 rounded-2xl bg-cricket-gold/10 border border-cricket-gold/30">
+          <Trophy size={20} className="text-cricket-gold shrink-0" />
+          <div>
+            <p className="text-[11px] font-semibold text-cricket-gold uppercase tracking-wider">Man of the Series</p>
+            <p className="font-bold text-ink-900 dark:text-white">{tournament.man_of_series.name}</p>
+          </div>
+        </div>
+      )}
 
       {/* Setup banner — series not yet created */}
       {canManageTournaments && tournament.series_matches && matches.length === 0 && (

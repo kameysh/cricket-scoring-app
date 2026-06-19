@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { calcStrikeRate, calcEconomy, formatOvers, fmt, calcMotmScore } from '../lib/cricketUtils';
+import { calcStrikeRate, calcEconomy, formatOvers, fmt } from '../lib/cricketUtils';
+import { supabase } from '../lib/supabase';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useMatchStore } from '../stores/matchStore';
@@ -231,11 +232,19 @@ export default function LiveScoring() {
   const [oversLimitOpen, setOversLimitOpen] = useState(false);
   const endingMatchRef = useRef(false);
   const milestonesRef = useRef(new Set());
-  const [motmOpen, setMotmOpen] = useState(false);
-  const [motmPlayerId, setMotmPlayerId] = useState('');
-  const [motmSaving, setMotmSaving] = useState(false);
-
   useEffect(() => { store.loadMatch(id); return () => store.reset(); }, [id]);
+
+  // Redirect completed matches to summary — only kameshwaran26@gmail.com can re-enter
+  useEffect(() => {
+    if (!match) return;
+    if (match.status === 'completed') {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user?.email !== 'kameshwaran26@gmail.com') {
+          navigate(`/matches/${id}/summary`, { replace: true });
+        }
+      });
+    }
+  }, [match]);
 
   // Reset milestone tracking when innings changes
   useEffect(() => { milestonesRef.current = new Set(); }, [currentInnings?.id]);
@@ -394,27 +403,17 @@ export default function LiveScoring() {
         winning_team_name: winConfirmInfo.winInfo.winner,
         winning_margin: winConfirmInfo.winInfo.margin,
       });
-      // Banner shows first; its "Continue" opens MoTM
+      await matchService.autoAssignManOfMatch(id);
+      // Banner shows; its "Continue" navigates to summary
     } else {
-      // All-out in 2nd innings — end innings then show MoTM (no win banner)
+      // All-out in 2nd innings — end innings, auto-assign MoTM, navigate
       await store.endInnings('manual');
-      setMotmOpen(true);
+      await matchService.autoAssignManOfMatch(id);
+      navigate(`/matches/${id}/summary`);
     }
   }
 
 
-
-  async function handleMotmSave() {
-    if (motmPlayerId && !motmSaving) {
-      setMotmSaving(true);
-      try {
-        await matchService.updateMatch(id, { man_of_match_id: motmPlayerId });
-      } catch { /* non-critical — scorer can set from summary page */ }
-      setMotmSaving(false);
-    }
-    setMotmOpen(false);
-    navigate(`/matches/${id}/summary`);
-  }
 
   async function undoFromWinConfirm() {
     endingMatchRef.current = false;
@@ -527,14 +526,6 @@ export default function LiveScoring() {
 
   const joker = jokerId ? matchPlayers.find(mp => mp.player_id === jokerId)?.players : null;
 
-  // All match players sorted by MoTM score for selection sheet
-  const allMatchPlayers = [...new Map(
-    matchPlayers.filter(mp => mp.players).map(mp => [mp.players.id, mp.players])
-  ).values()].sort((a, b) =>
-    calcMotmScore(b.id, battingScorecards, bowlingScorecards, []) -
-    calcMotmScore(a.id, battingScorecards, bowlingScorecards, [])
-  );
-
   async function needOpeners() {
     if (!striker || (!nonStriker && !lastManAlone)) {
       toast.error('Select opening batsmen first');
@@ -623,7 +614,8 @@ export default function LiveScoring() {
       await store.startInnings(bowlingTeam, currentInnings.total_runs + 1);
       toast.success('Second innings started');
     } else {
-      setMotmOpen(true);
+      await matchService.autoAssignManOfMatch(id);
+      navigate(`/matches/${id}/summary`);
     }
   }
 
@@ -859,7 +851,7 @@ export default function LiveScoring() {
       />
       <BowlerSelectModal open={bowlerModalOpen} onClose={() => setBowlerModalOpen(false)} eligible={eligibleBowlers} onSelect={handleBowlerSelect} forcedBowler={bowlingTeamPlayers.find(p => p.id === prevBowler)} />
       <BowlerSelectModal open={keeperModalOpen} onClose={() => setKeeperModalOpen(false)} eligible={bowlingTeamPlayers} onSelect={handleKeeperSelect} title="Select Wicket Keeper" />
-      <MatchResultBanner summary={result} onClose={() => { setResult(null); setMotmOpen(true); }} />
+      <MatchResultBanner summary={result} onClose={() => { setResult(null); navigate(`/matches/${id}/summary`); }} />
       <PlayerStatsDrawer />
       <ConfirmDialog
         open={abandonOpen}
@@ -920,48 +912,6 @@ export default function LiveScoring() {
         </div>
       </BottomSheet>
 
-      {/* Man of the Match selection */}
-      <BottomSheet open={motmOpen} onClose={handleMotmSave} title="Man of the Match" heightClass="h-[70vh]">
-        <div className="space-y-3 pb-4">
-          <p className="text-xs text-ink-500 dark:text-ink-300">Select the standout performer — sorted by performance score.</p>
-          <div className="space-y-1">
-            {allMatchPlayers.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setMotmPlayerId(p.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-                  motmPlayerId === p.id
-                    ? 'bg-cricket-gold/10 border border-cricket-gold/40 text-ink-900 dark:text-white'
-                    : 'hover:bg-ink-50 dark:hover:bg-white/5 text-ink-700 dark:text-ink-200'
-                }`}
-              >
-                <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                  motmPlayerId === p.id ? 'bg-cricket-gold text-white' : 'bg-ink-100 dark:bg-white/10 text-ink-500'
-                }`}>
-                  {p.name?.charAt(0).toUpperCase()}
-                </span>
-                <span className="font-medium">{p.name}</span>
-                {motmPlayerId === p.id && <span className="ml-auto text-cricket-gold">★</span>}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <button
-              onClick={() => { setMotmPlayerId(''); handleMotmSave(); }}
-              className="py-3 rounded-xl border border-ink-200 dark:border-white/10 text-sm font-semibold text-ink-600 dark:text-ink-300"
-            >
-              Skip
-            </button>
-            <button
-              onClick={handleMotmSave}
-              disabled={!motmPlayerId || motmSaving}
-              className="py-3 rounded-xl bg-cricket-gold text-white text-sm font-semibold disabled:opacity-50"
-            >
-              {motmSaving ? 'Saving…' : 'Confirm'}
-            </button>
-          </div>
-        </div>
-      </BottomSheet>
     </div>
   );
 }

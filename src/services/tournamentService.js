@@ -11,7 +11,11 @@ export async function listTournaments() {
 }
 
 export async function getTournament(id) {
-  const { data, error } = await supabase.from('tournaments').select('*, venues(name,city)').eq('id', id).single();
+  const { data, error } = await supabase
+    .from('tournaments')
+    .select('*, venues(name,city), man_of_series:man_of_series_id(id, name)')
+    .eq('id', id)
+    .single();
   if (error) throw error;
   return data;
 }

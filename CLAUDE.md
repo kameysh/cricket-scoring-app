@@ -68,6 +68,7 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 013 | `013_free_hit_setting.sql` | **`free_hit_on_no_ball boolean default false` added to `matches` — opt-in free hit per match** |
 | 015 | `015_badge_columns.sql` | `bowl_hat_tricks int default 0` added to `player_career_stats` — needed for Hat-trick badge |
 | 016 | `016_bat_thirties.sql` | `bat_thirties int default 0` added to `player_career_stats` and `player_tournament_stats`; RPC updated to increment on 30–49 innings |
+| 017 | `017_man_of_series.sql` | **`man_of_series_id uuid REFERENCES players(id)` added to `tournaments` — needed for Man of Series feature** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -128,7 +129,9 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - **Partnership tracker:** `partnershipStats` IIFE computes runs+balls since last wicket; shown as pill below striker indicator
 - **Chase meter (2nd innings):** `chaseStats` IIFE computes CRR/RRR/progress; card shown only when `innings_number === 2` and `target` is set; RRR cell turns red when behind
 - **Milestone toasts:** `milestonesRef` Set tracks fired toasts; resets on innings change; fires once per batsman 30/50/100 and bowler 3/4/5 wickets
-- **MoTM flow:** After match ends, `MatchResultBanner` shows win celebration; clicking "Continue" closes it and opens MoTM `BottomSheet`; players sorted by `calcMotmScore`; confirm saves to `matches.man_of_match_id`; skip navigates without saving
+- **Auto MoTM:** When match ends (win condition or manual 2nd innings end), `matchService.autoAssignManOfMatch(id)` is called automatically — fetches all innings/scorecards, scores each player via `calcMotmScore`, saves highest scorer to `matches.man_of_match_id`. No manual picker.
+- **Read-only guard:** `useEffect` on `[match]` — if `match.status === 'completed'` and current user is not `kameshwaran26@gmail.com`, redirects to `/matches/${id}/summary` immediately. Only Kamesh can access a completed match in scoring view.
+- **MatchResultBanner:** `onClose` navigates to summary (no longer opens MoTM BottomSheet).
 
 ### `src/components/player/FormSparkline.jsx`
 - Props: `{ history: Array }` — filters batting rows from match history, slices last 10, renders `LineChart` (recharts) of runs
@@ -163,7 +166,9 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 ### `src/services/matchService.js`
 - `getDistinctTeamNames()`: distinct team1_name + team2_name from completed matches, sorted
 - `getH2HMatches(teamA, teamB)`: two separate queries (each ordering) merged and sorted — Supabase compound `.or()` with AND subclauses is unreliable for this pattern
-- `getH2HTopPerformers(matchIds)`: innings IDs → parallel batting + bowling scorcards → aggregate by player → top 3 each
+- `getH2HTopPerformers(matchIds)`: innings IDs → parallel batting + bowling scorecards → aggregate by player → top 3 each
+- `autoAssignManOfMatch(matchId)`: collects all innings scorecards + match players → scores each via `calcMotmScore` → writes `man_of_match_id` to match. Non-throwing (wrapped in try/catch).
+- `autoAssignManOfSeries(tournamentId)`: queries all completed matches in tournament → aggregates all scorecards → scores each unique player → writes `man_of_series_id` to tournament. Throws on DB error (caller catches).
 
 ### `src/pages/Leaderboard.jsx`
 - Route: `/leaderboard` (any logged-in user)
@@ -182,6 +187,11 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - **Highlights Feed** (`HighlightsFeed`): collapsible per-innings feed of auto-detected events (boundaries, wickets, milestones, hat-tricks, maiden overs) with Share button
 - **Over-by-Over table** (`OverByOverTable`): collapsible per-innings table (Ov | Bowler | R | W | Balls), collapsed by default
 - `playersMap` state built from `matchPlayers`: `{ [player_id]: { name, photo_url } }` — passed to InningsBlock for name resolution
+
+### `src/pages/TournamentDetail.jsx`
+- **Complete Tournament button**: visible when `canManageTournaments && tournament.status !== 'completed' && matches.length > 0 && matches.every(m => m.status === 'completed')`. Calls `autoAssignManOfSeries` then `updateTournament({status:'completed'})` then re-fetches.
+- **Man of the Series card**: shown when `tournament.man_of_series` is set (gold Trophy card, same style as MoTM on MatchSummary).
+- `getTournament` select includes `man_of_series:man_of_series_id(id, name)` join (migration 017 required).
 
 ### `src/pages/HeadToHead.jsx`
 - Route: `/h2h` (any logged-in user), accessed via "Compare" chip on Matches page

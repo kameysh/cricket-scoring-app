@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { calcMotmScore } from '../lib/cricketUtils';
 
 export async function listMatches() {
   const { data, error } = await supabase
@@ -136,6 +137,65 @@ export async function deleteMatch(matchId) {
 export async function deleteAllMatches() {
   const { error } = await supabase.from('matches').delete().neq('status', 'live');
   if (error) throw error;
+}
+
+export async function autoAssignManOfMatch(matchId) {
+  try {
+    const [allInnings, allPlayers] = await Promise.all([
+      getInnings(matchId),
+      getMatchPlayers(matchId),
+    ]);
+    const allBatting = [], allBowling = [], allFielding = [];
+    await Promise.all(allInnings.map(async inn => {
+      const cards = await getScorecards(inn.id);
+      allBatting.push(...cards.batting);
+      allBowling.push(...cards.bowling);
+      allFielding.push(...(cards.fielding || []));
+    }));
+    const seen = new Set();
+    let bestId = null, bestScore = -1;
+    for (const mp of allPlayers) {
+      const pid = mp.player_id;
+      if (seen.has(pid)) continue;
+      seen.add(pid);
+      const score = calcMotmScore(pid, allBatting, allBowling, allFielding);
+      if (score > bestScore) { bestScore = score; bestId = pid; }
+    }
+    if (bestId) await updateMatch(matchId, { man_of_match_id: bestId });
+  } catch { /* non-critical */ }
+}
+
+export async function autoAssignManOfSeries(tournamentId) {
+  const { data: tourMatches } = await supabase
+    .from('matches')
+    .select('id')
+    .eq('tournament_id', tournamentId)
+    .eq('status', 'completed');
+  if (!tourMatches?.length) return;
+
+  const allBatting = [], allBowling = [], allFielding = [];
+  const allPlayerIds = new Set();
+
+  await Promise.all(tourMatches.map(async m => {
+    const [innings, mps] = await Promise.all([getInnings(m.id), getMatchPlayers(m.id)]);
+    mps.forEach(mp => allPlayerIds.add(mp.player_id));
+    await Promise.all(innings.map(async inn => {
+      const cards = await getScorecards(inn.id);
+      allBatting.push(...cards.batting);
+      allBowling.push(...cards.bowling);
+      allFielding.push(...(cards.fielding || []));
+    }));
+  }));
+
+  let bestId = null, bestScore = -1;
+  for (const pid of allPlayerIds) {
+    const score = calcMotmScore(pid, allBatting, allBowling, allFielding);
+    if (score > bestScore) { bestScore = score; bestId = pid; }
+  }
+  if (bestId) {
+    const { error } = await supabase.from('tournaments').update({ man_of_series_id: bestId }).eq('id', tournamentId);
+    if (error) throw error;
+  }
 }
 
 export async function getDistinctTeamNames() {
