@@ -30,6 +30,10 @@ export default function TournamentSetup() {
   const [loading, setLoading] = useState(false);
 
   // Squad picker (add/remove mode)
+  // captainIds / keeperIds: { [teamId]: playerId | null }
+  const [captainIds, setCaptainIds] = useState({});
+  const [keeperIds, setKeeperIds] = useState({});
+
   const [pickerTeamId, setPickerTeamId] = useState(null);
 
   // Player action sheet (tap a player chip → remove or replace)
@@ -144,8 +148,11 @@ export default function TournamentSetup() {
   const canCreateMatches = useMemo(() => {
     if (!isSeries || matchesExist) return false;
     if (totalOvers < 1 || teamSize < 6 || teamSize > 11) return false;
-    return teams.every(t => (teamPlayers[t.id] || []).length >= teamSize);
-  }, [isSeries, matchesExist, totalOvers, teamSize, teams, teamPlayers]);
+    const squadsReady = teams.every(t => (teamPlayers[t.id] || []).length >= teamSize);
+    const captainsReady = teams.every(t => !!captainIds[t.id]);
+    const keepersReady = teams.every(t => !!keeperIds[t.id]);
+    return squadsReady && captainsReady && keepersReady;
+  }, [isSeries, matchesExist, totalOvers, teamSize, teams, teamPlayers, captainIds, keeperIds]);
 
   const canSave = useMemo(() => teams.some(t => (teamPlayers[t.id] || []).length > 0), [teams, teamPlayers]);
 
@@ -157,8 +164,8 @@ export default function TournamentSetup() {
       const team1Ids = teamPlayers[teams[0].id] || [];
       const team2Ids = teamPlayers[teams[1].id] || [];
       const matchPlayerRows = [
-        ...team1Ids.map((pid, i) => ({ player_id: pid, team: 1, batting_position: i + 1 })),
-        ...team2Ids.map((pid, i) => ({ player_id: pid, team: 2, batting_position: i + 1 })),
+        ...team1Ids.map((pid, i) => ({ player_id: pid, team: 1, batting_position: i + 1, is_captain: pid === captainIds[teams[0].id], is_keeper: pid === keeperIds[teams[0].id] })),
+        ...team2Ids.map((pid, i) => ({ player_id: pid, team: 2, batting_position: i + 1, is_captain: pid === captainIds[teams[1].id], is_keeper: pid === keeperIds[teams[1].id] })),
       ];
       for (let i = 0; i < tournament.series_matches; i++) {
         const match = await matchService.createMatch({
@@ -286,6 +293,42 @@ export default function TournamentSetup() {
                     <span className="text-xs font-medium text-ink-700 dark:text-ink-200">{playerName(pid)}</span>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Captain + Keeper selects — series only, shown once squad has players */}
+            {isSeries && assigned.length > 0 && (
+              <div className="px-4 pb-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-ink-400 uppercase tracking-wide mb-1">
+                    Captain <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={captainIds[team.id] || ''}
+                    onChange={e => setCaptainIds(prev => ({ ...prev, [team.id]: e.target.value || null }))}
+                    className="field-input !py-1.5 !text-sm"
+                  >
+                    <option value="">Select *</option>
+                    {assigned.map(pid => (
+                      <option key={pid} value={pid}>{playerName(pid)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-ink-400 uppercase tracking-wide mb-1">
+                    Keeper <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={keeperIds[team.id] || ''}
+                    onChange={e => setKeeperIds(prev => ({ ...prev, [team.id]: e.target.value || null }))}
+                    className="field-input !py-1.5 !text-sm"
+                  >
+                    <option value="">Select *</option>
+                    {assigned.map(pid => (
+                      <option key={pid} value={pid}>{playerName(pid)}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
 

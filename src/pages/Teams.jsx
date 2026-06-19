@@ -253,19 +253,29 @@ export default function Teams() {
                         <UserPlus size={12} /> Default Roster {exp.saving && <span className="text-brand-green">Saving…</span>}
                       </p>
                       {(() => {
+                        const ogCount = allPlayers.filter(p => !p.is_guest).length;
                         const guestCount = allPlayers.filter(p => p.is_guest).length;
+                        const rosterFilter = exp.rosterFilter || '';
+                        const toggle = (val) => { setExpanded(prev => ({ ...prev, [t.id]: { ...prev[t.id], rosterFilter: prev[t.id]?.rosterFilter === val ? '' : val } })); };
                         return (
-                          <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); setExpanded(prev => ({ ...prev, [t.id]: { ...prev[t.id], guestOnly: !prev[t.id]?.guestOnly } })); }}
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${
-                              exp.guestOnly
-                                ? 'bg-amber-500 text-white'
-                                : 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400'
-                            }`}
-                          >
-                            Guest {guestCount > 0 && <span>({guestCount})</span>}
-                          </button>
+                          <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                            <button type="button" onClick={() => toggle('og')}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${
+                                rosterFilter === 'og'
+                                  ? 'bg-ink-800 dark:bg-white text-white dark:text-ink-900'
+                                  : 'bg-ink-100 dark:bg-white/10 text-ink-500 dark:text-ink-400'
+                              }`}>
+                              OG ({ogCount})
+                            </button>
+                            <button type="button" onClick={() => toggle('guest')}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${
+                                rosterFilter === 'guest'
+                                  ? 'bg-amber-500 text-white'
+                                  : 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                              }`}>
+                              Guest ({guestCount})
+                            </button>
+                          </div>
                         );
                       })()}
                     </div>
@@ -281,7 +291,7 @@ export default function Teams() {
                     {/* Player list */}
                     <div className="space-y-1 max-h-56 overflow-y-auto">
                       {allPlayers
-                        .filter(p => !exp.guestOnly || p.is_guest)
+                        .filter(p => !exp.rosterFilter || (exp.rosterFilter === 'guest' ? p.is_guest : !p.is_guest))
                         .filter(p => !exp.search || p.name.toLowerCase().includes(exp.search.toLowerCase()))
                         .map(p => {
                           const selected = exp.playerIds.includes(p.id);

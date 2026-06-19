@@ -63,12 +63,14 @@ export default function MatchSetupStepper() {
   const set = patch => setForm(f => ({ ...f, ...patch }));
 
   async function applyGuestTeam(teamName, slot) {
-    const team = globalTeams.find(t => t.name === teamName && t.is_guest);
+    const team = globalTeams.find(t => t.name === teamName);
     if (!team) return;
     try {
       const playerIds = await teamService.getTeamPlayers(team.id);
       if (playerIds.length > 0) {
-        set(slot === 1 ? { team1Ids: playerIds } : { team2Ids: playerIds });
+        set(slot === 1
+          ? { team1Ids: playerIds, team1CaptainId: null, team1KeeperId: null }
+          : { team2Ids: playerIds, team2CaptainId: null, team2KeeperId: null });
         toast.success(`${playerIds.length} players loaded for ${teamName}`);
       }
     } catch {
@@ -100,7 +102,7 @@ export default function MatchSetupStepper() {
     const teamsValid = !form.jokerId
       ? t1full && t2full
       : (t1full && t2full) || (t1full && t2short) || (t2full && t1short);
-    return teamsValid && !!form.team1CaptainId && !!form.team2CaptainId;
+    return teamsValid && !!form.team1CaptainId && !!form.team2CaptainId && !!form.team1KeeperId && !!form.team2KeeperId;
   }, [form]);
 
   const step3Valid = useMemo(() => !!form.toss_winner && !!form.toss_decision, [form]);
@@ -393,14 +395,14 @@ export default function MatchSetupStepper() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
-                  {form.team1_name} — Wicket Keeper <span className="text-ink-300 font-normal normal-case">(optional)</span>
+                  {form.team1_name} — Wicket Keeper <span className="text-red-400">*</span>
                 </label>
                 <select
                   value={form.team1KeeperId || ''}
                   onChange={e => set({ team1KeeperId: e.target.value || null })}
                   className="field-input"
                 >
-                  <option value="">Select keeper</option>
+                  <option value="">Select keeper *</option>
                   {form.team1Ids.map(id => {
                     const p = players.find(pl => pl.id === id);
                     return p ? <option key={id} value={id}>{p.name}</option> : null;
@@ -439,14 +441,14 @@ export default function MatchSetupStepper() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
-                  {form.team2_name} — Wicket Keeper <span className="text-ink-300 font-normal normal-case">(optional)</span>
+                  {form.team2_name} — Wicket Keeper <span className="text-red-400">*</span>
                 </label>
                 <select
                   value={form.team2KeeperId || ''}
                   onChange={e => set({ team2KeeperId: e.target.value || null })}
                   className="field-input"
                 >
-                  <option value="">Select keeper</option>
+                  <option value="">Select keeper *</option>
                   {form.team2Ids.map(id => {
                     const p = players.find(pl => pl.id === id);
                     return p ? <option key={id} value={id}>{p.name}</option> : null;
@@ -457,11 +459,11 @@ export default function MatchSetupStepper() {
           )}
 
           <div className="card p-4 space-y-3">
-            <div className="flex items-center justify-between">
+            <div>
               <h4 className="text-[15px] font-bold text-ink-900 dark:text-white flex items-center gap-1.5">
                 <Star size={14} className="text-cricket-gold fill-cricket-gold" /> Joker
               </h4>
-              <span className="text-xs text-ink-400">Optional — covers a missing player for either side</span>
+              <p className="text-xs text-ink-400 mt-0.5">Optional — covers a missing player for either side</p>
             </div>
             {form.jokerId ? (
               (() => {
