@@ -229,14 +229,22 @@ export default function Leaderboard() {
     />
   );
 
+  const stickyBg = 'bg-white dark:bg-ink-900';
+
+  const rankCell = rank => (
+    <td className={`sticky left-0 z-10 ${stickyBg} px-2 py-2.5 w-10`}>
+      <RankBadge rank={rank} />
+    </td>
+  );
+
   const playerCell = row => (
-    <td className="px-3 py-2.5">
+    <td className={`sticky left-10 z-10 ${stickyBg} px-2 py-2.5 shadow-[1px_0_0_0_rgba(0,0,0,0.06)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.06)]`}>
       <button
         onClick={() => navigate(`/players/${row.players?.id}`)}
-        className="flex items-center gap-2 text-left w-full"
+        className="flex items-center gap-2 text-left"
       >
         <PlayerAvatar name={row.players?.name} photoUrl={row.players?.photo_url} size={28} />
-        <span className="text-xs font-semibold text-ink-900 dark:text-white truncate max-w-[90px]">
+        <span className="text-xs font-semibold text-ink-900 dark:text-white truncate" style={{ maxWidth: '80px' }}>
           {row.players?.name || '—'}
         </span>
       </button>
@@ -298,15 +306,16 @@ export default function Leaderboard() {
       ) : rows.length === 0 ? (
         <EmptyState icon={Activity} title="No stats yet" message="Stats appear here once matches are played and innings are completed." />
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="card overflow-hidden p-0">
+          <div className="overflow-x-auto">
+          <table className="text-sm" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
             {/* ── Batting ── */}
             {tab === 'batting' && (
               <>
                 <thead>
                   <tr className="border-b border-ink-100 dark:border-white/10">
-                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide w-8">#</th>
-                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Player</th>
+                    <th className={`sticky left-0 z-20 ${stickyBg} px-2 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide w-10`}>#</th>
+                    <th className={`sticky left-10 z-20 ${stickyBg} px-2 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide shadow-[1px_0_0_0_rgba(0,0,0,0.06)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.06)]`}>Player</th>
                     {sh('M',    'bat_matches', '')}
                     {sh('Inns', 'bat_innings', '')}
                     {sh('Runs', 'bat_runs',    '')}
@@ -320,18 +329,18 @@ export default function Leaderboard() {
                 <tbody>
                   {battingRows.map((row, i) => (
                     <tr key={row.player_id} className="border-b border-ink-50 dark:border-white/5 last:border-0 hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
-                      <td className="px-3 py-2.5"><RankBadge rank={i+1} /></td>
+                      {rankCell(i+1)}
                       {playerCell(row)}
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{row.bat_matches||0}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{row.bat_innings||0}</td>
-                      <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums">{row.bat_runs||0}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bat_matches||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bat_innings||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums whitespace-nowrap">{row.bat_runs||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">
                         {row.bat_highest_score != null ? `${row.bat_highest_score}${row.bat_highest_score_not_out ? '*' : ''}` : '—'}
                       </td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{fmt(batAvg(row))}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{fmt(batSR(row))}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{row.bat_fours||0}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{row.bat_sixes||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{fmt(batAvg(row))}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{fmt(batSR(row))}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bat_fours||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap pr-4">{row.bat_sixes||0}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -343,8 +352,8 @@ export default function Leaderboard() {
               <>
                 <thead>
                   <tr className="border-b border-ink-100 dark:border-white/10">
-                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide w-8">#</th>
-                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Player</th>
+                    <th className={`sticky left-0 z-20 ${stickyBg} px-2 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide w-10`}>#</th>
+                    <th className={`sticky left-10 z-20 ${stickyBg} px-2 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide shadow-[1px_0_0_0_rgba(0,0,0,0.06)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.06)]`}>Player</th>
                     {sh('M',    'bowl_matches',  '')}
                     {sh('W',    'bowl_wickets',  '')}
                     {sh('Ovrs', null,            '')}
@@ -357,15 +366,15 @@ export default function Leaderboard() {
                 <tbody>
                   {bowlingRows.map((row, i) => (
                     <tr key={row.player_id} className="border-b border-ink-50 dark:border-white/5 last:border-0 hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
-                      <td className="px-3 py-2.5"><RankBadge rank={i+1} /></td>
+                      {rankCell(i+1)}
                       {playerCell(row)}
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{row.bowl_matches||0}</td>
-                      <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums">{row.bowl_wickets||0}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{overs(row)}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{row.bowl_runs||0}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{fmt(bowlAvg(row))}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{fmt(bowlEcon(row))}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{bb(row)}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bowl_matches||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums whitespace-nowrap">{row.bowl_wickets||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{overs(row)}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bowl_runs||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{fmt(bowlAvg(row))}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{fmt(bowlEcon(row))}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap pr-4">{bb(row)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -377,19 +386,19 @@ export default function Leaderboard() {
               <>
                 <thead>
                   <tr className="border-b border-ink-100 dark:border-white/10">
-                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide w-8">#</th>
-                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Player</th>
+                    <th className={`sticky left-0 z-20 ${stickyBg} px-2 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide w-10`}>#</th>
+                    <th className={`sticky left-10 z-20 ${stickyBg} px-2 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide shadow-[1px_0_0_0_rgba(0,0,0,0.06)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.06)]`}>Player</th>
                     {sh('Score', 'mvp_score', '')}
-                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Breakdown</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide whitespace-nowrap">Breakdown</th>
                   </tr>
                 </thead>
                 <tbody>
                   {mvpRows.map((row, i) => (
                     <tr key={row.player_id} className="border-b border-ink-50 dark:border-white/5 last:border-0 hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
-                      <td className="px-3 py-2.5"><RankBadge rank={i+1} /></td>
+                      {rankCell(i+1)}
                       {playerCell(row)}
-                      <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums">{row._mvp.toFixed(1)}</td>
-                      <td className="px-3 py-2.5 text-xs text-ink-500 dark:text-ink-400 whitespace-nowrap">
+                      <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums whitespace-nowrap">{row._mvp.toFixed(1)}</td>
+                      <td className="px-3 py-2.5 text-xs text-ink-500 dark:text-ink-400 whitespace-nowrap pr-4">
                         {[
                           row.bat_runs > 0 && `${row.bat_runs}R`,
                           row.bowl_wickets > 0 && `${row.bowl_wickets}W`,
@@ -403,6 +412,7 @@ export default function Leaderboard() {
             )}
 
           </table>
+          </div>
         </div>
       )}
     </div>
