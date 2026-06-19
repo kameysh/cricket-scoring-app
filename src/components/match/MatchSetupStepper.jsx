@@ -44,7 +44,7 @@ export default function MatchSetupStepper() {
     fetchPlayers({ activeOnly: true });
     venueService.listVenues().then(setVenues);
     tournamentService.listTournaments().then(setTournaments);
-    teamService.listTeams().then(setGlobalTeams).catch(() => {});
+    teamService.listTeams().then(setGlobalTeams).catch(err => console.error('Failed to load teams:', err));
   }, []);
 
   useEffect(() => {
@@ -295,11 +295,6 @@ export default function MatchSetupStepper() {
             )}
           </div>
 
-          {globalTeams.length > 0 && (
-            <datalist id="match-setup-teams-list">
-              {globalTeams.map(t => <option key={t.id} value={t.name} />)}
-            </datalist>
-          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="field-label">Team 1 name</label>
@@ -309,13 +304,15 @@ export default function MatchSetupStepper() {
                     <option key={t.id} value={t.name}>{t.name}</option>
                   ))}
                 </select>
+              ) : globalTeams.length > 0 ? (
+                <select value={form.team1_name} onChange={e => set({ team1_name: e.target.value })} className="field-input">
+                  <option value="">Select team…</option>
+                  {globalTeams.filter(t => t.name !== form.team2_name).map(t => (
+                    <option key={t.id} value={t.name}>{t.name}</option>
+                  ))}
+                </select>
               ) : (
-                <input
-                  value={form.team1_name}
-                  onChange={e => set({ team1_name: e.target.value })}
-                  list={globalTeams.length > 0 ? 'match-setup-teams-list' : undefined}
-                  className="field-input"
-                />
+                <input value={form.team1_name} onChange={e => set({ team1_name: e.target.value })} className="field-input" />
               )}
             </div>
             <div>
@@ -326,13 +323,15 @@ export default function MatchSetupStepper() {
                     <option key={t.id} value={t.name}>{t.name}</option>
                   ))}
                 </select>
+              ) : globalTeams.length > 0 ? (
+                <select value={form.team2_name} onChange={e => set({ team2_name: e.target.value })} className="field-input">
+                  <option value="">Select team…</option>
+                  {globalTeams.filter(t => t.name !== form.team1_name).map(t => (
+                    <option key={t.id} value={t.name}>{t.name}</option>
+                  ))}
+                </select>
               ) : (
-                <input
-                  value={form.team2_name}
-                  onChange={e => set({ team2_name: e.target.value })}
-                  list={globalTeams.length > 0 ? 'match-setup-teams-list' : undefined}
-                  className="field-input"
-                />
+                <input value={form.team2_name} onChange={e => set({ team2_name: e.target.value })} className="field-input" />
               )}
             </div>
           </div>

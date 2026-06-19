@@ -21,7 +21,7 @@ export default function TournamentNew() {
 
   useEffect(() => {
     venueService.listVenues().then(setVenues);
-    teamService.listTeams().then(setGlobalTeams).catch(() => {});
+    teamService.listTeams().then(setGlobalTeams).catch(err => console.error('Failed to load teams:', err));
   }, []);
 
   function setTeamName(i, val) {
@@ -134,21 +134,29 @@ export default function TournamentNew() {
             <label className="field-label !mb-0">Teams</label>
             <span className="text-xs text-ink-400">{teams.length} / {MAX_TEAMS} teams</span>
           </div>
-          {globalTeams.length > 0 && (
-            <datalist id="tournament-teams-list">
-              {globalTeams.map(t => <option key={t.id} value={t.name} />)}
-            </datalist>
-          )}
           <div className="space-y-2">
             {teams.map((name, i) => (
               <div key={i} className="flex items-center gap-2">
-                <input
-                  value={name}
-                  onChange={e => setTeamName(i, e.target.value)}
-                  list={globalTeams.length > 0 ? 'tournament-teams-list' : undefined}
-                  placeholder={`Team ${i + 1} name`}
-                  className="field-input flex-1"
-                />
+                {globalTeams.length > 0 ? (
+                  <select
+                    value={name}
+                    onChange={e => setTeamName(i, e.target.value)}
+                    className="field-input flex-1"
+                  >
+                    <option value="">Team {i + 1}…</option>
+                    {globalTeams
+                      .filter(t => !teams.some((n, idx) => idx !== i && n === t.name))
+                      .map(t => <option key={t.id} value={t.name}>{t.name}</option>)
+                    }
+                  </select>
+                ) : (
+                  <input
+                    value={name}
+                    onChange={e => setTeamName(i, e.target.value)}
+                    placeholder={`Team ${i + 1} name`}
+                    className="field-input flex-1"
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => removeTeam(i)}

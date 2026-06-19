@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ArrowLeftRight, Trophy, Activity } from 'lucide-react';
 import * as matchService from '../services/matchService';
+import * as teamService from '../services/teamService';
 import PlayerAvatar from '../components/player/PlayerAvatar';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 
@@ -45,10 +46,13 @@ export default function HeadToHead() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    matchService.getDistinctTeamNames()
-      .then(setTeamNames)
-      .catch(() => setTeamNames([]))
-      .finally(() => setNamesLoading(false));
+    Promise.all([
+      matchService.getDistinctTeamNames().catch(() => []),
+      teamService.listTeams().catch(() => []),
+    ]).then(([matchNames, globalTeams]) => {
+      const merged = [...new Set([...matchNames, ...globalTeams.map(t => t.name)])].sort();
+      setTeamNames(merged);
+    }).finally(() => setNamesLoading(false));
   }, []);
 
   useEffect(() => {
