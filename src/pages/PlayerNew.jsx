@@ -13,7 +13,7 @@ export default function PlayerNew() {
   const navigate = useNavigate();
   const addPlayer = usePlayerStore(s => s.addPlayer);
   const user = useAuthStore(s => s.user);
-  const { isAdmin, isPlayer, userId, canManagePlayers } = useRole();
+  const { isAdmin, isPlayer, userId, canManagePlayers, canCreatePlayer } = useRole();
 
   // 'checking' | 'claim' | 'ready'
   const [phase, setPhase] = useState(isPlayer ? 'checking' : 'ready');

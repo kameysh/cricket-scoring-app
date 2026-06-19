@@ -46,7 +46,16 @@ supabase/
 
 ### Roles & Auth
 Roles: `admin`, `scorer`, `captain`, `player`, `viewer`  
-Role check hook: `src/hooks/useRole.js` → `{ isAdmin, isScorer, canManagePlayers, isPlayer, userId }`  
+Role check hook: `src/hooks/useRole.js` → `{ isAdmin, isPlayer, canScore, canManagePlayers, canCreatePlayer, canManageOwnProfile, canManageVenues, canManageTournaments, userId }`
+
+| Flag | Roles |
+|------|-------|
+| `canManagePlayers` | admin only — edit **any** player profile |
+| `canCreatePlayer` | admin, scorer, captain, player — create new player / edit own profile |
+| `canManageOwnProfile` | admin, scorer, captain, player |
+| `canScore` | admin, scorer |
+| `canManageVenues` / `canManageTournaments` | admin only |
+
 App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 
 ---
@@ -72,6 +81,7 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 018 | `018_teams.sql` | **Global `teams` table — admins/scorers insert, admins delete, all authenticated users select. Powers auto-populate in match + tournament setup.** |
 | 019 | `019_player_claim.sql` | **`players_claim_own` RLS policy — player-role user can UPDATE a row where `user_id IS NULL`, setting it to their own `auth.uid()`. Prevents duplicates when admin pre-creates a player before the user accepts their invite.** |
 | 020 | `020_guest_player.sql` | **`is_guest boolean default false` added to `players` — marks players added without an app account. Shown as amber "Guest" badge on carousel. Admin can link a guest to a real account later via PlayerEdit.** |
+| 021 | `021_team_players.sql` | **`is_guest boolean default false` added to `teams`; new `team_players` join table (team_id + player_id, PK) with RLS — admins/scorers insert/delete, all authenticated select. Powers guest team default roster feature.** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -115,6 +125,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 ### `src/pages/Players.jsx`
 - Header: Players count + Filter button + Delete All (trash icon, `kameshwaran26@gmail.com` only) + Add button
 - Delete All is **icon-only** (no text) to avoid mobile overflow; guarded by `isSuperAdmin = isAdmin && user?.email === 'kameshwaran26@gmail.com'`
+- Add button shown to all `canCreatePlayer` roles (admin/scorer/captain/player); label is "Add" for admin, "My Profile" for others
 - **No list** — only the PlayerCarousel is rendered when players exist (no PlayerCard list)
 - Fetches `getAllCareerStats()` on mount, builds `statsMap = { [player_id]: stats }`, passed to carousel
 - Two ConfirmDialogs: one for single player delete, one for delete-all
@@ -176,14 +187,17 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 
 ### `src/pages/Teams.jsx`
 - Route: `/teams` (admin only)
-- Admin can add new team names (inline form at bottom) and delete existing ones (trash icon + ConfirmDialog)
-- Accessible from the admin user sheet in BottomNav (between Venues and Manage Users)
-- Teams added here auto-populate as `<datalist>` suggestions in match and tournament setup inputs
+- Admin can add teams with optional **Guest team** toggle; guest teams get an amber badge
+- Tapping a team card expands it to show a player roster manager — search + tap to add/remove players, saves immediately via `setTeamPlayers`
+- Guest toggle shown below the add form (applies to the next team being created)
+- Teams auto-populate in match and tournament setup dropdowns; guest teams shown with ★ suffix
 
 ### `src/services/teamService.js`
-- `listTeams()`: fetches all rows from `teams` table ordered by name
-- `addTeam(name)`: inserts a new team; trims name before insert
-- `deleteTeam(id)`: deletes by id; does NOT affect existing matches (team names on matches are plain text)
+- `listTeams()`: fetches `id, name, is_guest` ordered by name
+- `addTeam(name, isGuest?)`: inserts team with optional guest flag
+- `deleteTeam(id)`: deletes by id; does NOT affect existing matches (team names are plain text on matches)
+- `getTeamPlayers(teamId)`: returns `player_id[]` for a team's default roster
+- `setTeamPlayers(teamId, playerIds)`: replaces full roster — delete all then insert new batch
 
 ### `src/services/playerService.js`
 - `deletePlayer(id)`: explicitly deletes from `player_career_stats` and `player_tournament_stats` before hard-delete (belt-and-suspenders alongside cascade migration)
@@ -304,6 +318,10 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `PlayerCarousel.jsx` | Card too short on mobile — dead gap in white info zone | Increased `CARD_H` from 360 → 420; bumped text sizes (name `text-[15px]`, role `text-[11px]`, stats `text-base`) to fill extra height |
 | `PlayerCarousel.jsx` | No tap-alternative to swipe for non-touch users | Added left/right chevron arrow buttons absolutely positioned at card mid-height |
 | `PlayerCarousel.jsx` | No badge visibility on player cards | Added badge strip using `computeBadges`; earned = full color, unearned = grayscale/dim |
+| `PlayerCarousel.jsx` | Badge popover always pointed at center of strip regardless of tapped badge | Moved popover inside each badge button (per-badge relative positioning) then refactored to full info-zone overlay to avoid card `overflow-hidden` clipping |
+| `PlayerCarousel.jsx` | Tapping badge again to dismiss triggered card flip instead of closing popover | `handleCardClick` checks `activeBadge` first — dismisses overlay without flipping |
+| `useRole.js` + `App.jsx` | Captain role had `canManagePlayers: true` — could edit any player's profile | `canManagePlayers` narrowed to admin only; new `canCreatePlayer` flag for admin/scorer/captain/player; viewer blocked at route level |
+| `Teams.jsx` + `teamService.js` + `021_team_players.sql` | No way to pre-define a guest team's player roster for auto-fill in match setup | Added `is_guest` flag to teams, `team_players` join table, roster manager UI in Teams page, auto-populate in `MatchSetupStepper` on guest team selection |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:

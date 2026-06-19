@@ -62,6 +62,20 @@ export default function MatchSetupStepper() {
 
   const set = patch => setForm(f => ({ ...f, ...patch }));
 
+  async function applyGuestTeam(teamName, slot) {
+    const team = globalTeams.find(t => t.name === teamName && t.is_guest);
+    if (!team) return;
+    try {
+      const playerIds = await teamService.getTeamPlayers(team.id);
+      if (playerIds.length > 0) {
+        set(slot === 1 ? { team1Ids: playerIds } : { team2Ids: playerIds });
+        toast.success(`${playerIds.length} players loaded for ${teamName}`);
+      }
+    } catch {
+      // silently ignore — user can pick players manually
+    }
+  }
+
   const step1Valid = useMemo(() => {
     const overs = Number(form.total_overs);
     const size = Number(form.team_size);
@@ -299,16 +313,16 @@ export default function MatchSetupStepper() {
             <div>
               <label className="field-label">Team 1 name</label>
               {tournamentTeams.length > 0 ? (
-                <select value={form.team1_name} onChange={e => set({ team1_name: e.target.value })} className="field-input">
+                <select value={form.team1_name} onChange={e => { set({ team1_name: e.target.value }); applyGuestTeam(e.target.value, 1); }} className="field-input">
                   {tournamentTeams.filter(t => t.name !== form.team2_name).map(t => (
                     <option key={t.id} value={t.name}>{t.name}</option>
                   ))}
                 </select>
               ) : globalTeams.length > 0 ? (
-                <select value={form.team1_name} onChange={e => set({ team1_name: e.target.value })} className="field-input">
+                <select value={form.team1_name} onChange={e => { set({ team1_name: e.target.value }); applyGuestTeam(e.target.value, 1); }} className="field-input">
                   <option value="">Select team…</option>
                   {globalTeams.filter(t => t.name !== form.team2_name).map(t => (
-                    <option key={t.id} value={t.name}>{t.name}</option>
+                    <option key={t.id} value={t.name}>{t.is_guest ? `${t.name} ★` : t.name}</option>
                   ))}
                 </select>
               ) : (
@@ -318,16 +332,16 @@ export default function MatchSetupStepper() {
             <div>
               <label className="field-label">Team 2 name</label>
               {tournamentTeams.length > 0 ? (
-                <select value={form.team2_name} onChange={e => set({ team2_name: e.target.value })} className="field-input">
+                <select value={form.team2_name} onChange={e => { set({ team2_name: e.target.value }); applyGuestTeam(e.target.value, 2); }} className="field-input">
                   {tournamentTeams.filter(t => t.name !== form.team1_name).map(t => (
                     <option key={t.id} value={t.name}>{t.name}</option>
                   ))}
                 </select>
               ) : globalTeams.length > 0 ? (
-                <select value={form.team2_name} onChange={e => set({ team2_name: e.target.value })} className="field-input">
+                <select value={form.team2_name} onChange={e => { set({ team2_name: e.target.value }); applyGuestTeam(e.target.value, 2); }} className="field-input">
                   <option value="">Select team…</option>
                   {globalTeams.filter(t => t.name !== form.team1_name).map(t => (
-                    <option key={t.id} value={t.name}>{t.name}</option>
+                    <option key={t.id} value={t.name}>{t.is_guest ? `${t.name} ★` : t.name}</option>
                   ))}
                 </select>
               ) : (

@@ -42,7 +42,7 @@ function FilterChip({ label, active, onClick }) {
 export default function Players() {
   const navigate = useNavigate();
   const { players, loading, fetchPlayers, removeAllPlayers, removePlayer } = usePlayerStore();
-  const { canManagePlayers, isAdmin, isPlayer, userId } = useRole();
+  const { canManagePlayers, canCreatePlayer, isAdmin, isPlayer, userId } = useRole();
   const user = useAuthStore(s => s.user);
   const isSuperAdmin = isAdmin && user?.email === 'kameshwaran26@gmail.com';
   const [myPlayer, setMyPlayer] = useState(undefined);
@@ -146,9 +146,9 @@ export default function Players() {
               <Trash2 size={17} />
             </button>
           )}
-          {(canManagePlayers || (isPlayer && myPlayer === null)) && (
+          {canCreatePlayer && (
             <button onClick={() => navigate('/players/new')} className="btn-chip">
-              <Plus size={16} /> {isPlayer && !canManagePlayers ? 'My Profile' : 'Add'}
+              <Plus size={16} /> {canManagePlayers ? 'Add' : 'My Profile'}
             </button>
           )}
         </div>

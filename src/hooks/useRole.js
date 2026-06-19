@@ -9,8 +9,9 @@ export function useRole() {
     isAdmin: role === 'admin',
     isPlayer: role === 'player',
     canScore: ['admin', 'scorer'].includes(role),
-    canManagePlayers: ['admin', 'captain'].includes(role),
-    canManageOwnProfile: ['admin', 'captain', 'player'].includes(role),
+    canManagePlayers: role === 'admin',
+    canCreatePlayer: ['admin', 'scorer', 'captain', 'player'].includes(role),
+    canManageOwnProfile: ['admin', 'scorer', 'captain', 'player'].includes(role),
     canManageVenues: role === 'admin',
     canManageTournaments: role === 'admin',
   };
