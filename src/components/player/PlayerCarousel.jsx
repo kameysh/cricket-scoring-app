@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import * as playerService from '../../services/playerService';
+import { computeBadges } from '../../lib/cricketUtils';
 
 const ROLE_LABELS = {
-  batsman: 'Batsman',
-  bowler: 'Bowler',
-  allrounder: 'All-rounder',
+  batsman:       'Batsman',
+  bowler:        'Bowler',
+  allrounder:    'All-rounder',
   wicket_keeper: 'Wicket Keeper',
 };
 
@@ -16,90 +18,198 @@ const ROLE_COLORS = {
   wicket_keeper: 'bg-amber-500/20 text-amber-600 dark:text-amber-300',
 };
 
-// Card dimensions — bigger for a proper mobile experience
-const CARD_W = 260;
-const CARD_H = 360;
-const CARD_SPACING_PX = 155;
+const CARD_W         = 260;
+const CARD_H         = 420;
+const CARD_SPACING   = 150; // px per card-width of drag to shift one card
+const COMMIT_PX      = 20;  // min drag to commit a swipe
 
-function haptic(ms = 8) {
-  try { navigator.vibrate?.(ms); } catch {}
-}
-
+function haptic(ms = 8) { try { navigator.vibrate?.(ms); } catch {} }
 function fmtN(n) { return n != null && n > 0 ? n : '—'; }
 function fmt1(n) { return n != null && isFinite(n) && n > 0 ? n.toFixed(1) : '—'; }
 
 function getCardStyle(offset, dragFrac = 0, transitionMs = 350) {
-  const vOffset = offset + dragFrac;
-  const absV = Math.abs(vOffset);
+  const v    = offset + dragFrac;
+  const absV = Math.abs(v);
 
   if (Math.abs(offset) > 2) return { display: 'none' };
-  if (absV > 2.8) return { opacity: 0, pointerEvents: 'none', transition: 'none' };
+  if (absV > 2.8)           return { opacity: 0, pointerEvents: 'none', transition: 'none' };
 
-  const opacity = absV >= 2 ? Math.max(0, 0.45 - (absV - 2) * 0.45)
-    : absV >= 1 ? 0.45 + (2 - absV) * 0.3
-    : 1 - absV * 0.25;
+  const opacity =
+    absV >= 2   ? Math.max(0, 0.45 - (absV - 2) * 0.45) :
+    absV >= 1   ? 0.45 + (2 - absV) * 0.3               :
+                  1 - absV * 0.25;
 
   return {
-    transform: `perspective(1100px) rotateY(${vOffset * 16}deg) scale(${1 - absV * 0.11}) translateX(${vOffset * 62}%)`,
-    opacity: Math.max(0, Math.min(1, opacity)),
-    zIndex: Math.max(1, 20 - Math.round(absV)),
+    transform:  `perspective(1100px) rotateY(${v * 16}deg) scale(${1 - absV * 0.11}) translateX(${v * 62}%)`,
+    opacity:    Math.max(0, Math.min(1, opacity)),
+    zIndex:     Math.max(1, 20 - Math.round(absV)),
     transition: dragFrac !== 0
-      ? 'opacity 60ms'
-      : `all ${transitionMs}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`,
+      ? 'none'                                                          // 1:1 during drag — no lag
+      : `all ${transitionMs}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`, // spring on release
   };
 }
 
 export default function PlayerCarousel({ players, activeIndex, onChangeIndex, onSelect, statsMap = {} }) {
-  const dragStartX = useRef(null);
-  const dragStartTime = useRef(null);
-  const isDragging = useRef(false);
-  const isAnimating = useRef(false);
+  const containerRef   = useRef(null);
+  const dragStartX     = useRef(null);
+  const dragStartY     = useRef(null);
+  const dragStartTime  = useRef(null);
+  const gestureDir     = useRef(null);   // 'h' | 'v' | null — locked after first 5px
+  const isDragging     = useRef(false);
+  const isAnimating    = useRef(false);
+  const activeFrac     = useRef(0);      // mirrors dragFrac for the native handler
 
-  const [dragFrac, setDragFrac] = useState(0);
+  const [dragFrac,     setDragFrac]     = useState(0);
   const [transitionMs, setTransitionMs] = useState(350);
-  const [flipped, setFlipped] = useState(false);
-  const [detailCache, setDetailCache] = useState({});
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [flipped,      setFlipped]      = useState(false);
+  const [detailCache,  setDetailCache]  = useState({});
+  const [loadingDetail,setLoadingDetail]= useState(false);
 
   const n = players.length;
 
   useEffect(() => { setFlipped(false); }, [activeIndex]);
 
   function wrap(idx) { return ((idx % n) + n) % n; }
-  function prev() { haptic(); onChangeIndex(wrap(activeIndex - 1)); }
-  function next() { haptic(); onChangeIndex(wrap(activeIndex + 1)); }
 
-  // Circular offset: shortest path around the loop
   function circularOffset(idx) {
     let off = idx - activeIndex;
-    if (off > n / 2) off -= n;
+    if (off >  n / 2) off -= n;
     if (off < -n / 2) off += n;
     return off;
   }
 
-  const flyToIndex = useCallback((startIdx, targetIdx, count) => {
-    const steps = count;
-    if (steps === 0) return;
-    const direction = targetIdx > startIdx ? 1 : -1;
-    isAnimating.current = true;
-    const baseInterval = Math.max(30, Math.min(110, 190 / steps));
-    setTransitionMs(Math.max(35, baseInterval * 0.7));
-    let i = 1;
-    function tick() {
-      haptic(6);
-      onChangeIndex(wrap(startIdx + direction * i));
-      i++;
-      if (i <= steps) {
-        const progress = i / steps;
-        const ease = progress < 0.65 ? 1 : 1 + (progress - 0.65) * 2.2;
-        setTimeout(tick, baseInterval * ease);
-      } else {
-        isAnimating.current = false;
-        setTransitionMs(350);
-      }
+  const commitSwipe = useCallback((delta) => {
+    const elapsed   = Math.max(1, Date.now() - (dragStartTime.current ?? Date.now()));
+    const velocity  = Math.abs(delta) / elapsed;           // px/ms
+    const direction = delta < 0 ? 1 : -1;
+
+    let skip =
+      velocity >= 1.8 ? Math.min(Math.floor(n / 2), Math.round(velocity * 4)) :
+      velocity >= 1.0 ? Math.min(4, Math.round(velocity * 2.5))               :
+      velocity >= 0.5 ? 2                                                      : 1;
+
+    const targetIdx      = wrap(activeIndex + direction * skip);
+    const wouldCrossWrap = direction === 1 ? activeIndex + skip >= n : activeIndex - skip < 0;
+
+    if (skip <= 1 || wouldCrossWrap) {
+      haptic(); onChangeIndex(targetIdx);
+    } else {
+      // Animated multi-step fly
+      isAnimating.current = true;
+      const base = Math.max(30, Math.min(110, 190 / skip));
+      setTransitionMs(Math.max(35, base * 0.7));
+      let i = 1;
+      const tick = () => {
+        haptic(6);
+        onChangeIndex(wrap(activeIndex + direction * i));
+        i++;
+        if (i <= skip) {
+          const ease = i / skip < 0.65 ? 1 : 1 + (i / skip - 0.65) * 2.2;
+          setTimeout(tick, base * ease);
+        } else {
+          isAnimating.current = false;
+          setTransitionMs(350);
+        }
+      };
+      setTimeout(tick, base * 0.4);
     }
-    setTimeout(tick, baseInterval * 0.4);
-  }, [onChangeIndex, n]);
+  }, [activeIndex, n, onChangeIndex]);
+
+  // ── Native non-passive touchmove — required to call preventDefault on mobile ──
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    function onNativeMove(e) {
+      if (dragStartX.current === null || isAnimating.current) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - dragStartX.current;
+      const dy = touch.clientY - dragStartY.current;
+
+      // Determine gesture direction after first 5px
+      if (!gestureDir.current) {
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+        gestureDir.current = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+      }
+
+      if (gestureDir.current !== 'h') return; // vertical — let browser scroll
+
+      e.preventDefault(); // block page scroll for horizontal swipe
+      isDragging.current = true;
+
+      const frac = -dx / CARD_SPACING; // pure 1:1, no damping
+      activeFrac.current = frac;
+      setDragFrac(frac);
+    }
+
+    function onNativeEnd(e) {
+      if (dragStartX.current === null) return;
+      const dx = activeFrac.current * -CARD_SPACING; // reconstruct delta
+      const committed = isDragging.current && Math.abs(dx) > COMMIT_PX;
+      setDragFrac(0);
+      activeFrac.current = 0;
+      if (committed) commitSwipe(dx);
+      dragStartX.current    = null;
+      dragStartY.current    = null;
+      dragStartTime.current = null;
+      gestureDir.current    = null;
+      setTimeout(() => { isDragging.current = false; }, 50);
+    }
+
+    el.addEventListener('touchmove',   onNativeMove, { passive: false });
+    el.addEventListener('touchend',    onNativeEnd,  { passive: true  });
+    el.addEventListener('touchcancel', onNativeEnd,  { passive: true  });
+    return () => {
+      el.removeEventListener('touchmove',   onNativeMove);
+      el.removeEventListener('touchend',    onNativeEnd);
+      el.removeEventListener('touchcancel', onNativeEnd);
+    };
+  }, [commitSwipe]);
+
+  // ── Mouse handlers (desktop only) ──
+  function handleMouseDown(e) {
+    if (isAnimating.current) return;
+    dragStartX.current    = e.clientX;
+    dragStartY.current    = e.clientY;
+    dragStartTime.current = Date.now();
+    isDragging.current    = false;
+    gestureDir.current    = 'h';
+  }
+
+  function handleMouseMove(e) {
+    if (dragStartX.current === null || gestureDir.current !== 'h') return;
+    const dx = e.clientX - dragStartX.current;
+    if (Math.abs(dx) > 4) isDragging.current = true;
+    const frac = -dx / CARD_SPACING;
+    activeFrac.current = frac;
+    setDragFrac(frac);
+  }
+
+  function handleMouseUp(e) {
+    if (dragStartX.current === null) return;
+    const dx        = e.clientX - dragStartX.current;
+    const committed = isDragging.current && Math.abs(dx) > COMMIT_PX;
+    setDragFrac(0);
+    activeFrac.current = 0;
+    if (committed) commitSwipe(dx);
+    dragStartX.current    = null;
+    dragStartY.current    = null;
+    dragStartTime.current = null;
+    gestureDir.current    = null;
+    setTimeout(() => { isDragging.current = false; }, 50);
+  }
+
+  // Touch start — just record starting position (touchmove handled natively above)
+  function handleTouchStart(e) {
+    if (isAnimating.current) return;
+    const t = e.touches[0];
+    dragStartX.current    = t.clientX;
+    dragStartY.current    = t.clientY;
+    dragStartTime.current = Date.now();
+    isDragging.current    = false;
+    gestureDir.current    = null;
+    activeFrac.current    = 0;
+  }
 
   async function flipActive(playerId) {
     if (flipped) { setFlipped(false); return; }
@@ -107,72 +217,14 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
       setLoadingDetail(true);
       try {
         const stats = await playerService.getCareerStats(playerId);
-        setDetailCache(prev => ({ ...prev, [playerId]: stats || null }));
+        setDetailCache(p => ({ ...p, [playerId]: stats || null }));
       } catch {
-        setDetailCache(prev => ({ ...prev, [playerId]: null }));
+        setDetailCache(p => ({ ...p, [playerId]: null }));
       } finally {
         setLoadingDetail(false);
       }
     }
     setFlipped(true);
-  }
-
-  function handlePointerDown(e) {
-    if (isAnimating.current) return;
-    dragStartX.current = e.clientX ?? e.touches?.[0]?.clientX;
-    dragStartTime.current = Date.now();
-    isDragging.current = false;
-  }
-
-  function handlePointerMove(e) {
-    if (dragStartX.current === null) return;
-    const x = e.clientX ?? e.touches?.[0]?.clientX;
-    const delta = x - dragStartX.current;
-    if (Math.abs(delta) > 6) isDragging.current = true;
-    let frac = -delta / CARD_SPACING_PX;
-    // Circular — no boundaries, just soft resistance past snap threshold
-    const THRESHOLD = 0.75;
-    if (Math.abs(frac) > THRESHOLD) {
-      const sign = frac > 0 ? 1 : -1;
-      frac = sign * (THRESHOLD + (Math.abs(frac) - THRESHOLD) * 0.15);
-    }
-    setDragFrac(frac);
-  }
-
-  function handlePointerUp(e) {
-    if (dragStartX.current === null) return;
-    const x = e.clientX ?? e.changedTouches?.[0]?.clientX;
-    const delta = x - dragStartX.current;
-    const elapsed = Math.max(1, Date.now() - (dragStartTime.current ?? Date.now()));
-    setDragFrac(0);
-    if (Math.abs(delta) > 30) {
-      const velocity = Math.abs(delta) / elapsed;
-      const direction = delta < 0 ? 1 : -1;
-      let skip;
-      if (velocity >= 2.0)      skip = Math.min(Math.floor(n / 2), Math.round(velocity * 4));
-      else if (velocity >= 1.2) skip = Math.min(4, Math.round(velocity * 2.5));
-      else if (velocity >= 0.6) skip = 2;
-      else                      skip = 1;
-      const targetIdx = wrap(activeIndex + direction * skip);
-      const wouldCrossWrap = direction === 1
-        ? activeIndex + skip >= n
-        : activeIndex - skip < 0;
-      if (skip <= 1 || wouldCrossWrap) {
-        haptic(); onChangeIndex(targetIdx);
-      } else {
-        flyToIndex(activeIndex, targetIdx, skip);
-      }
-    }
-    dragStartX.current = null;
-    dragStartTime.current = null;
-    setTimeout(() => { isDragging.current = false; }, 50);
-  }
-
-  function handlePointerCancel() {
-    setDragFrac(0);
-    dragStartX.current = null;
-    dragStartTime.current = null;
-    isDragging.current = false;
   }
 
   function handleCardClick(offset, playerId) {
@@ -184,42 +236,66 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
   if (!players.length) return null;
 
   const showDots = players.length > 1;
-  const maxDots = 7;
+  const maxDots  = 7;
+
+  function goLeft()  { if (!isAnimating.current) { haptic(); onChangeIndex(wrap(activeIndex - 1)); } }
+  function goRight() { if (!isAnimating.current) { haptic(); onChangeIndex(wrap(activeIndex + 1)); } }
 
   return (
-    <div className="select-none">
-      {/* Card stage */}
-      <div
-        className="relative flex items-center justify-center"
-        style={{ height: CARD_H + 24 }}
-        onMouseDown={handlePointerDown}
-        onMouseMove={handlePointerMove}
-        onMouseUp={handlePointerUp}
-        onMouseLeave={handlePointerCancel}
-        onTouchStart={handlePointerDown}
-        onTouchMove={handlePointerMove}
-        onTouchEnd={handlePointerUp}
-        onTouchCancel={handlePointerCancel}
-      >
+    <div className="select-none touch-pan-y">
+      <div className="relative flex items-center justify-center" style={{ height: CARD_H + 24 }}>
+        {/* Left arrow */}
+        {n > 1 && (
+          <button
+            onClick={goLeft}
+            className="absolute left-0 z-30 flex items-center justify-center w-9 h-9 rounded-full bg-white dark:bg-ink-800 shadow-md text-ink-600 dark:text-ink-200 active:scale-90 transition-transform"
+            style={{ top: '50%', transform: 'translateY(-50%)' }}
+          >
+            <ChevronLeft size={20} />
+          </button>
+        )}
+        {/* Right arrow */}
+        {n > 1 && (
+          <button
+            onClick={goRight}
+            className="absolute right-0 z-30 flex items-center justify-center w-9 h-9 rounded-full bg-white dark:bg-ink-800 shadow-md text-ink-600 dark:text-ink-200 active:scale-90 transition-transform"
+            style={{ top: '50%', transform: 'translateY(-50%)' }}
+          >
+            <ChevronRight size={20} />
+          </button>
+        )}
+        <div
+          ref={containerRef}
+          className="relative flex items-center justify-center w-full h-full"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchStart={handleTouchStart}
+        >
+
         {players.map((player, idx) => {
-          const offset = circularOffset(idx);
+          const offset    = circularOffset(idx);
           if (Math.abs(offset) > 2) return null;
-          const isActive = offset === 0;
+          const isActive  = offset === 0;
           const frontStats = statsMap[player.id] || null;
-          const backStats = detailCache[player.id];
+          const backStats  = detailCache[player.id];
 
           const styleStr = [
             player.batting_style?.replace('-hand', ''),
             player.bowling_style?.replace(/-/g, ' '),
           ].filter(Boolean).join(' · ');
 
-          // Back face detailed stats
           const batAvg  = backStats?.bat_innings > backStats?.bat_not_outs
             ? fmt1(backStats.bat_runs / (backStats.bat_innings - backStats.bat_not_outs)) : '—';
-          const sr      = backStats?.bat_balls > 0 ? fmt1((backStats.bat_runs / backStats.bat_balls) * 100) : '—';
-          const bowlAvg = backStats?.bowl_wickets > 0 ? fmt1(backStats.bowl_runs / backStats.bowl_wickets) : '—';
-          const eco     = backStats?.bowl_legal_balls > 0 ? fmt1((backStats.bowl_runs / backStats.bowl_legal_balls) * 6) : '—';
-          const best    = backStats?.bowl_best_wickets > 0 ? `${backStats.bowl_best_wickets}/${backStats.bowl_best_runs}` : '—';
+          const sr      = backStats?.bat_balls > 0
+            ? fmt1((backStats.bat_runs / backStats.bat_balls) * 100) : '—';
+          const bowlAvg = backStats?.bowl_wickets > 0
+            ? fmt1(backStats.bowl_runs / backStats.bowl_wickets) : '—';
+          const eco     = backStats?.bowl_legal_balls > 0
+            ? fmt1((backStats.bowl_runs / backStats.bowl_legal_balls) * 6) : '—';
+          const best    = backStats?.bowl_best_wickets > 0
+            ? `${backStats.bowl_best_wickets}/${backStats.bowl_best_runs}` : '—';
 
           return (
             <div
@@ -227,67 +303,87 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
               onClick={() => handleCardClick(offset, player.id)}
               style={{
                 ...getCardStyle(offset, dragFrac, transitionMs),
-                width: CARD_W,
+                width:  CARD_W,
                 height: CARD_H,
                 boxShadow: isActive
-                  ? '0 24px 64px rgba(0,0,0,0.18), 0 8px 24px rgba(0,0,0,0.12)'
-                  : '0 8px 24px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
+                  ? '0 8px 24px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)'
+                  : '0 4px 12px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)',
               }}
               className="absolute rounded-3xl overflow-hidden cursor-pointer"
             >
               {/* Flip wrapper */}
               <div style={{
                 transformStyle: 'preserve-3d',
-                transform: isActive && flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                transform:  isActive && flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
                 transition: 'transform 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-                position: 'relative',
-                width: '100%',
-                height: '100%',
+                position: 'relative', width: '100%', height: '100%',
               }}>
 
                 {/* ── FRONT FACE ── */}
-                <div style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
-                  className="absolute inset-0 flex flex-col bg-white dark:bg-ink-800">
-
+                <div
+                  style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                  className="absolute inset-0 flex flex-col bg-white dark:bg-ink-800"
+                >
                   {/* Avatar zone */}
-                  <div className="flex items-center justify-center bg-gradient-to-br from-brand-green to-brand-teal relative"
-                    style={{ height: 160 }}>
-                    <div style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.3)' }} className="rounded-full">
-                      <PlayerAvatar name={player.name} photoUrl={player.photo_url} size={96} />
-                    </div>
+                  <div
+                    className="flex items-center justify-center bg-gradient-to-br from-brand-green to-brand-teal relative"
+                    style={{ height: 230 }}
+                  >
                     {!player.is_active && (
-                      <span className="absolute top-2 right-2 text-[9px] font-bold bg-black/40 text-white px-1.5 py-0.5 rounded-full">
+                      <span className="absolute top-2 right-2 text-[9px] font-bold bg-black/30 text-white px-1.5 py-0.5 rounded-full">
                         Inactive
                       </span>
                     )}
+                    <div style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.25)' }} className="rounded-full">
+                      <PlayerAvatar name={player.name} photoUrl={player.photo_url} size={110} />
+                    </div>
                   </div>
 
                   {/* Info zone */}
-                  <div className="flex flex-col flex-1 px-3 pt-2.5 pb-2">
-                    <p className="text-[13px] font-bold text-ink-900 dark:text-white text-center leading-tight truncate">
+                  <div className="flex flex-col flex-1 px-3 pt-4 pb-3">
+                    <p className="text-[15px] font-bold text-ink-900 dark:text-white text-center leading-tight truncate">
                       {player.name}
                     </p>
-                    <div className="flex items-center justify-center gap-1.5 mt-1">
+                    <div className="flex items-center justify-center mt-2">
                       {player.role && (
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${ROLE_COLORS[player.role] || ''}`}>
+                        <span className={`text-[11px] font-semibold px-3 py-1 rounded-full ${ROLE_COLORS[player.role] || ''}`}>
                           {ROLE_LABELS[player.role] || player.role}
                         </span>
                       )}
                     </div>
                     {styleStr ? (
-                      <p className="text-[10px] text-ink-400 text-center mt-1 truncate capitalize">{styleStr}</p>
+                      <p className="text-[11px] text-ink-400 text-center mt-2 truncate capitalize">{styleStr}</p>
                     ) : null}
 
+                    {/* Badge strip */}
+                    {(() => {
+                      const allStatsArr = Object.values(statsMap);
+                      const badges = computeBadges(frontStats || {}, 0, allStatsArr);
+                      return (
+                        <div className="flex items-center justify-center flex-wrap gap-1 mt-3">
+                          {badges.map(b => (
+                            <span
+                              key={b.id}
+                              title={b.hint}
+                              className={`text-base leading-none transition-all ${b.earned ? '' : 'grayscale opacity-25'}`}
+                            >
+                              {b.emoji}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     {/* Stats strip */}
-                    <div className="flex mt-auto pt-2 border-t border-ink-100 dark:border-white/8 text-center">
+                    <div className="flex mt-auto pt-3 border-t border-ink-100 dark:border-white/10 text-center">
                       {[
                         { label: 'Runs',    value: fmtN(frontStats?.bat_runs) },
                         { label: 'Wkts',    value: fmtN(frontStats?.bowl_wickets) },
                         { label: 'Matches', value: fmtN(frontStats?.bat_matches || frontStats?.bowl_matches) },
                       ].map((s, i, arr) => (
-                        <div key={s.label} className={`flex-1 ${i < arr.length - 1 ? 'border-r border-ink-100 dark:border-white/8' : ''}`}>
-                          <p className="text-[9px] text-ink-400 uppercase tracking-widest">{s.label}</p>
-                          <p className="text-sm font-bold text-ink-900 dark:text-white mt-0.5">{s.value}</p>
+                        <div key={s.label} className={`flex-1 ${i < arr.length - 1 ? 'border-r border-ink-100 dark:border-white/10' : ''}`}>
+                          <p className="text-[10px] text-ink-400 uppercase tracking-widest">{s.label}</p>
+                          <p className="text-base font-bold text-ink-900 dark:text-white mt-0.5">{s.value}</p>
                         </div>
                       ))}
                     </div>
@@ -295,28 +391,31 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                 </div>
 
                 {/* ── BACK FACE ── */}
-                <div style={{
-                  backfaceVisibility: 'hidden',
-                  WebkitBackfaceVisibility: 'hidden',
-                  transform: 'rotateY(180deg)',
-                  background: 'linear-gradient(160deg, #0f172a 0%, #1e293b 100%)',
-                }}
-                  className="absolute inset-0 rounded-3xl flex flex-col">
+                <div
+                  style={{
+                    backfaceVisibility: 'hidden',
+                    WebkitBackfaceVisibility: 'hidden',
+                    transform: 'rotateY(180deg)',
+                    background: 'linear-gradient(160deg, #0f172a 0%, #1e293b 100%)',
+                  }}
+                  className="absolute inset-0 rounded-3xl flex flex-col"
+                >
                   {loadingDetail && isActive ? (
-                    <div className="flex-1 flex items-center justify-center text-white/40 text-xs animate-pulse">Loading stats…</div>
+                    <div className="flex-1 flex items-center justify-center text-white/40 text-xs animate-pulse">
+                      Loading stats…
+                    </div>
                   ) : (
                     <>
-                      {/* Back header */}
                       <div className="px-5 pt-5 pb-3 border-b border-white/10">
                         <p className="text-white font-bold text-sm text-center truncate">{player.name}</p>
                         {player.role && (
-                          <p className="text-white/40 text-[11px] text-center mt-0.5">{ROLE_LABELS[player.role] || player.role}</p>
+                          <p className="text-white/40 text-[11px] text-center mt-0.5">
+                            {ROLE_LABELS[player.role] || player.role}
+                          </p>
                         )}
                       </div>
 
-                      {/* Stats grid */}
                       <div className="flex-1 px-4 py-4 space-y-3">
-                        {/* Batting */}
                         <div>
                           <p className="text-[10px] font-bold text-brand-green uppercase tracking-widest mb-2">Batting</p>
                           <div className="grid grid-cols-3 gap-2">
@@ -330,7 +429,6 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                           </div>
                         </div>
 
-                        {/* Bowling */}
                         <div>
                           <p className="text-[10px] font-bold text-brand-teal uppercase tracking-widest mb-2">Bowling</p>
                           <div className="grid grid-cols-3 gap-2">
@@ -345,7 +443,6 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                         </div>
                       </div>
 
-                      {/* View Profile CTA */}
                       <div className="px-4 pb-5">
                         <button
                           onClick={e => { e.stopPropagation(); onSelect(player.id); }}
@@ -363,7 +460,7 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
             </div>
           );
         })}
-
+      </div>
       </div>
 
       {/* Dots */}

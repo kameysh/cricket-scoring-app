@@ -119,18 +119,23 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - `activeCarouselIndex` state resets to 0 whenever search/filter changes
 
 ### `src/components/player/PlayerCarousel.jsx`
-- **Circular infinite-loop** 3D card carousel — pure CSS transforms, no external library, no chevron buttons
+- **Circular infinite-loop** 3D card carousel — pure CSS transforms, no external library
 - Props: `players[]`, `activeIndex`, `onChangeIndex(idx)`, `onSelect(playerId)`, `statsMap = {}`
 - `circularOffset(idx)` returns shortest-path offset so wrapping side cards appear on the correct side
 - `wrap(idx)` helper: `((idx % n) + n) % n` — used in prev/next/swipe/click
-- **Front face:** avatar (photo or initials), name, role badge, style text, stats strip (Runs/Wkts/Matches from `statsMap`)
+- **Left/right arrow buttons** — circular white buttons (`w-9 h-9`) absolutely positioned at vertical center of the card container; shown only when `n > 1`; alternative to swiping
+- **Front face:** avatar (photo or initials), name, role badge, style text, badge strip, stats strip (Runs/Wkts/Matches from `statsMap`)
+- **Badge strip:** 7 emoji badges computed via `computeBadges(frontStats, 0, allStatsArr)`; earned badges shown full color, unearned shown `grayscale opacity-25`; `duckHunterCount` defaults to 0 on the carousel (no extra query)
 - **Back face (flip on tap of center card):** dark slate gradient (`#0f172a → #1e293b`), name/role header, 3×2 stat grid (Batting: Avg/SR/HS; Bowling: Avg/Economy/Best), full-width green "View Profile →" button pinned at bottom
 - Detailed back-face stats fetched lazily via `playerService.getCareerStats()` on first flip; cached in `detailCache`
 - Swiping resets flip to front on the new active card
 - No rubber band — drag is unclamped (circular, no edges); soft resistance past `THRESHOLD = 0.75` only
 - Fast flicks that would cross the wrap point do a single-step jump (no multi-step animation across boundary)
+- **Mobile swipe fix:** React registers `touchmove` as passive — `e.preventDefault()` has no effect. Fixed with native `addEventListener('touchmove', handler, { passive: false })`. Gesture direction locked in first 5px (H vs V); only horizontal blocks page scroll.
 - "View Profile →" uses `e.stopPropagation()` to prevent the back-flip handler from firing
-- `CARD_W = 260, CARD_H = 360, CARD_SPACING_PX = 155`
+- **Front face design:** Green gradient avatar zone (230px), white info zone (190px) — name `text-[15px] font-bold`, role badge `text-[11px] px-3 py-1`, style text `text-[11px] mt-2`, stats strip at bottom via `mt-auto`
+- `CARD_W = 260, CARD_H = 420, CARD_SPACING = 150`
+- Shadow tuned to `0 8px 24px rgba(0,0,0,0.14)` (active) to avoid visible gradient bleed below card
 
 ### `src/pages/LiveScoring.jsx`
 - `oversLimitOpen` state triggers BottomSheet when `total_legal_balls >= total_overs * 6`
@@ -285,6 +290,13 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `MatchSetupStepper.jsx` + `matchStore.js` + `migrations/013` | Free hit always triggered after every no ball — not appropriate for gully cricket | Added `free_hit_on_no_ball boolean default false` column to `matches`; checkbox in Rules step; `newFreeHit` and rehydration gated on `!!match.free_hit_on_no_ball` |
 | `ConfirmDialog.jsx` | Buttons missing `type="button"` — defaulted to `type="submit"`, could accidentally submit nearby form | Added `type="button"` to both Cancel and Confirm buttons |
 | `AdminUsers.jsx` + `playerService.js` | No way to wipe test data without direct DB access | Added `masterReset()` — deletes all matches (cascades innings/deliveries/scorecards) + career/tournament stats; "Reset All Player Stats" button in Danger Zone visible only to `kameshwaran26@gmail.com`; players and users untouched |
+| `PlayerCarousel.jsx` | Rubber band effect on mobile swipe — `e.preventDefault()` had no effect because React registers `touchmove` as passive | Added native `addEventListener('touchmove', handler, { passive: false })`; gesture direction locked in first 5px so vertical scroll still works |
+| `PlayerCarousel.jsx` | Carousel had hard edges — swiping past last/first card caused rubber band / dead stop | Implemented circular infinite loop: `circularOffset()` shortest-path math + fast-flick single-step jump at wrap boundary |
+| `PlayerCarousel.jsx` | Back face `style` prop duplicated — `backfaceVisibility`/`transform` silently dropped | Merged into single `style` object |
+| `PlayerCarousel.jsx` | Large shadow spread (`64px`) created visible gradient band below card | Reduced to `0 8px 24px rgba(0,0,0,0.14)` — blends naturally with page background |
+| `PlayerCarousel.jsx` | Card too short on mobile — dead gap in white info zone | Increased `CARD_H` from 360 → 420; bumped text sizes (name `text-[15px]`, role `text-[11px]`, stats `text-base`) to fill extra height |
+| `PlayerCarousel.jsx` | No tap-alternative to swipe for non-touch users | Added left/right chevron arrow buttons absolutely positioned at card mid-height |
+| `PlayerCarousel.jsx` | No badge visibility on player cards | Added badge strip using `computeBadges`; earned = full color, unearned = grayscale/dim |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:

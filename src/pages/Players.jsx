@@ -112,7 +112,7 @@ export default function Players() {
   }
 
   return (
-    <div className="p-4 space-y-3 page-transition">
+    <div className="p-4 flex flex-col gap-3 page-transition" style={{ minHeight: 'calc(100dvh - 72px)' }}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -224,23 +224,25 @@ export default function Players() {
         </div>
       )}
 
-      {/* Carousel */}
-      {loading ? (
-        <LoadingSkeleton rows={4} />
-      ) : filtered.length === 0 ? (
-        <EmptyState icon={Users} title="No players found"
-          message={activeFilterCount ? 'Try adjusting your filters.' : 'Add players to start building your squad.'} />
-      ) : (
-        <div className="overflow-hidden -mx-4 px-4">
-          <PlayerCarousel
-            players={filtered}
-            activeIndex={activeCarouselIndex}
-            onChangeIndex={setActiveCarouselIndex}
-            onSelect={id => navigate(`/players/${id}`)}
-            statsMap={statsMap}
-          />
-        </div>
-      )}
+      {/* Carousel — flex-1 fills remaining height and centers the cards */}
+      <div className="flex-1 flex flex-col items-center justify-center">
+        {loading ? (
+          <LoadingSkeleton rows={4} />
+        ) : filtered.length === 0 ? (
+          <EmptyState icon={Users} title="No players found"
+            message={activeFilterCount ? 'Try adjusting your filters.' : 'Add players to start building your squad.'} />
+        ) : (
+          <div className="overflow-hidden w-full -mx-4 px-4">
+            <PlayerCarousel
+              players={filtered}
+              activeIndex={activeCarouselIndex}
+              onChangeIndex={setActiveCarouselIndex}
+              onSelect={id => navigate(`/players/${id}`)}
+              statsMap={statsMap}
+            />
+          </div>
+        )}
+      </div>
 
       <ConfirmDialog open={!!deletePlayerTarget} danger
         title={`Delete ${deletePlayerTarget?.name}?`}
