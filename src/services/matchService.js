@@ -137,3 +137,56 @@ export async function deleteAllMatches() {
   const { error } = await supabase.from('matches').delete().neq('status', 'live');
   if (error) throw error;
 }
+
+export async function getDistinctTeamNames() {
+  const { data, error } = await supabase
+    .from('matches')
+    .select('team1_name, team2_name')
+    .eq('status', 'completed');
+  if (error) throw error;
+  const names = new Set();
+  (data || []).forEach(m => { names.add(m.team1_name); names.add(m.team2_name); });
+  return [...names].filter(Boolean).sort();
+}
+
+export async function getH2HMatches(teamA, teamB) {
+  // Fetch both orderings separately (Supabase .or with compound conditions requires specific syntax)
+  const [r1, r2] = await Promise.all([
+    supabase.from('matches').select('*, venues(name,city), innings(*)').eq('status', 'completed').eq('team1_name', teamA).eq('team2_name', teamB).order('created_at', { ascending: false }),
+    supabase.from('matches').select('*, venues(name,city), innings(*)').eq('status', 'completed').eq('team1_name', teamB).eq('team2_name', teamA).order('created_at', { ascending: false }),
+  ]);
+  if (r1.error) throw r1.error;
+  if (r2.error) throw r2.error;
+  return [...(r1.data || []), ...(r2.data || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+export async function getH2HTopPerformers(matchIds) {
+  if (!matchIds?.length) return { topBatsmen: [], topBowlers: [] };
+  const { data: inningsRows, error: iErr } = await supabase
+    .from('innings').select('id').in('match_id', matchIds);
+  if (iErr) throw iErr;
+  const inningsIds = (inningsRows || []).map(i => i.id);
+  if (!inningsIds.length) return { topBatsmen: [], topBowlers: [] };
+
+  const [bat, bowl] = await Promise.all([
+    supabase.from('batting_scorecards').select('player_id, bat_runs, players(name, photo_url)').in('innings_id', inningsIds).limit(200),
+    supabase.from('bowling_scorecards').select('player_id, bowl_wickets, players(name, photo_url)').in('innings_id', inningsIds).limit(200),
+  ]);
+
+  const batMap = new Map();
+  for (const r of bat.data || []) {
+    const e = batMap.get(r.player_id) || { player: r.players, runs: 0 };
+    e.runs += r.bat_runs || 0;
+    batMap.set(r.player_id, e);
+  }
+  const bowlMap = new Map();
+  for (const r of bowl.data || []) {
+    const e = bowlMap.get(r.player_id) || { player: r.players, wickets: 0 };
+    e.wickets += r.bowl_wickets || 0;
+    bowlMap.set(r.player_id, e);
+  }
+  return {
+    topBatsmen: [...batMap.values()].sort((a, b) => b.runs - a.runs).slice(0, 3),
+    topBowlers: [...bowlMap.values()].sort((a, b) => b.wickets - a.wickets).slice(0, 3),
+  };
+}

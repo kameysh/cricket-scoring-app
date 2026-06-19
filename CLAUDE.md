@@ -66,6 +66,8 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 011 | `011_player_self_insert.sql` | Player-role users can insert their own profile |
 | 012 | `012_missing_rls_policies.sql` | **DELETE policies for venues + tournaments; replace blanket allow_all on match_players, scorecards, match_events, tournament_players, career/tournament stats** |
 | 013 | `013_free_hit_setting.sql` | **`free_hit_on_no_ball boolean default false` added to `matches` — opt-in free hit per match** |
+| 015 | `015_badge_columns.sql` | `bowl_hat_tricks int default 0` added to `player_career_stats` — needed for Hat-trick badge |
+| 016 | `016_bat_thirties.sql` | `bat_thirties int default 0` added to `player_career_stats` and `player_tournament_stats`; RPC updated to increment on 30–49 innings |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -125,7 +127,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - Guard: `if (winConfirmOpen) return` prevents conflict with win condition modal
 - **Partnership tracker:** `partnershipStats` IIFE computes runs+balls since last wicket; shown as pill below striker indicator
 - **Chase meter (2nd innings):** `chaseStats` IIFE computes CRR/RRR/progress; card shown only when `innings_number === 2` and `target` is set; RRR cell turns red when behind
-- **Milestone toasts:** `milestonesRef` Set tracks fired toasts; resets on innings change; fires once per batsman 50/100 and bowler 3/4/5 wickets
+- **Milestone toasts:** `milestonesRef` Set tracks fired toasts; resets on innings change; fires once per batsman 30/50/100 and bowler 3/4/5 wickets
 - **MoTM flow:** After match ends, `MatchResultBanner` shows win celebration; clicking "Continue" closes it and opens MoTM `BottomSheet`; players sorted by `calcMotmScore`; confirm saves to `matches.man_of_match_id`; skip navigates without saving
 
 ### `src/components/player/FormSparkline.jsx`
@@ -156,6 +158,12 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - `deletePlayer(id)`: explicitly deletes from `player_career_stats` and `player_tournament_stats` before hard-delete (belt-and-suspenders alongside cascade migration)
 - `deleteAllPlayers()`: same pattern — deletes stats rows for unused players before hard-delete
 - `getAllCareerStats()`: fetches all `player_career_stats` rows joined with `players(id, name, photo_url, role)`, ordered by `bat_runs` descending — used by Leaderboard page
+- `getDuckHunterCount(playerId)`: 2-round-trip query — wicket deliveries by bowler → batting_scorecards with 0 runs in those innings → cross-reference with Set to count duck dismissals
+
+### `src/services/matchService.js`
+- `getDistinctTeamNames()`: distinct team1_name + team2_name from completed matches, sorted
+- `getH2HMatches(teamA, teamB)`: two separate queries (each ordering) merged and sorted — Supabase compound `.or()` with AND subclauses is unreliable for this pattern
+- `getH2HTopPerformers(matchIds)`: innings IDs → parallel batting + bowling scorcards → aggregate by player → top 3 each
 
 ### `src/pages/Leaderboard.jsx`
 - Route: `/leaderboard` (any logged-in user)
@@ -165,12 +173,39 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - Realtime: subscribes to `postgres_changes UPDATE` on `player_career_stats` — refreshes automatically when an innings completes
 - Live indicator (green pulsing dot) shown when any match has `status = 'in_progress'`
 - Bottom nav entry: "Rankings" tab with `BarChart2` icon
-- **MVP formula:** `runs×0.5 + wickets×20 + fours×1 + sixes×2 + fifties×10 + hundreds×25 + catches×5 + stumpings×5 + run_outs×3`
+- **MVP formula:** `runs×0.5 + wickets×20 + fours×1 + sixes×2 + thirties×5 + fifties×10 + hundreds×25 + catches×5 + stumpings×5 + run_outs×3`
 
 ### `src/pages/Scorecard.jsx`
 - Tap any batsman row → `BatterSRChart` BottomSheet shows SR per over for that batsman
 - `MomentumGraph` displayed above each innings block
 - MoTM player gets a `★` gold badge next to their name in the batting table; `motmId` sourced from `match.man_of_match.id` (joined in `getMatch`)
+- **Highlights Feed** (`HighlightsFeed`): collapsible per-innings feed of auto-detected events (boundaries, wickets, milestones, hat-tricks, maiden overs) with Share button
+- **Over-by-Over table** (`OverByOverTable`): collapsible per-innings table (Ov | Bowler | R | W | Balls), collapsed by default
+- `playersMap` state built from `matchPlayers`: `{ [player_id]: { name, photo_url } }` — passed to InningsBlock for name resolution
+
+### `src/pages/HeadToHead.jsx`
+- Route: `/h2h` (any logged-in user), accessed via "Compare" chip on Matches page
+- Team selector: two dropdowns filtered to exclude each other + swap button (↔)
+- Sections: Win/Loss record card (% bar), Avg scores card, Recent results (last 5), Top performers (top 3 batsmen + bowlers)
+- `getDistinctTeamNames()` loads team options from completed matches
+- `getH2HMatches(teamA, teamB)` fetches both orderings (A vs B + B vs A) separately, merged in JS
+- `getH2HTopPerformers(matchIds)` aggregates batting/bowling scorecards by player across all H2H matches
+
+### `src/components/player/PlayerBadges.jsx`
+- Props: `{ stats, duckHunterCount, allStats }` — uses `computeBadges()` from cricketUtils
+- Always rendered (pass `careerStats || empty` so it shows even for players with no DB stats row)
+- All-locked state: shows all 6 chips greyed; some earned: shows earned (green) + "🔒 N locked" chip
+- 7 badges: 🏏 Half-centurion, 💯 Centurion, 🎯 Accumulator (dynamic leader in 30s, min 2), 🎳 5-Fer, 🎩 Hat-trick, 🔥 Duck Hunter (5+ duck dismissals), ⚡ Highest SR (dynamic, min 20 balls)
+- **Naming note**: Different from local `PlayerBadges` in Scorecard.jsx which shows (C)/(WK) role badges
+
+### `src/components/match/HighlightsFeed.jsx`
+- Props: `{ deliveries, playersMap }` — calls `buildHighlights()` from cricketUtils
+- Collapses by default; share button: Web Share API → clipboard → textarea execCommand fallback
+
+### `src/components/match/OverByOverTable.jsx`
+- Props: `{ deliveries, playersMap }` — groups by `over_number`, collapses by default
+- Ball tokens: `W`, `Wd`/`Wd+N`, `Nb`/`Nb+N`, `BN`, `LbN`, or digit
+- R column: red if wickets, green if ≥10 runs
 
 ### `src/pages/MatchSummary.jsx`
 - MoTM shown as gold card with Trophy icon when `match.man_of_match_id` is set

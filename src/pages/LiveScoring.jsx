@@ -362,11 +362,12 @@ export default function LiveScoring() {
       }
     }
     for (const [pid, runs] of Object.entries(batRuns)) {
-      for (const m of [50, 100]) {
+      for (const m of [30, 50, 100]) {
         const key = `bat-${m}-${pid}`;
         if (runs >= m && !fired.has(key)) {
           fired.add(key);
-          toast.success(`🏏 ${getName(pid)} ${m === 100 ? 'CENTURY' : 'FIFTY'}!`, { duration: 4000 });
+          const label = m === 100 ? 'CENTURY' : m === 50 ? 'FIFTY' : 'THIRTY';
+          toast.success(`🏏 ${getName(pid)} ${label}!`, { duration: 4000 });
         }
       }
     }

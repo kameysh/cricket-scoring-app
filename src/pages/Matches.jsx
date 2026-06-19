@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Plus, Swords, Trash2 } from 'lucide-react';
+import { Plus, Swords, Trash2, ArrowLeftRight } from 'lucide-react';
 import * as matchService from '../services/matchService';
 import MatchCard from '../components/match/MatchCard';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
@@ -53,6 +53,9 @@ export default function Matches() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Matches</h1>
         <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/h2h')} className="btn-chip">
+            <ArrowLeftRight size={14} /> Compare
+          </button>
           {isAdmin && matches.length > 0 && (
             <button
               onClick={() => setDeleteAllOpen(true)}

@@ -179,6 +179,32 @@ export async function getMatchHistory(playerId, limit = 50, offset = 0) {
   });
 }
 
+export async function getDuckHunterCount(playerId) {
+  const { data: wickets, error } = await supabase
+    .from('deliveries')
+    .select('innings_id, batsman_out_id, batsman_id')
+    .eq('bowler_id', playerId)
+    .eq('is_wicket', true)
+    .in('wicket_type', ['bowled', 'caught', 'lbw', 'stumped', 'hit_wicket']);
+  if (error || !wickets?.length) return 0;
+
+  const inningsIds = [...new Set(wickets.map(w => w.innings_id))];
+  const batsmanIds = [...new Set(wickets.map(w => w.batsman_out_id || w.batsman_id).filter(Boolean))];
+
+  const { data: ducks } = await supabase
+    .from('batting_scorecards')
+    .select('innings_id, player_id')
+    .in('innings_id', inningsIds)
+    .in('player_id', batsmanIds)
+    .eq('bat_runs', 0);
+
+  const duckSet = new Set((ducks || []).map(d => `${d.innings_id}:${d.player_id}`));
+  return wickets.filter(w => {
+    const bid = w.batsman_out_id || w.batsman_id;
+    return bid && duckSet.has(`${w.innings_id}:${bid}`);
+  }).length;
+}
+
 export async function getHeadToHeadAll(batsmanId) {
   const { data, error } = await supabase
     .from('deliveries')

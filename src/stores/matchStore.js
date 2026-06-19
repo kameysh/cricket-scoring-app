@@ -188,6 +188,18 @@ export const useMatchStore = create((set, get) => ({
     const last3Legal = newDeliveries.filter(d => d.is_legal_delivery).slice(-3);
     if (detectHatTrick(last3Legal)) {
       toast.success('🎩 HAT-TRICK!', { duration: 5000 });
+      // Persist hat-trick to career stats
+      const { data: cs } = await supabase
+        .from('player_career_stats')
+        .select('bowl_hat_tricks')
+        .eq('player_id', bowler)
+        .maybeSingle();
+      if (cs != null) {
+        await supabase
+          .from('player_career_stats')
+          .update({ bowl_hat_tricks: (cs.bowl_hat_tricks || 0) + 1 })
+          .eq('player_id', bowler);
+      }
     }
 
     if (result.isLegal && updatedInnings.total_legal_balls % 6 === 0 && updatedInnings.total_legal_balls > 0) {

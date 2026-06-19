@@ -4,6 +4,8 @@ import * as matchService from '../services/matchService';
 import PlayerLink from '../components/player/PlayerLink';
 import { calcStrikeRate, calcEconomy, formatOvers, fmt } from '../lib/cricketUtils';
 import MomentumGraph from '../components/match/MomentumGraph';
+import HighlightsFeed from '../components/match/HighlightsFeed';
+import OverByOverTable from '../components/match/OverByOverTable';
 import BatterSRChart from '../components/player/BatterSRChart';
 import BottomSheet from '../components/shared/BottomSheet';
 
@@ -121,7 +123,7 @@ function PlayerBadges({ pid, playerMeta }) {
   );
 }
 
-function InningsBlock({ innings, deliveries, playerMeta, onBatterClick, motmId }) {
+function InningsBlock({ innings, deliveries, playerMeta, playersMap, onBatterClick, motmId }) {
   const { batOrder, batMap, dismissalMap, bowlOrder, bowlMap, maidenMap } = buildStatsFromDeliveries(deliveries);
 
   const extras = deliveries.reduce((acc, d) => {
@@ -136,6 +138,9 @@ function InningsBlock({ innings, deliveries, playerMeta, onBatterClick, motmId }
 
   return (
     <div className="space-y-4">
+      <HighlightsFeed deliveries={deliveries} playersMap={playersMap} />
+      <OverByOverTable deliveries={deliveries} playersMap={playersMap} />
+
       {/* Batting */}
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -253,6 +258,7 @@ export default function Scorecard() {
   const [inningsList, setInningsList] = useState([]);
   const [deliveriesMap, setDeliveriesMap] = useState({});
   const [playerMeta, setPlayerMeta] = useState(new Map());
+  const [playersMap, setPlayersMap] = useState({});
   const [activeTab, setActiveTab] = useState(0);
   const [srBatter, setSrBatter] = useState(null);
 
@@ -264,16 +270,19 @@ export default function Scorecard() {
       for (const inn of list) all[inn.id] = await matchService.getDeliveries(inn.id);
       setDeliveriesMap(all);
     });
-    // Build playerMeta: captain from match_players, WK from player.role
+    // Build playerMeta and playersMap from match_players
     matchService.getMatchPlayers(id).then(rows => {
       const meta = new Map();
+      const pMap = {};
       for (const row of rows) {
         meta.set(row.player_id, {
           isCaptain: row.is_captain === true,
           isWicketKeeper: row.players?.role === 'wicket_keeper',
         });
+        if (row.players) pMap[row.player_id] = row.players;
       }
       setPlayerMeta(meta);
+      setPlayersMap(pMap);
     });
   }, [id]);
 
@@ -313,6 +322,7 @@ export default function Scorecard() {
           innings={active}
           deliveries={activeDeliveries}
           playerMeta={playerMeta}
+          playersMap={playersMap}
           motmId={motmId}
           onBatterClick={(pid, name) => setSrBatter({ id: pid, name })}
         />

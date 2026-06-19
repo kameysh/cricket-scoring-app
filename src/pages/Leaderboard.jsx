@@ -15,6 +15,7 @@ function calcMvpScore(s) {
     (s.bowl_wickets || 0) * 20 +
     (s.bat_fours || 0) * 1 +
     (s.bat_sixes || 0) * 2 +
+    (s.bat_thirties || 0) * 5 +
     (s.bat_fifties || 0) * 10 +
     (s.bat_hundreds || 0) * 25 +
     (s.field_catches || 0) * 5 +
@@ -66,6 +67,7 @@ const MVP_FORMULA = [
   { icon: '🎳', label: 'Wicket taken',  pts: '+20 pts each',   note: '5 wickets = 100 pts' },
   { icon: '4️⃣', label: 'Four hit',      pts: '+1 pt each',     note: 'boundary bonus' },
   { icon: '6️⃣', label: 'Six hit',       pts: '+2 pts each',    note: 'big hit bonus' },
+  { icon: '🎯', label: '30',            pts: '+5 pts',         note: '30–49 in an innings' },
   { icon: '⭐', label: 'Half-century',  pts: '+10 pts',        note: '50+ in an innings' },
   { icon: '💯', label: 'Century',       pts: '+25 pts',        note: '100+ in an innings' },
   { icon: '🧤', label: 'Catch',         pts: '+5 pts each',    note: 'fielding credit' },
