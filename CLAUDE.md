@@ -69,6 +69,7 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 015 | `015_badge_columns.sql` | `bowl_hat_tricks int default 0` added to `player_career_stats` — needed for Hat-trick badge |
 | 016 | `016_bat_thirties.sql` | `bat_thirties int default 0` added to `player_career_stats` and `player_tournament_stats`; RPC updated to increment on 30–49 innings |
 | 017 | `017_man_of_series.sql` | **`man_of_series_id uuid REFERENCES players(id)` added to `tournaments` — needed for Man of Series feature** |
+| 018 | `018_teams.sql` | **Global `teams` table — admins/scorers insert, admins delete, all authenticated users select. Powers auto-populate in match + tournament setup.** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -156,6 +157,17 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - User row layout: avatar left, name + email + role pill stacked in middle column, trash anchored top-right
 - Role select has `ROLE_COLORS` for all five roles incl. `player` (teal); fixed `w-24` removed — pill sizes naturally
 - ConfirmDialog used for delete confirmation (no inline confirm block in the row)
+
+### `src/pages/Teams.jsx`
+- Route: `/teams` (admin only)
+- Admin can add new team names (inline form at bottom) and delete existing ones (trash icon + ConfirmDialog)
+- Accessible from the admin user sheet in BottomNav (between Venues and Manage Users)
+- Teams added here auto-populate as `<datalist>` suggestions in match and tournament setup inputs
+
+### `src/services/teamService.js`
+- `listTeams()`: fetches all rows from `teams` table ordered by name
+- `addTeam(name)`: inserts a new team; trims name before insert
+- `deleteTeam(id)`: deletes by id; does NOT affect existing matches (team names on matches are plain text)
 
 ### `src/services/playerService.js`
 - `deletePlayer(id)`: explicitly deletes from `player_career_stats` and `player_tournament_stats` before hard-delete (belt-and-suspenders alongside cascade migration)

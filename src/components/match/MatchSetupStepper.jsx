@@ -10,6 +10,7 @@ import { usePlayerStore } from '../../stores/playerStore';
 import * as venueService from '../../services/venueService';
 import * as tournamentService from '../../services/tournamentService';
 import * as matchService from '../../services/matchService';
+import * as teamService from '../../services/teamService';
 
 const STEPS = ['Match Info', 'Teams', 'Rules', 'Review'];
 
@@ -27,6 +28,7 @@ export default function MatchSetupStepper() {
   const [quickTournament, setQuickTournament] = useState({ name: '', type: 'friendly' });
 
   const [tournamentTeams, setTournamentTeams] = useState([]);
+  const [globalTeams, setGlobalTeams] = useState([]);
   const [form, setForm] = useState({
     tournament_id: '', venue_id: '', total_overs: 20, team_size: 11,
     team1_name: 'Team A', team2_name: 'Team B',
@@ -42,6 +44,7 @@ export default function MatchSetupStepper() {
     fetchPlayers({ activeOnly: true });
     venueService.listVenues().then(setVenues);
     tournamentService.listTournaments().then(setTournaments);
+    teamService.listTeams().then(setGlobalTeams).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -292,6 +295,11 @@ export default function MatchSetupStepper() {
             )}
           </div>
 
+          {globalTeams.length > 0 && (
+            <datalist id="match-setup-teams-list">
+              {globalTeams.map(t => <option key={t.id} value={t.name} />)}
+            </datalist>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="field-label">Team 1 name</label>
@@ -302,7 +310,12 @@ export default function MatchSetupStepper() {
                   ))}
                 </select>
               ) : (
-                <input value={form.team1_name} onChange={e => set({ team1_name: e.target.value })} className="field-input" />
+                <input
+                  value={form.team1_name}
+                  onChange={e => set({ team1_name: e.target.value })}
+                  list={globalTeams.length > 0 ? 'match-setup-teams-list' : undefined}
+                  className="field-input"
+                />
               )}
             </div>
             <div>
@@ -314,7 +327,12 @@ export default function MatchSetupStepper() {
                   ))}
                 </select>
               ) : (
-                <input value={form.team2_name} onChange={e => set({ team2_name: e.target.value })} className="field-input" />
+                <input
+                  value={form.team2_name}
+                  onChange={e => set({ team2_name: e.target.value })}
+                  list={globalTeams.length > 0 ? 'match-setup-teams-list' : undefined}
+                  className="field-input"
+                />
               )}
             </div>
           </div>

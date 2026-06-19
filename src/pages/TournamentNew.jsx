@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { Plus, X } from 'lucide-react';
 import * as venueService from '../services/venueService';
 import * as tournamentService from '../services/tournamentService';
+import * as teamService from '../services/teamService';
 import { useTournamentStore } from '../stores/tournamentStore';
 
 const MAX_TEAMS = 8;
@@ -13,11 +14,15 @@ export default function TournamentNew() {
   const navigate = useNavigate();
   const addTournament = useTournamentStore(s => s.addTournament);
   const [venues, setVenues] = useState([]);
+  const [globalTeams, setGlobalTeams] = useState([]);
   const [form, setForm] = useState({ name: '', type: 'league', venue_id: '', start_date: '', end_date: '', series_matches: '' });
   const [teams, setTeams] = useState(['', '']);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { venueService.listVenues().then(setVenues); }, []);
+  useEffect(() => {
+    venueService.listVenues().then(setVenues);
+    teamService.listTeams().then(setGlobalTeams).catch(() => {});
+  }, []);
 
   function setTeamName(i, val) {
     setTeams(t => t.map((n, idx) => idx === i ? val : n));
@@ -129,12 +134,18 @@ export default function TournamentNew() {
             <label className="field-label !mb-0">Teams</label>
             <span className="text-xs text-ink-400">{teams.length} / {MAX_TEAMS} teams</span>
           </div>
+          {globalTeams.length > 0 && (
+            <datalist id="tournament-teams-list">
+              {globalTeams.map(t => <option key={t.id} value={t.name} />)}
+            </datalist>
+          )}
           <div className="space-y-2">
             {teams.map((name, i) => (
               <div key={i} className="flex items-center gap-2">
                 <input
                   value={name}
                   onChange={e => setTeamName(i, e.target.value)}
+                  list={globalTeams.length > 0 ? 'tournament-teams-list' : undefined}
                   placeholder={`Team ${i + 1} name`}
                   className="field-input flex-1"
                 />
