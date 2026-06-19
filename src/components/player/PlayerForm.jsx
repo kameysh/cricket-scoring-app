@@ -11,8 +11,10 @@ const schema = z.object({
   bowling_style: z.string().optional(),
 });
 
-export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Player' }) {
+// appUsers: [{ id, full_name, email }] — shown only on admin create path
+export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Player', appUsers = [] }) {
   const [photoFile, setPhotoFile] = useState(null);
+  const [linkedUserId, setLinkedUserId] = useState('');
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: initial || { name: '', role: '', batting_style: '', bowling_style: '' },
@@ -20,7 +22,7 @@ export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Play
 
   return (
     <form
-      onSubmit={handleSubmit(data => onSubmit(data, photoFile))}
+      onSubmit={handleSubmit(data => onSubmit({ ...data, user_id: linkedUserId || undefined }, photoFile))}
       className="space-y-4"
     >
       <PhotoUploader name={initial?.name || 'New Player'} value={initial?.photo_url} onChange={setPhotoFile} />
@@ -68,6 +70,29 @@ export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Play
           <option value="none">Does not bowl</option>
         </select>
       </div>
+
+      {appUsers.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Link to user account <span className="text-ink-400 font-normal">(optional)</span>
+          </label>
+          <select
+            value={linkedUserId}
+            onChange={e => setLinkedUserId(e.target.value)}
+            className="field-input"
+          >
+            <option value="">— Not linked —</option>
+            {appUsers.map(u => (
+              <option key={u.id} value={u.id}>
+                {u.full_name || u.email} ({u.email})
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-ink-400">
+            Link this player to an invited user so they can manage their own profile.
+          </p>
+        </div>
+      )}
 
       <button
         type="submit"

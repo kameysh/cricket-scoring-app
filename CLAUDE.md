@@ -70,6 +70,7 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 016 | `016_bat_thirties.sql` | `bat_thirties int default 0` added to `player_career_stats` and `player_tournament_stats`; RPC updated to increment on 30–49 innings |
 | 017 | `017_man_of_series.sql` | **`man_of_series_id uuid REFERENCES players(id)` added to `tournaments` — needed for Man of Series feature** |
 | 018 | `018_teams.sql` | **Global `teams` table — admins/scorers insert, admins delete, all authenticated users select. Powers auto-populate in match + tournament setup.** |
+| 019 | `019_player_claim.sql` | **`players_claim_own` RLS policy — player-role user can UPDATE a row where `user_id IS NULL`, setting it to their own `auth.uid()`. Prevents duplicates when admin pre-creates a player before the user accepts their invite.** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -277,6 +278,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `AdminUsers.jsx` | Name/email/role aligned inconsistently across rows | Redesigned card: avatar left, name+email+role pill stacked vertically, trash top-right |
 | `PlayerCarousel.jsx` | Tapping center card navigated immediately to profile | Added CSS 3D flip — front shows avatar/name/role, back shows stats + "View Profile" button |
 | `PlayerNew.jsx` | Player-role user could navigate to `/players/new` and hit DB unique constraint error on second profile | On mount, calls `getPlayerByUserId()` — if profile exists, redirects to it with info toast; `return null` while checking prevents form flash |
+| `PlayerNew.jsx` + `PlayerForm.jsx` + `019_player_claim.sql` | Admin pre-creating a player then inviting that user caused duplicate player rows (one without `user_id`, one with) | Added claim flow: on mount, player-role users check for an unclaimed row matching their name — if found, shown "Is this you?" screen to link `user_id` instead of creating new. Admin create form now has optional "Link to user account" dropdown. RLS policy `players_claim_own` allows setting `user_id` on unclaimed rows. |
 | `Venues.jsx` | Non-admin users could click venue cards and navigate to edit page (route wall, but confusing UX) | Cards are now plain `<div>` for non-admins; only admins get clickable `<button>` |
 | `PlayerEdit.jsx` | Auth check ran after DB fetch — unauthorized users triggered a player data fetch before being redirected | Rewritten to wait for auth loading to complete, then run permission check before fetching player |
 | `migrations/012` | `venues` and `tournaments` had no DELETE policy; 8 tables still on blanket `allow_all` from migration 001 | Added DELETE policies for venues/tournaments; replaced `allow_all` with role-scoped policies on all remaining tables |

@@ -5,7 +5,7 @@ import { useRole } from '../../hooks/useRole';
 
 const statusColors = {
   upcoming: 'bg-gray-100 text-gray-700',
-  live: 'bg-red-100 text-red-700 animate-pulse',
+  live: 'bg-red-100 text-red-700',
   paused: 'bg-amber-100 text-amber-700',
   completed: 'bg-green-100 text-green-700',
   abandoned: 'bg-gray-100 text-gray-500',
@@ -28,7 +28,10 @@ export default function MatchCard({ match, onDelete, matchNumber }) {
                 {numLabel}
               </span>
             )}
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColors[match.status] || ''}`}>
+            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${statusColors[match.status] || ''}`}>
+              {match.status === 'live' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              )}
               {match.status.replace('_', ' ').toUpperCase()}
             </span>
           </div>

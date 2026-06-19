@@ -173,7 +173,6 @@ export default function MatchSetupStepper() {
         toss_winner: form.toss_winner,
         toss_decision: form.toss_decision,
         joker_player_id,
-        status: 'live',
       });
 
       const matchPlayers = [
@@ -186,6 +185,7 @@ export default function MatchSetupStepper() {
 
       const battingTeam = (form.toss_winner === 'team1' && form.toss_decision === 'bat') || (form.toss_winner === 'team2' && form.toss_decision === 'field') ? 1 : 2;
       await matchService.createInnings(match.id, 1, battingTeam);
+      await matchService.startMatch(match.id);
 
       toast.success('Match started!');
       navigate(`/matches/${match.id}`);
