@@ -192,6 +192,8 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - Tapping a team card expands it to show a player roster manager — search + tap to add/remove players, saves immediately via `setTeamPlayers`
 - Guest toggle shown below the add form (applies to the next team being created)
 - Teams auto-populate in match and tournament setup dropdowns; guest teams shown with ★ suffix
+- **Rename:** pencil icon on each row enters inline edit mode (input + ✓ / ✕); saving calls `updateTeamName()` which backfills all historical matches
+- **Roster filter:** OG / Guest toggle buttons inside the expanded roster panel — mutually exclusive; `rosterFilter` state on the expanded entry (`'' | 'og' | 'guest'`)
 
 ### `src/services/teamService.js`
 - `listTeams()`: fetches `id, name, is_guest` ordered by name
@@ -199,6 +201,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - `deleteTeam(id)`: deletes by id; does NOT affect existing matches (team names are plain text on matches)
 - `getTeamPlayers(teamId)`: returns `player_id[]` for a team's default roster
 - `setTeamPlayers(teamId, playerIds)`: replaces full roster — delete all then insert new batch
+- `updateTeamName(id, oldName, newName)`: updates team row then parallel-updates `team1_name` / `team2_name` on all matches that used the old name
 
 ### `src/services/playerService.js`
 - `deletePlayer(id)`: explicitly deletes from `player_career_stats` and `player_tournament_stats` before hard-delete (belt-and-suspenders alongside cascade migration)
@@ -266,6 +269,15 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - Single "Share Result" button: Web Share API (mobile) → clipboard copy (desktop) → PNG download fallback
 - MoTM selector auto-suggests best performer by `calcMotmScore` when not yet set
 
+### `src/components/player/PlayerForm.jsx`
+- **Redesigned (June 2026):** replaced dropdowns with pill selectors; `PhotoUploader` inlined directly — no separate component
+- **Hero section:** green gradient card with circular avatar (tap-to-change overlay + green camera badge), inline underline name input
+- **Playing Role card:** `PillGroup` with 4 emoji pills (Batsman 🏏, Bowler 🎳, All-rounder ⚡, Keeper 🧤) — tap to select/deselect
+- **Playing Style card:** batting hand (Right/Left) + bowling style (Right-arm Fast/Medium/Spin, Left-arm Fast/Medium/Spin, Doesn't bowl) as pill groups
+- **Account card (admin only):** guest toggle + optional "Link to user account" dropdown (only shown when `!isGuest && appUsers.length > 0`)
+- `PillGroup` and `SectionLabel` are local helper components defined in the same file
+- Photo upload inlined: 8MB limit, `URL.createObjectURL` preview, hidden file input on the avatar label
+
 ---
 
 ## Common Gotchas
@@ -325,6 +337,11 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `Teams.jsx` + `teamService.js` + `021_team_players.sql` | No way to pre-define a guest team's player roster for auto-fill in match setup | Added `is_guest` flag to teams, `team_players` join table, roster manager UI in Teams page, auto-populate in `MatchSetupStepper` on guest team selection |
 | `Teams.jsx` + `teamService.js` | No way to rename a team or update historical match records | Added inline rename (pencil icon → input + confirm/cancel); `updateTeamName()` updates team row then backfills `team1_name`/`team2_name` on all matches |
 | `Players.jsx` | Guest filter was buried inside the filter panel — not prominent enough | Replaced with two full-width toggle buttons (OG Players / Guest Players) directly below search bar; `playerTypeFilter` state replaces `guestFilter` boolean |
+| `Teams.jsx` | Roster player list showed all players mixed; hard to find non-guest players for non-guest teams | Added OG / Guest mutually-exclusive filter pills inside each team's expanded roster panel (`rosterFilter` state per team in `expanded` map) |
+| `MatchSetupStepper.jsx` | Wicket keeper was optional; non-guest teams with rosters weren't auto-populated | Keeper now mandatory in `step2Valid`; `applyGuestTeam` renamed to `applyTeamRoster` — fires for any team in registry (guest or not); resets captain/keeper on team change |
+| `TournamentSetup.jsx` | Series match creation had no captain or keeper selection | Added `captainIds` + `keeperIds` state; Captain/Keeper selects per team (shown when squad has players, series only); `canCreateMatches` requires both; `is_captain`/`is_keeper` flags passed to `setMatchPlayers` |
+| `MatchSetupStepper.jsx` | Joker section had misaligned subtitle (pushed right via `justify-between`) | Subtitle moved below title as a `<p>` tag |
+| `PlayerForm.jsx` | Form was plain dropdowns — poor mobile UX | Full redesign: hero photo section, pill selectors for role/batting/bowling, card sections with icon labels |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:
