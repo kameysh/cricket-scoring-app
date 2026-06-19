@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import PlayerForm from '../components/player/PlayerForm';
@@ -11,6 +12,20 @@ export default function PlayerNew() {
   const addPlayer = usePlayerStore(s => s.addPlayer);
   const user = useAuthStore(s => s.user);
   const { isPlayer, userId } = useRole();
+  const [checking, setChecking] = useState(isPlayer); // guard for player-role duplicate check
+
+  // Guard: player-role users who already have a profile should not create another
+  useEffect(() => {
+    if (!isPlayer || !userId) { setChecking(false); return; }
+    playerService.getPlayerByUserId(userId).then(existing => {
+      if (existing) {
+        toast('You already have a player profile.', { icon: 'ℹ️' });
+        navigate(`/players/${existing.id}`, { replace: true });
+      } else {
+        setChecking(false);
+      }
+    });
+  }, [isPlayer, userId]);
 
   // Pre-fill name for player role from their auth profile
   const initialData = isPlayer
@@ -32,6 +47,8 @@ export default function PlayerNew() {
       toast.error(e.message || 'Failed to add player');
     }
   }
+
+  if (checking) return null; // brief flash-free wait while checking
 
   return (
     <div className="p-4 page-transition">

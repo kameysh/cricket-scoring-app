@@ -160,6 +160,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `AdminUsers.jsx` | `player` role had no color in `ROLE_COLORS` — showed unstyled text | Added teal color entry for `player` role |
 | `AdminUsers.jsx` | Name/email/role aligned inconsistently across rows | Redesigned card: avatar left, name+email+role pill stacked vertically, trash top-right |
 | `PlayerCarousel.jsx` | Tapping center card navigated immediately to profile | Added CSS 3D flip — front shows avatar/name/role, back shows stats + "View Profile" button |
+| `PlayerNew.jsx` | Player-role user could navigate to `/players/new` and hit DB unique constraint error on second profile | On mount, calls `getPlayerByUserId()` — if profile exists, redirects to it with info toast; `return null` while checking prevents form flash |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:
