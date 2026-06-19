@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Share2 } from 'lucide-react';
 import * as matchService from '../services/matchService';
 import PlayerLink from '../components/player/PlayerLink';
 import { calcStrikeRate, calcEconomy, formatOvers, fmt } from '../lib/cricketUtils';
 import MomentumGraph from '../components/match/MomentumGraph';
 import HighlightsFeed from '../components/match/HighlightsFeed';
 import OverByOverTable from '../components/match/OverByOverTable';
-import BatterSRChart from '../components/player/BatterSRChart';
-import BottomSheet from '../components/shared/BottomSheet';
+import PlayerMatchCardSheet from '../components/match/PlayerMatchCardSheet';
 
 function buildStatsFromDeliveries(deliveries) {
   // Batting: ordered by first appearance
@@ -123,7 +123,7 @@ function PlayerBadges({ pid, playerMeta }) {
   );
 }
 
-function InningsBlock({ innings, deliveries, playerMeta, playersMap, onBatterClick, motmId }) {
+function InningsBlock({ innings, deliveries, playerMeta, playersMap, onBatterClick, onBowlerShare, motmId }) {
   const { batOrder, batMap, dismissalMap, bowlOrder, bowlMap, maidenMap } = buildStatsFromDeliveries(deliveries);
 
   const extras = deliveries.reduce((acc, d) => {
@@ -218,11 +218,12 @@ function InningsBlock({ innings, deliveries, playerMeta, playersMap, onBatterCli
               <th className="py-2 px-1 text-center">Econ</th>
               <th className="py-2 px-1 text-center">Wd</th>
               <th className="py-2 px-1 text-center">NB</th>
+              <th className="py-2 px-1 text-center"></th>
             </tr>
           </thead>
           <tbody>
             {bowlOrder.length === 0 && (
-              <tr><td colSpan={8} className="py-3 text-center text-gray-400">No deliveries</td></tr>
+              <tr><td colSpan={9} className="py-3 text-center text-gray-400">No deliveries</td></tr>
             )}
             {bowlOrder.map((pid, i) => {
               const s = bowlMap.get(pid);
@@ -242,6 +243,15 @@ function InningsBlock({ innings, deliveries, playerMeta, playersMap, onBatterCli
                   <td className="py-2 px-1 text-center">{s.legal_balls > 0 ? fmt(calcEconomy(s.runs, s.legal_balls)) : '-'}</td>
                   <td className="py-2 px-1 text-center">{s.wides}</td>
                   <td className="py-2 px-1 text-center">{s.no_balls}</td>
+                  <td className="py-2 pl-1 text-center">
+                    <button
+                      onClick={() => onBowlerShare && onBowlerShare(pid, s.name)}
+                      className="p-1 rounded-full text-ink-400 hover:text-brand-green hover:bg-brand-green/10 transition-colors"
+                      title="Share performance"
+                    >
+                      <Share2 size={12} />
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -260,7 +270,7 @@ export default function Scorecard() {
   const [playerMeta, setPlayerMeta] = useState(new Map());
   const [playersMap, setPlayersMap] = useState({});
   const [activeTab, setActiveTab] = useState(0);
-  const [srBatter, setSrBatter] = useState(null);
+  const [cardPlayer, setCardPlayer] = useState(null);
 
   useEffect(() => {
     matchService.getMatch(id).then(setMatch);
@@ -285,6 +295,19 @@ export default function Scorecard() {
       setPlayersMap(pMap);
     });
   }, [id]);
+
+  function openPlayerCard(pid) {
+    const allDeliveries = Object.values(deliveriesMap).flat();
+    const { batMap, dismissalMap, bowlMap, maidenMap } = buildStatsFromDeliveries(allDeliveries);
+    const player = playersMap[pid] || { id: pid, name: batMap.get(pid)?.name || bowlMap.get(pid)?.name || pid };
+    setCardPlayer({
+      player,
+      batStats: batMap.get(pid) || null,
+      dismissal: dismissalMap.get(pid) || null,
+      bowlStats: bowlMap.get(pid) || null,
+      bowlMaidens: maidenMap.get(pid) || 0,
+    });
+  }
 
   if (!match || inningsList.length === 0) return <div className="p-4">Loading…</div>;
 
@@ -324,24 +347,29 @@ export default function Scorecard() {
           playerMeta={playerMeta}
           playersMap={playersMap}
           motmId={motmId}
-          onBatterClick={(pid, name) => setSrBatter({ id: pid, name })}
+          onBatterClick={(pid) => openPlayerCard(pid)}
+          onBowlerShare={(pid) => openPlayerCard(pid)}
         />
       )}
 
       {playerMeta.size > 0 && (
-        <p className="text-[11px] text-ink-400 text-center pt-1">(C) Captain · (WK) Wicket Keeper · Tap a batsman row for SR chart</p>
+        <p className="text-[11px] text-ink-400 text-center pt-1">(C) Captain · (WK) Wicket Keeper · Tap a batsman row to share performance</p>
       )}
 
-      <BottomSheet
-        open={!!srBatter}
-        onClose={() => setSrBatter(null)}
-        title={srBatter ? `${srBatter.name} — SR by Over` : ''}
-        heightClass="h-[50vh]"
-      >
-        {srBatter && (
-          <BatterSRChart deliveries={activeDeliveries} batsmanId={srBatter.id} />
-        )}
-      </BottomSheet>
+      {cardPlayer && (
+        <PlayerMatchCardSheet
+          open
+          onClose={() => setCardPlayer(null)}
+          player={cardPlayer.player}
+          match={match}
+          inningsList={inningsList}
+          batStats={cardPlayer.batStats}
+          dismissal={cardPlayer.dismissal}
+          bowlStats={cardPlayer.bowlStats}
+          bowlMaidens={cardPlayer.bowlMaidens}
+          deliveries={activeDeliveries}
+        />
+      )}
     </div>
   );
 }

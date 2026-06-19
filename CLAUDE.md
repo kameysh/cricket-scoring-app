@@ -249,8 +249,18 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - Bottom nav entry: "Rankings" tab with `BarChart2` icon
 - **MVP formula:** `runs×0.5 + wickets×20 + fours×1 + sixes×2 + thirties×5 + fifties×10 + hundreds×25 + catches×5 + stumpings×5 + run_outs×3`
 
+### `src/components/match/PlayerMatchCardSheet.jsx`
+- Props: `{ open, onClose, player, match, inningsList, batStats, dismissal, bowlStats, bowlMaidens, deliveries }`
+- Renders an off-screen 360×640px `PerformanceCard` (9:16) captured by html2canvas at `scale: 3` → 1080×1920px PNG (Instagram/WhatsApp Story format). `PerformanceCard` uses inline styles throughout (not Tailwind) for reliable html2canvas rendering
+- Share flow: html2canvas → `navigator.share({files})` → clipboard → PNG download fallback (same pattern as MatchSummary)
+- Card sections: header strip, player avatar/initials + name + role, both team scores (from `inningsList`), batting stat grid (Runs/Balls/4s/6s + dismissal + SR), bowling stat grid (Overs/Mdns/Runs/Wkts + Econ — hidden when `bowlStats.legal_balls === 0`), result summary, watermark
+- Preview in sheet: same `PerformanceCard` JSX at `scale(0.72)` with `overflow:hidden` wrapper
+- "View SR Chart" secondary button opens nested BottomSheet with `BatterSRChart`
+
 ### `src/pages/Scorecard.jsx`
-- Tap any batsman row → `BatterSRChart` BottomSheet shows SR per over for that batsman
+- Tap any batsman row → `PlayerMatchCardSheet` opens with performance card preview + Share button + "View SR Chart" secondary
+- Bowling rows have a `<Share2>` icon button that opens the same sheet for that bowler
+- `openPlayerCard(pid)` helper: flattens all innings deliveries, runs `buildStatsFromDeliveries` across all innings, extracts bat/bowl/dismissal stats for the player
 - `MomentumGraph` displayed above each innings block
 - MoTM player gets a `★` gold badge next to their name in the batting table; `motmId` sourced from `match.man_of_match.id` (joined in `getMatch`)
 - **Highlights Feed** (`HighlightsFeed`): collapsible per-innings feed of auto-detected events (boundaries, wickets, milestones, hat-tricks, maiden overs) with Share button
@@ -380,6 +390,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `Players.jsx` | "19 of 28" count wrapped inside pill on narrow screens; wouldn't scale to triple digits | Removed pill entirely; count is now inline `tabular-nums whitespace-nowrap` text — plain number when unfiltered, `19 / 28` (bold/lighter) when filtered. |
 | `Players.jsx` | Re-tapping a selected player in compare mode showed "Already selected" toast instead of deselecting | `handleSelectForCompare` now deselects on re-tap: clears p1 (promoting p2→p1) or clears p2. |
 | `PlayerCarousel.jsx` | "Tap" badge clipped by card's `rounded-3xl` corner at `top-3 right-3` | Moved to `top-4 right-4` with slightly more padding; badge now clear of rounded corner. |
+| `Scorecard.jsx` + `PlayerMatchCardSheet.jsx` (new) | No way to share individual player performance after a match | Tapping a batsman row or the share icon on a bowling row opens `PlayerMatchCardSheet` — shows a 9:16 performance card preview with player stats + both team scores; "Share Performance" generates 1080×1920px PNG via html2canvas scale 3; shares via Web Share API (mobile) → clipboard → download fallback |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:
