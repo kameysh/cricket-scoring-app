@@ -4,6 +4,7 @@ import { Plus, Search, Users, SlidersHorizontal, X, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast';
 import { usePlayerStore } from '../stores/playerStore';
 import { useRole } from '../hooks/useRole';
+import { useAuthStore } from '../stores/authStore';
 import * as playerService from '../services/playerService';
 import PlayerCarousel from '../components/player/PlayerCarousel';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
@@ -42,6 +43,8 @@ export default function Players() {
   const navigate = useNavigate();
   const { players, loading, fetchPlayers, removeAllPlayers, removePlayer } = usePlayerStore();
   const { canManagePlayers, isAdmin, isPlayer, userId } = useRole();
+  const user = useAuthStore(s => s.user);
+  const isSuperAdmin = isAdmin && user?.email === 'kameshwaran26@gmail.com';
   const [myPlayer, setMyPlayer] = useState(undefined);
   const [statsMap, setStatsMap] = useState({});
   const [search, setSearch] = useState('');
@@ -137,7 +140,7 @@ export default function Players() {
               </span>
             )}
           </button>
-          {isAdmin && players.length > 0 && (
+          {isSuperAdmin && players.length > 0 && (
             <button onClick={() => setDeleteAllOpen(true)} title="Delete all players"
               className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
               <Trash2 size={17} />
