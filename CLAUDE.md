@@ -217,6 +217,8 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `LiveScoring.jsx` | No Ball: selected runs went to `extra_runs` (penalty), never to `runs_off_bat`; chip showed plain "nb" always | `handleExtra`: for No Ball, `runsOffBat = extraRuns`, `finalExtraRuns = 1`; chip now shows "nb+2" when batsman scored |
 | `LiveScoring.jsx` | Wide: `Math.max(extraRuns, 1)` meant selecting 1 gave `extra_runs=1` (base only), chip showed "wd" instead of "wd+1" | Changed to `extraRuns + 1` — always adds 1 base penalty; select 0→wd, select 2→wd+2 |
 | `MatchSetupStepper.jsx` + `matchStore.js` + `migrations/013` | Free hit always triggered after every no ball — not appropriate for gully cricket | Added `free_hit_on_no_ball boolean default false` column to `matches`; checkbox in Rules step; `newFreeHit` and rehydration gated on `!!match.free_hit_on_no_ball` |
+| `ConfirmDialog.jsx` | Buttons missing `type="button"` — defaulted to `type="submit"`, could accidentally submit nearby form | Added `type="button"` to both Cancel and Confirm buttons |
+| `AdminUsers.jsx` + `playerService.js` | No way to wipe test data without direct DB access | Added `masterReset()` — deletes all matches (cascades innings/deliveries/scorecards) + career/tournament stats; "Reset All Player Stats" button in Danger Zone visible only to `kameshwaran26@gmail.com`; players and users untouched |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:

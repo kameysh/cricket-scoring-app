@@ -99,6 +99,17 @@ export async function deleteAllPlayers() {
   }
 }
 
+export async function masterReset() {
+  // Stats first (FK refs players, not matches)
+  const { error: e1 } = await supabase.from('player_career_stats').delete().not('player_id', 'is', null);
+  if (e1) throw e1;
+  const { error: e2 } = await supabase.from('player_tournament_stats').delete().not('player_id', 'is', null);
+  if (e2) throw e2;
+  // Matches cascade → innings → deliveries, scorecards, match_events, match_players
+  const { error: e3 } = await supabase.from('matches').delete().not('id', 'is', null);
+  if (e3) throw e3;
+}
+
 export async function getCareerStats(playerId) {
   const { data, error } = await supabase
     .from('player_career_stats')

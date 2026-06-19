@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, ChevronLeft, Shield, Trash2 } from 'lucide-react';
+import { UserPlus, ChevronLeft, Shield, Trash2, RotateCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { masterReset } from '../services/playerService';
 import { useAuthStore } from '../stores/authStore';
 import { useRole } from '../hooks/useRole';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
@@ -59,6 +60,9 @@ export default function AdminUsers() {
   const [inviting, setInviting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmResetStats, setConfirmResetStats] = useState(false);
+  const [resettingStats, setResettingStats] = useState(false);
+  const isSuperAdmin = currentUser?.email === 'kameshwaran26@gmail.com';
 
   useEffect(() => {
     fetchUsers();
@@ -69,6 +73,19 @@ export default function AdminUsers() {
     const { data, error } = await supabase.from('app_users').select('*').order('created_at');
     if (!error) setUsers(data || []);
     setLoading(false);
+  }
+
+  async function handleResetStats() {
+    setResettingStats(true);
+    try {
+      await masterReset();
+      toast.success('All match data and stats have been reset');
+    } catch (e) {
+      toast.error(e?.message || 'Failed to reset stats');
+    } finally {
+      setResettingStats(false);
+      setConfirmResetStats(false);
+    }
   }
 
   async function handleInvite(e) {
@@ -239,6 +256,31 @@ export default function AdminUsers() {
         disabled={!!deletingId}
         onConfirm={() => handleDelete(confirmDeleteId)}
         onCancel={() => setConfirmDeleteId(null)}
+      />
+
+      {isSuperAdmin && (
+        <div className="mt-6 border-t border-red-200 dark:border-red-900/40 pt-5">
+          <p className="text-xs text-ink-400 uppercase tracking-widest mb-3 font-semibold">Danger Zone</p>
+          <button
+            onClick={() => setConfirmResetStats(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm font-semibold border border-red-200 dark:border-red-800 active:scale-95 transition-transform"
+          >
+            <RotateCcw size={15} />
+            Reset All Player Stats
+          </button>
+          <p className="text-xs text-ink-400 mt-2">Deletes all matches, innings, deliveries and stats. Players &amp; users are kept.</p>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmResetStats}
+        danger
+        title="Master reset?"
+        message="This will delete ALL matches, innings, deliveries, scorecards, and player stats. Players and users are kept. This cannot be undone."
+        confirmLabel={resettingStats ? 'Resetting…' : 'Reset Everything'}
+        disabled={resettingStats}
+        onConfirm={handleResetStats}
+        onCancel={() => setConfirmResetStats(false)}
       />
     </div>
   );
