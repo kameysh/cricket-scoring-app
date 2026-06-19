@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 
 let _authSubscription = null;
+let _userRowChannel = null;
 
 export const useAuthStore = create((set, get) => ({
   session: null,
@@ -22,10 +23,40 @@ export const useAuthStore = create((set, get) => ({
       if (session) {
         await get()._setSession(session);
       } else {
+        get()._teardownUserRowWatch();
         set({ session: null, user: null, role: null, loading: false });
       }
     });
     _authSubscription = subscription;
+  },
+
+  _setupUserRowWatch(userId) {
+    // Clean up any previous channel first
+    get()._teardownUserRowChannel();
+
+    _userRowChannel = supabase
+      .channel(`app_users:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'app_users', filter: `id=eq.${userId}` },
+        () => {
+          // Admin removed this user — sign out immediately
+          supabase.auth.signOut();
+        }
+      )
+      .subscribe();
+  },
+
+  _teardownUserRowChannel() {
+    if (_userRowChannel) {
+      supabase.removeChannel(_userRowChannel);
+      _userRowChannel = null;
+    }
+  },
+
+  // Alias kept for backwards compat call in onAuthStateChange
+  _teardownUserRowWatch() {
+    get()._teardownUserRowChannel();
   },
 
   async _setSession(session) {
@@ -38,12 +69,14 @@ export const useAuthStore = create((set, get) => ({
 
     if (!data) {
       // User was deleted from app_users — revoke their session
+      get()._teardownUserRowChannel();
       await supabase.auth.signOut();
       set({ session: null, user: null, role: null, loading: false });
       return;
     }
 
     set({ role: data.role, loading: false });
+    get()._setupUserRowWatch(session.user.id);
   },
 
   async signIn(email, password) {

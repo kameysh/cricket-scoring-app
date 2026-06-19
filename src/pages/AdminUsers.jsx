@@ -4,6 +4,7 @@ import { UserPlus, ChevronLeft, Shield, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { useRole } from '../hooks/useRole';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 import toast from 'react-hot-toast';
 
 const ROLE_LABELS = {
@@ -41,6 +42,7 @@ const ROLE_COLORS = {
   scorer: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   captain: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   viewer: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  player: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
 };
 
 export default function AdminUsers() {
@@ -194,57 +196,50 @@ export default function AdminUsers() {
       ) : (
         <div className="space-y-2">
           {users.map(u => (
-            <div key={u.id} className="card p-3 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-green to-brand-teal flex items-center justify-center text-white text-sm font-bold shrink-0">
+            <div key={u.id} className="card p-3 flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-green to-brand-teal flex items-center justify-center text-white text-sm font-bold shrink-0 mt-0.5">
                 {(u.full_name || u.email)[0].toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-ink-900 dark:text-white truncate">{u.full_name || '—'}</p>
-                <p className="text-xs text-ink-400 truncate">{u.email}</p>
-              </div>
-              <select
-                value={u.role}
-                onChange={e => handleRoleChange(u.id, e.target.value)}
-                className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer ${ROLE_COLORS[u.role]}`}
-              >
-                {Object.entries(ROLE_LABELS).map(([val, label]) => (
-                  <option key={val} value={val}>{label}</option>
-                ))}
-              </select>
-
-              {u.id !== currentUser?.id && confirmDeleteId === u.id ? (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => handleDelete(u.id)}
-                    disabled={deletingId === u.id}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-white bg-red-500 px-2 py-1 rounded-lg"
-                  >
-                    {deletingId === u.id ? (
-                      <>
-                        <span className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                        Deleting…
-                      </>
-                    ) : 'Confirm'}
-                  </button>
-                  <button
-                    onClick={() => setConfirmDeleteId(null)}
-                    className="text-[11px] font-semibold text-ink-500 px-2 py-1 rounded-lg border border-ink-200 dark:border-white/10"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : u.id !== currentUser?.id ? (
-                <button
-                  onClick={() => setConfirmDeleteId(u.id)}
-                  className="p-1.5 rounded-lg text-ink-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                <p className="text-sm font-semibold text-ink-900 dark:text-white truncate leading-tight">{u.full_name || '—'}</p>
+                <p className="text-xs text-ink-400 truncate mt-0.5">{u.email}</p>
+                <select
+                  value={u.role}
+                  onChange={e => handleRoleChange(u.id, e.target.value)}
+                  className={`mt-2 text-xs font-semibold px-3 py-1 rounded-full border-0 cursor-pointer ${ROLE_COLORS[u.role]}`}
                 >
-                  <Trash2 size={15} />
-                </button>
-              ) : null}
+                  {Object.entries(ROLE_LABELS).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="shrink-0">
+                {u.id !== currentUser?.id ? (
+                  <button
+                    onClick={() => setConfirmDeleteId(u.id)}
+                    className="p-1.5 rounded-lg text-ink-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                ) : (
+                  <div className="w-8" />
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        danger
+        title="Remove user?"
+        message={`${users.find(u => u.id === confirmDeleteId)?.full_name || 'This user'} will lose access to the app immediately.`}
+        confirmLabel={deletingId ? 'Removing…' : 'Remove'}
+        disabled={!!deletingId}
+        onConfirm={() => handleDelete(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   );
 }

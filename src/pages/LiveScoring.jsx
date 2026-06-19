@@ -677,7 +677,18 @@ export default function LiveScoring() {
         isNoBall={false}
         batsmenOnField={[strikerObj, nonStrikerObj].filter(Boolean)}
       />
-      <NewBatsmanModal open={newBatsmanOpen} onClose={() => setNewBatsmanOpen(false)} candidates={batsmenCandidates} onSelect={handleNewBatsman} />
+      <NewBatsmanModal
+        open={newBatsmanOpen}
+        onClose={() => {
+          if (batsmenCandidates.length > 0) {
+            toast.error('Select a new batsman before continuing');
+            return;
+          }
+          setNewBatsmanOpen(false);
+        }}
+        candidates={batsmenCandidates}
+        onSelect={handleNewBatsman}
+      />
       <BowlerSelectModal open={bowlerModalOpen} onClose={() => setBowlerModalOpen(false)} eligible={eligibleBowlers} onSelect={handleBowlerSelect} forcedBowler={bowlingTeamPlayers.find(p => p.id === prevBowler)} />
       <MatchResultBanner summary={result} onClose={() => navigate(`/matches/${id}/summary`)} />
       <PlayerStatsDrawer />

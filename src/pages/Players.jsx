@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useRole } from '../hooks/useRole';
 import * as playerService from '../services/playerService';
 import PlayerCard from '../components/player/PlayerCard';
+import PlayerCarousel from '../components/player/PlayerCarousel';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
@@ -75,6 +76,7 @@ export default function Players() {
   const [battingFilter, setBattingFilter] = useState('');
   const [bowlHandFilter, setBowlHandFilter] = useState('');
   const [bowlTypeFilter, setBowlTypeFilter] = useState('');
+  const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const [deletePlayerTarget, setDeletePlayerTarget] = useState(null);
@@ -108,6 +110,7 @@ export default function Players() {
   }
 
   useEffect(() => { fetchPlayers(); }, []);
+  useEffect(() => { setActiveCarouselIndex(0); }, [search, roleFilter, battingFilter, bowlHandFilter, bowlTypeFilter]);
 
   useEffect(() => {
     if (isPlayer && userId) {
@@ -201,6 +204,17 @@ export default function Players() {
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search players…" className="field-input !pl-10" />
       </div>
+
+      {!loading && filtered.length > 0 && (
+        <div className="overflow-hidden -mx-4 px-4">
+          <PlayerCarousel
+            players={filtered}
+            activeIndex={activeCarouselIndex}
+            onChangeIndex={setActiveCarouselIndex}
+            onSelect={id => navigate(`/players/${id}`)}
+          />
+        </div>
+      )}
 
       {showFilters && (
         <div className="card p-3 space-y-3">

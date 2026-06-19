@@ -56,10 +56,11 @@ export default function TournamentDetail() {
       return;
     }
     setStarting(true);
+    const matchIdToStart = startMatchId;
     try {
-      await matchService.startUpcomingMatch(startMatchId, tossWinner, tossDecision);
+      await matchService.startUpcomingMatch(matchIdToStart, tossWinner, tossDecision);
       setStartMatchId(null);
-      navigate(`/matches/${startMatchId}`);
+      navigate(`/matches/${matchIdToStart}`);
     } catch (e) {
       toast.error(e.message || 'Failed to start match');
       setStarting(false);

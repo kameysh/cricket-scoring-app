@@ -14,6 +14,7 @@ export default function MatchSummary() {
   const [matchPlayers, setMatchPlayers] = useState([]);
   const [momId, setMomId] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [battingCards, setBattingCards] = useState([]);
   const [bowlingCards, setBowlingCards] = useState([]);
   const [fieldingCards, setFieldingCards] = useState([]);
@@ -54,8 +55,15 @@ export default function MatchSummary() {
   const needsMom = match.status === 'completed' && !match.man_of_match_id;
 
   async function handleDelete() {
-    await matchService.deleteMatch(id);
-    navigate('/matches');
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await matchService.deleteMatch(id);
+      navigate('/matches');
+    } catch (e) {
+      toast.error(e.message || 'Failed to delete match');
+      setDeleting(false);
+    }
   }
 
   async function saveMom() {
@@ -142,8 +150,9 @@ export default function MatchSummary() {
         open={deleteOpen}
         title="Delete this match?"
         message={match ? `${match.team1_name} vs ${match.team2_name} — this permanently deletes the match, all deliveries, and scorecards. This cannot be undone.` : ''}
-        confirmLabel="Delete"
+        confirmLabel={deleting ? 'Deleting…' : 'Delete'}
         danger
+        disabled={deleting}
         onConfirm={handleDelete}
         onCancel={() => setDeleteOpen(false)}
       />

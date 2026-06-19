@@ -1,5 +1,13 @@
 # Cricket Scoring App — Claude Context
 
+## Hard Rules (Always Follow)
+
+1. **Self-audit after every change set.** Before reporting a task as done, re-read every file touched and check for: logic errors, missing null guards, unhandled async errors, state not reset, RLS gaps, and broken flows introduced by the change. Fix anything found.
+2. **After fixes pass self-audit**, update `CLAUDE.md` and the memory files to reflect what changed.
+3. **End every task** with a one-paragraph summary of what changed, and a clear merge recommendation (safe / needs testing / not ready).
+
+---
+
 ## Project Overview
 Mobile-first cricket scoring PWA. React + Vite SPA, Supabase backend (PostgreSQL + RLS + Storage + Edge Functions), deployed on Vercel.
 
@@ -90,11 +98,23 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - Delete All is **icon-only** (no text) to avoid mobile overflow
 - Individual player delete: `onDelete={isAdmin ? setDeletePlayerTarget : undefined}` passed to PlayerCard
 - Two ConfirmDialogs: one for single player delete, one for delete-all
+- **PlayerCarousel** rendered above the filter panel (when players exist and not loading)
+  - `activeCarouselIndex` state resets to 0 whenever search/filter changes
 
 ### `src/components/player/PlayerCard.jsx`
 - Outer `<div>` (card wrapper)
 - Inner `<button>` (navigates to player profile) — `flex-1`
 - Separate trash `<button>` (shown only when `onDelete` prop present) — `flex-shrink-0`
+
+### `src/components/player/PlayerCarousel.jsx`
+- 3D card carousel — pure CSS transforms, no external library
+- Props: `players[]`, `activeIndex`, `onChangeIndex(idx)`, `onSelect(playerId)`
+- **Front face:** avatar (photo or initials), name, role badge
+- **Back face (flip on tap of center card):** player name, Runs / Wickets / Matches stat rows, "View Profile →" button
+- Stats fetched lazily via `playerService.getCareerStats()` on first flip; cached in local `statsCache` state
+- Swiping resets flip to front on the new active card
+- Tapping a side card advances index (does not flip); tapping back face flips back to front
+- "View Profile →" uses `e.stopPropagation()` to prevent the back-flip handler from firing
 
 ### `src/pages/LiveScoring.jsx`
 - `oversLimitOpen` state triggers BottomSheet when `total_legal_balls >= total_overs * 6`
@@ -105,6 +125,9 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - `friendlyInviteError(msg)` maps raw error strings to user-friendly messages
 - Catch-all: "Could not send invite. Please check your SMTP settings or try again later."
 - Error extraction from `FunctionsHttpError`: `await error.context?.json?.()` then check `body.error` → `body.code`
+- User row layout: avatar left, name + email + role pill stacked in middle column, trash anchored top-right
+- Role select has `ROLE_COLORS` for all five roles incl. `player` (teal); fixed `w-24` removed — pill sizes naturally
+- ConfirmDialog used for delete confirmation (no inline confirm block in the row)
 
 ### `src/services/playerService.js`
 - `deletePlayer(id)`: explicitly deletes from `player_career_stats` and `player_tournament_stats` before hard-delete (belt-and-suspenders alongside cascade migration)
@@ -119,6 +142,28 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 3. **FK constraints** — `player_career_stats` and `player_tournament_stats` cascade on player delete (migration 008). If adding new tables that reference `players(id)`, always add `on delete cascade`.
 4. **Edge function errors** — `supabase.functions.invoke` wraps non-2xx as `FunctionsHttpError`; the real body is in `error.context.json()`.
 5. **Resend SMTP** — `onboarding@resend.dev` only delivers to verified recipients. Use Gmail SMTP + App Password for production invites.
+
+---
+
+## Bug Fixes Log (June 2026)
+
+| File | Bug | Fix |
+|------|-----|-----|
+| `TournamentDetail.jsx` | `navigate('/matches/${startMatchId}')` after `setStartMatchId(null)` navigated to `/matches/null` | Capture id in local var before clearing state |
+| `MatchSummary.jsx` | Delete button had no loading guard — double-submit possible | Added `deleting` state + disabled confirm button during deletion |
+| `ConfirmDialog.jsx` | No `disabled` prop | Added `disabled` prop with opacity + cursor styles |
+| `LiveScoring.jsx` | `NewBatsmanModal` closeable without selecting batsman | `onClose` blocks close and shows toast when candidates remain |
+| `playerService.js` | `deleteAllPlayers` used fragile dummy UUID filter | Replaced with `.not('id', 'is', null)` |
+| `authStore.js` | Removed users stayed logged in until page reload | Realtime subscription on own `app_users` row; DELETE fires immediate `signOut()` |
+| `migrations/011` | Invited player-role users got RLS error on profile creation | Added `player_insert_own_profile` policy |
+| `AdminUsers.jsx` | Inline confirm block in user row caused layout shift and text truncation | Replaced with `ConfirmDialog` modal; row is always consistent width |
+| `AdminUsers.jsx` | `player` role had no color in `ROLE_COLORS` — showed unstyled text | Added teal color entry for `player` role |
+| `AdminUsers.jsx` | Name/email/role aligned inconsistently across rows | Redesigned card: avatar left, name+email+role pill stacked vertically, trash top-right |
+| `PlayerCarousel.jsx` | Tapping center card navigated immediately to profile | Added CSS 3D flip — front shows avatar/name/role, back shows stats + "View Profile" button |
+
+## Supabase Realtime Prerequisite
+For auto-logout on user removal to work, `app_users` must have Replication enabled:
+**Dashboard → Database → Replication → toggle `app_users` on**
 
 ---
 

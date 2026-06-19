@@ -83,9 +83,9 @@ export async function deleteAllPlayers() {
     if (error) throw error;
   } else {
     // No players have match history — hard-delete all
-    await supabase.from('player_career_stats').delete().neq('player_id', '00000000-0000-0000-0000-000000000000');
-    await supabase.from('player_tournament_stats').delete().neq('player_id', '00000000-0000-0000-0000-000000000000');
-    const { error } = await supabase.from('players').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('player_career_stats').delete().not('player_id', 'is', null);
+    await supabase.from('player_tournament_stats').delete().not('player_id', 'is', null);
+    const { error } = await supabase.from('players').delete().not('id', 'is', null);
     if (error) throw error;
   }
 }
