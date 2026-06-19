@@ -66,7 +66,7 @@ function FilterChip({ label, active, onClick }) {
 
 export default function Players() {
   const navigate = useNavigate();
-  const { players, loading, fetchPlayers, removeAllPlayers } = usePlayerStore();
+  const { players, loading, fetchPlayers, removeAllPlayers, removePlayer } = usePlayerStore();
   const { canManagePlayers, isAdmin, isPlayer, userId } = useRole();
   const [myPlayer, setMyPlayer] = useState(undefined); // undefined = loading, null = no profile
   const [search, setSearch] = useState('');
@@ -77,6 +77,22 @@ export default function Players() {
   const [bowlTypeFilter, setBowlTypeFilter] = useState('');
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [deletePlayerTarget, setDeletePlayerTarget] = useState(null);
+  const [deletingPlayer, setDeletingPlayer] = useState(false);
+
+  async function handleDeletePlayer() {
+    if (!deletePlayerTarget) return;
+    setDeletingPlayer(true);
+    try {
+      const result = await removePlayer(deletePlayerTarget.id);
+      setDeletePlayerTarget(null);
+      toast.success(result.softDeleted ? `${deletePlayerTarget.name} deactivated (has match history)` : `${deletePlayerTarget.name} deleted`);
+    } catch (e) {
+      toast.error(e.message || 'Failed to delete player');
+    } finally {
+      setDeletingPlayer(false);
+    }
+  }
 
   async function handleDeleteAll() {
     setDeletingAll(true);
@@ -240,9 +256,18 @@ export default function Players() {
       ) : filtered.length === 0 ? (
         <EmptyState icon={Users} title="No players found" message={activeFilterCount ? 'Try adjusting your filters.' : 'Add players to start building your squad.'} />
       ) : (
-        <div className="space-y-2">{filtered.map(p => <PlayerCard key={p.id} player={p} />)}</div>
+        <div className="space-y-2">{filtered.map(p => <PlayerCard key={p.id} player={p} onDelete={isAdmin ? setDeletePlayerTarget : undefined} />)}</div>
       )}
 
+      <ConfirmDialog
+        open={!!deletePlayerTarget}
+        danger
+        title={`Delete ${deletePlayerTarget?.name}?`}
+        message={`This will permanently remove ${deletePlayerTarget?.name}. If they have match history they will be deactivated instead.`}
+        confirmLabel={deletingPlayer ? 'Deleting…' : 'Delete'}
+        onConfirm={handleDeletePlayer}
+        onCancel={() => setDeletePlayerTarget(null)}
+      />
       <ConfirmDialog
         open={deleteAllOpen}
         danger

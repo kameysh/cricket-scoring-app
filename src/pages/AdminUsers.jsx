@@ -20,9 +20,11 @@ function friendlyInviteError(msg = '') {
   if (m.includes('invalid email')) return 'Please enter a valid email address.';
   if (m.includes('forbidden') || m.includes('admin only')) return 'Only admins can invite users.';
   if (m.includes('unauthorized')) return 'Your session has expired. Please sign in again.';
-  if (m.includes('rate limit')) return 'Too many invites sent. Please wait a moment and try again.';
+  if (m.includes('rate limit') || m.includes('over_email_send_rate_limit')) return 'Too many invites sent. Please wait a moment and try again.';
   if (m.includes('network') || m.includes('fetch')) return 'Network error. Check your connection and try again.';
-  return 'Failed to send invite. Please try again.';
+  if (m.includes('smtp') || m.includes('auth invite failed')) return 'Email delivery failed. Check your SMTP settings in Supabase.';
+  // Catch-all for any remaining unrecognised errors (including raw {} from Supabase)
+  return 'Could not send invite. Please check your SMTP settings or try again later.';
 }
 
 function friendlyDeleteError(msg = '') {
@@ -82,10 +84,12 @@ export default function AdminUsers() {
         try {
           const body = await error.context?.json?.();
           if (body?.error) errMsg = body.error;
+          else if (body?.code) errMsg = body.code;
         } catch {}
-        throw new Error(errMsg);
+        throw new Error(errMsg || 'Edge function error');
       }
       if (data?.error) throw new Error(data.error);
+      if (!data?.success) throw new Error('Invite did not complete — check Supabase logs');
 
       toast.success(`Invitation sent to ${inviteEmail}`);
       setShowInvite(false);

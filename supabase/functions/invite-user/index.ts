@@ -51,24 +51,34 @@ Deno.serve(async (req) => {
       data: { full_name },
       redirectTo: `${req.headers.get('origin') || Deno.env.get('SITE_URL') || ''}/accept-invite`,
     });
-    if (inviteError) throw inviteError;
+    if (inviteError) {
+      const msg = inviteError.message || inviteError.code || String(inviteError) || 'Auth invite failed';
+      console.error('inviteUserByEmail error:', { message: inviteError.message, status: inviteError.status, code: inviteError.code, name: inviteError.name });
+      return new Response(JSON.stringify({ error: msg, status: inviteError.status, code: inviteError.code }), {
+        status: inviteError.status || 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    // Insert into app_users
-    const { error: insertError } = await adminClient.from('app_users').insert({
+    // Upsert into app_users (handles re-invite where auth user already exists)
+    const { error: insertError } = await adminClient.from('app_users').upsert({
       id: inviteData.user.id,
       email,
       full_name: full_name || null,
       role,
-    });
+    }, { onConflict: 'id' });
     if (insertError) throw insertError;
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
+    const msg = err?.message || err?.error_description || err?.msg
+      || (typeof err === 'string' ? err : JSON.stringify(err));
+    console.error('invite-user error:', msg, err);
+    return new Response(JSON.stringify({ error: msg || 'Unknown error' }), {
       status: 500,
-      headers: corsHeaders,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
