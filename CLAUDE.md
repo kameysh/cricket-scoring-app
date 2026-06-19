@@ -113,25 +113,24 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 ### `src/pages/Players.jsx`
 - Header: Players count + Filter button + Delete All (trash icon, admin only) + Add button
 - Delete All is **icon-only** (no text) to avoid mobile overflow
-- Individual player delete: `onDelete={isAdmin ? setDeletePlayerTarget : undefined}` passed to PlayerCard
+- **No list** — only the PlayerCarousel is rendered when players exist (no PlayerCard list)
+- Fetches `getAllCareerStats()` on mount, builds `statsMap = { [player_id]: stats }`, passed to carousel
 - Two ConfirmDialogs: one for single player delete, one for delete-all
-- **PlayerCarousel** rendered above the filter panel (when players exist and not loading)
-  - `activeCarouselIndex` state resets to 0 whenever search/filter changes
-
-### `src/components/player/PlayerCard.jsx`
-- Outer `<div>` (card wrapper)
-- Inner `<button>` (navigates to player profile) — `flex-1`
-- Separate trash `<button>` (shown only when `onDelete` prop present) — `flex-shrink-0`
+- `activeCarouselIndex` state resets to 0 whenever search/filter changes
 
 ### `src/components/player/PlayerCarousel.jsx`
-- 3D card carousel — pure CSS transforms, no external library
-- Props: `players[]`, `activeIndex`, `onChangeIndex(idx)`, `onSelect(playerId)`
-- **Front face:** avatar (photo or initials), name, role badge
-- **Back face (flip on tap of center card):** player name, Runs / Wickets / Matches stat rows, "View Profile →" button
-- Stats fetched lazily via `playerService.getCareerStats()` on first flip; cached in local `statsCache` state
+- **Circular infinite-loop** 3D card carousel — pure CSS transforms, no external library, no chevron buttons
+- Props: `players[]`, `activeIndex`, `onChangeIndex(idx)`, `onSelect(playerId)`, `statsMap = {}`
+- `circularOffset(idx)` returns shortest-path offset so wrapping side cards appear on the correct side
+- `wrap(idx)` helper: `((idx % n) + n) % n` — used in prev/next/swipe/click
+- **Front face:** avatar (photo or initials), name, role badge, style text, stats strip (Runs/Wkts/Matches from `statsMap`)
+- **Back face (flip on tap of center card):** dark slate gradient (`#0f172a → #1e293b`), name/role header, 3×2 stat grid (Batting: Avg/SR/HS; Bowling: Avg/Economy/Best), full-width green "View Profile →" button pinned at bottom
+- Detailed back-face stats fetched lazily via `playerService.getCareerStats()` on first flip; cached in `detailCache`
 - Swiping resets flip to front on the new active card
-- Tapping a side card advances index (does not flip); tapping back face flips back to front
+- No rubber band — drag is unclamped (circular, no edges); soft resistance past `THRESHOLD = 0.75` only
+- Fast flicks that would cross the wrap point do a single-step jump (no multi-step animation across boundary)
 - "View Profile →" uses `e.stopPropagation()` to prevent the back-flip handler from firing
+- `CARD_W = 260, CARD_H = 360, CARD_SPACING_PX = 155`
 
 ### `src/pages/LiveScoring.jsx`
 - `oversLimitOpen` state triggers BottomSheet when `total_legal_balls >= total_overs * 6`
