@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Users, Swords, Trophy, LogIn, LogOut, Shield, MapPin, ChevronRight } from 'lucide-react';
+import { Home, Users, Swords, Trophy, BarChart2, LogIn, LogOut, Shield, MapPin, ChevronRight } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 
 const ROLE_LABELS = {
@@ -14,7 +14,8 @@ const navItems = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/players', label: 'Players', icon: Users },
   { to: '/matches', label: 'Matches', icon: Swords },
-  { to: '/tournaments', label: 'Tournaments', icon: Trophy },
+  { to: '/tournaments', label: 'Tourneys', icon: Trophy },
+  { to: '/leaderboard', label: 'Rankings', icon: BarChart2 },
 ];
 
 export default function BottomNav() {

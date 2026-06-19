@@ -25,6 +25,7 @@ import LiveScoring from './pages/LiveScoring';
 import Scorecard from './pages/Scorecard';
 import MatchSummary from './pages/MatchSummary';
 import AdminUsers from './pages/AdminUsers';
+import Leaderboard from './pages/Leaderboard';
 import AcceptInvite from './pages/AcceptInvite';
 import ResetPassword from './pages/ResetPassword';
 
@@ -70,6 +71,7 @@ export default function App() {
             <Route path="/matches" element={<Matches />} />
             <Route path="/tournaments" element={<Tournaments />} />
             <Route path="/venues" element={<Venues />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
           </Route>
 
           {/* Admin + Scorer */}

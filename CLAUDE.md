@@ -132,6 +132,16 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 ### `src/services/playerService.js`
 - `deletePlayer(id)`: explicitly deletes from `player_career_stats` and `player_tournament_stats` before hard-delete (belt-and-suspenders alongside cascade migration)
 - `deleteAllPlayers()`: same pattern — deletes stats rows for unused players before hard-delete
+- `getAllCareerStats()`: fetches all `player_career_stats` rows joined with `players(id, name, photo_url, role)`, ordered by `bat_runs` descending — used by Leaderboard page
+
+### `src/pages/Leaderboard.jsx`
+- Route: `/leaderboard` (any logged-in user)
+- Two tabs: **Batting** (runs → avg → SR), **Bowling** (wickets → avg → economy)
+- Only shows players with at least one innings in the relevant category; 0-wicket players excluded from Bowling tab
+- Column headers are tappable to re-sort; second tap reverses direction
+- Realtime: subscribes to `postgres_changes UPDATE` on `player_career_stats` — refreshes automatically when an innings completes
+- Live indicator (green pulsing dot) shown when any match has `status = 'in_progress'`
+- Bottom nav entry: "Rankings" tab with `BarChart2` icon
 
 ---
 

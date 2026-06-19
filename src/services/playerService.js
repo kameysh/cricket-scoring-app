@@ -1,5 +1,14 @@
 import { supabase } from '../lib/supabase';
 
+export async function getAllCareerStats() {
+  const { data, error } = await supabase
+    .from('player_career_stats')
+    .select('*, players(id, name, photo_url, role)')
+    .order('bat_runs', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function listPlayers({ search = '', activeOnly = false } = {}) {
   let q = supabase.from('players').select('*').order('name');
   if (activeOnly) q = q.eq('is_active', true);
