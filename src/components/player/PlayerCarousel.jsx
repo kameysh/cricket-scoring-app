@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import * as playerService from '../../services/playerService';
 import { computeBadges } from '../../lib/cricketUtils';
@@ -49,7 +49,7 @@ function getCardStyle(offset, dragFrac = 0, transitionMs = 350) {
   };
 }
 
-export default function PlayerCarousel({ players, activeIndex, onChangeIndex, onSelect, statsMap = {} }) {
+export default function PlayerCarousel({ players, activeIndex, onChangeIndex, onSelect, statsMap = {}, onDelete }) {
   const containerRef   = useRef(null);
   const dragStartX     = useRef(null);
   const dragStartY     = useRef(null);
@@ -64,10 +64,11 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
   const [flipped,      setFlipped]      = useState(false);
   const [detailCache,  setDetailCache]  = useState({});
   const [loadingDetail,setLoadingDetail]= useState(false);
+  const [activeBadge,  setActiveBadge]  = useState(null); // { emoji, label, hint, earned, count }
 
   const n = players.length;
 
-  useEffect(() => { setFlipped(false); }, [activeIndex]);
+  useEffect(() => { setFlipped(false); setActiveBadge(null); }, [activeIndex]);
 
   function wrap(idx) { return ((idx % n) + n) % n; }
 
@@ -230,6 +231,7 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
   function handleCardClick(offset, playerId) {
     if (isDragging.current) return;
     if (offset !== 0) { haptic(); onChangeIndex(wrap(activeIndex + offset)); return; }
+    if (activeBadge) { setActiveBadge(null); return; }
     flipActive(playerId);
   }
 
@@ -345,7 +347,25 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                   </div>
 
                   {/* Info zone */}
-                  <div className="flex flex-col flex-1 px-3 pt-4 pb-3">
+                  <div className="relative flex flex-col flex-1 px-3 pt-4 pb-3">
+                    {/* Badge popover overlay — inside card, never overflows */}
+                    {activeBadge && isActive && (
+                      <div
+                        className="absolute inset-x-0 top-0 bottom-0 z-20 flex flex-col items-center justify-center rounded-b-3xl px-4"
+                        style={{ background: activeBadge.earned ? 'linear-gradient(135deg,#166534ee,#15803dee)' : 'rgba(15,23,42,0.93)' }}
+                        onClick={e => { e.stopPropagation(); setActiveBadge(null); }}
+                      >
+                        <p className="text-4xl leading-none mb-2">{activeBadge.emoji}</p>
+                        <p className="text-white text-[13px] font-bold text-center leading-tight">{activeBadge.label}</p>
+                        {activeBadge.earned ? (
+                          <p className="text-green-300 text-[11px] mt-1.5">✓ Earned{activeBadge.count > 1 ? ` ×${activeBadge.count}` : ''}!</p>
+                        ) : (
+                          <p className="text-white/60 text-[11px] mt-1.5 text-center leading-snug">{activeBadge.hint}</p>
+                        )}
+                        <p className="text-white/30 text-[10px] mt-3">Tap to close</p>
+                      </div>
+                    )}
+
                     <p className="text-[15px] font-bold text-ink-900 dark:text-white text-center leading-tight truncate">
                       {player.name}
                     </p>
@@ -367,13 +387,17 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                       return (
                         <div className="flex items-center justify-center flex-wrap gap-1 mt-3">
                           {badges.map(b => (
-                            <span
+                            <button
                               key={b.id}
-                              title={b.hint}
-                              className={`text-base leading-none transition-all ${b.earned ? '' : 'grayscale opacity-25'}`}
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                setActiveBadge(prev => prev?.id === b.id ? null : b);
+                              }}
+                              className={`text-base leading-none transition-all active:scale-125 ${b.earned ? '' : 'grayscale opacity-25'}`}
                             >
                               {b.emoji}
-                            </span>
+                            </button>
                           ))}
                         </div>
                       );
@@ -468,23 +492,34 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
       </div>
       </div>
 
-      {/* Dots */}
-      {showDots && (
-        <div className="flex items-center justify-center gap-1.5 mt-2">
-          {players.length <= maxDots ? (
-            players.map((_, i) => (
-              <button key={i} onClick={() => { haptic(); onChangeIndex(i); }}
-                className={`rounded-full transition-all duration-300 ${
-                  i === activeIndex
-                    ? 'w-5 h-1.5 bg-brand-green'
-                    : 'w-1.5 h-1.5 bg-ink-200 dark:bg-white/20'
-                }`} />
-            ))
-          ) : (
-            <span className="text-xs text-ink-400 tabular-nums">{activeIndex + 1} / {players.length}</span>
-          )}
-        </div>
-      )}
+      {/* Dots + delete */}
+      <div className="flex items-center justify-center gap-3 mt-2">
+        {showDots && (
+          <div className="flex items-center gap-1.5">
+            {players.length <= maxDots ? (
+              players.map((_, i) => (
+                <button key={i} onClick={() => { haptic(); onChangeIndex(i); }}
+                  className={`rounded-full transition-all duration-300 ${
+                    i === activeIndex
+                      ? 'w-5 h-1.5 bg-brand-green'
+                      : 'w-1.5 h-1.5 bg-ink-200 dark:bg-white/20'
+                  }`} />
+              ))
+            ) : (
+              <span className="text-xs text-ink-400 tabular-nums">{activeIndex + 1} / {players.length}</span>
+            )}
+          </div>
+        )}
+        {onDelete && (
+          <button
+            onClick={() => { haptic(); onDelete(players[activeIndex]); }}
+            className="p-1.5 rounded-full text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+            title="Delete player"
+          >
+            <Trash2 size={15} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -127,7 +127,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - `wrap(idx)` helper: `((idx % n) + n) % n` — used in prev/next/swipe/click
 - **Left/right arrow buttons** — circular white buttons (`w-9 h-9`) absolutely positioned at vertical center of the card container; shown only when `n > 1`; alternative to swiping
 - **Front face:** avatar (photo or initials), name, role badge, style text, badge strip, stats strip (Runs/Wkts/Matches from `statsMap`)
-- **Badge strip:** 7 emoji badges computed via `computeBadges(frontStats, 0, allStatsArr)`; earned badges shown full color, unearned shown `grayscale opacity-25`; `duckHunterCount` defaults to 0 on the carousel (no extra query)
+- **Badge strip:** 7 emoji badges computed via `computeBadges(frontStats, 0, allStatsArr)`; earned badges shown full color, unearned shown `grayscale opacity-25`; `duckHunterCount` defaults to 0 on the carousel (no extra query); tapping a badge shows a full-height overlay on the info zone (dark slate for unearned, green gradient for earned) with emoji, label, unlock hint or "✓ Earned!" and "Tap to close" — tapping the overlay or anywhere on the card while open dismisses it instead of flipping
 - **Back face (flip on tap of center card):** dark slate gradient (`#0f172a → #1e293b`), name/role header, 3×2 stat grid (Batting: Avg/SR/HS; Bowling: Avg/Economy/Best), full-width green "View Profile →" button pinned at bottom
 - Detailed back-face stats fetched lazily via `playerService.getCareerStats()` on first flip; cached in `detailCache`
 - Swiping resets flip to front on the new active card

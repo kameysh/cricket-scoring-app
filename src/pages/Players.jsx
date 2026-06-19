@@ -242,6 +242,7 @@ export default function Players() {
               onChangeIndex={setActiveCarouselIndex}
               onSelect={id => navigate(`/players/${id}`)}
               statsMap={statsMap}
+              onDelete={isSuperAdmin ? (player) => setDeletePlayerTarget(player) : undefined}
             />
           </div>
         )}

@@ -227,6 +227,7 @@ export default function LiveScoring() {
   const [firstInningsData, setFirstInningsData] = useState(null);
   const [showFirstInnings, setShowFirstInnings] = useState(false);
   const [batsmanOutId, setBatsmanOutId] = useState(null);
+  const [crossedOnDismissal, setCrossedOnDismissal] = useState(false);
   const [winConfirmOpen, setWinConfirmOpen] = useState(false);
   const [winConfirmInfo, setWinConfirmInfo] = useState(null);
   const [oversLimitOpen, setOversLimitOpen] = useState(false);
@@ -562,6 +563,7 @@ export default function LiveScoring() {
     const resolvedOutId = outId || striker;
     setWicketOpen(false);
     setBatsmanOutId(resolvedOutId);
+    setCrossedOnDismissal(crossed ?? false);
     store.scoreBall({ runsOffBat: 0, isWicket: true, wicketType, fielderId, batsmanOutId: resolvedOutId }).then(() => {
       // After scoreBall, batsmenCandidates reflects updated state.
       // In last_man_standing, if no candidates remain, set the survivor as sole striker (no modal needed).
@@ -578,14 +580,25 @@ export default function LiveScoring() {
 
   function handleNewBatsman(playerId) {
     setNewBatsmanOpen(false);
-    // striker/nonStriker here are post-scoreBall values (component re-renders before user picks batsman).
-    // If scoreBall ran an over-end swap, these already reflect the swapped positions.
-    if (!store.nonStriker || batsmanOutId === store.striker) {
+    // Determine where the new batsman goes:
+    // - dismissed was striker + not crossed → new batsman is striker
+    // - dismissed was striker + crossed     → batsmen crossed so survivor is now at striker end;
+    //                                         new batsman replaces dismissed at non-striker end
+    // - dismissed was non-striker + not crossed → new batsman is non-striker
+    // - dismissed was non-striker + crossed     → survivor is now at non-striker end;
+    //                                             new batsman replaces dismissed at striker end
+    const dismissedWasStriker = batsmanOutId === store.striker ||
+      (!store.nonStriker); // safety: if only one batsman was set
+
+    const newIsStriker = dismissedWasStriker ? !crossedOnDismissal : crossedOnDismissal;
+
+    if (newIsStriker) {
       store.setOpeners(playerId, store.nonStriker);
     } else {
       store.setOpeners(store.striker, playerId);
     }
     setBatsmanOutId(null);
+    setCrossedOnDismissal(false);
   }
 
   async function handleRetire(playerId) {
@@ -596,6 +609,10 @@ export default function LiveScoring() {
   function handleBowlerSelect(bowlerId) {
     store.setBowler(bowlerId);
     setBowlerModalOpen(false);
+    // If the selected bowler is the current keeper, prompt for a new keeper
+    if (bowlerId === keeper) {
+      setKeeperModalOpen(true);
+    }
   }
 
   function handleKeeperSelect(keeperId) {
