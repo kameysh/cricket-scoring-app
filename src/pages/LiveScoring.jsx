@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { calcStrikeRate, calcEconomy, formatOvers, fmt } from '../lib/cricketUtils';
+import { calcStrikeRate, calcEconomy, formatOvers, fmt, calcMotmScore } from '../lib/cricketUtils';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useMatchStore } from '../stores/matchStore';
@@ -229,8 +229,15 @@ export default function LiveScoring() {
   const [winConfirmInfo, setWinConfirmInfo] = useState(null);
   const [oversLimitOpen, setOversLimitOpen] = useState(false);
   const endingMatchRef = useRef(false);
+  const milestonesRef = useRef(new Set());
+  const [motmOpen, setMotmOpen] = useState(false);
+  const [motmPlayerId, setMotmPlayerId] = useState('');
+  const [motmSaving, setMotmSaving] = useState(false);
 
   useEffect(() => { store.loadMatch(id); return () => store.reset(); }, [id]);
+
+  // Reset milestone tracking when innings changes
+  useEffect(() => { milestonesRef.current = new Set(); }, [currentInnings?.id]);
 
   // Load first innings scorecards when viewing second innings
   useEffect(() => {
@@ -340,6 +347,39 @@ export default function LiveScoring() {
     }
   }, [currentInnings?.total_legal_balls, match?.total_overs, winConfirmOpen]);
 
+  // Milestone toasts — 50s, 100s, 3/4/5 wicket hauls (hat-trick handled in matchStore)
+  useEffect(() => {
+    if (!deliveries.length) return;
+    const fired = milestonesRef.current;
+    const getName = pid => matchPlayers.find(mp => mp.players?.id === pid)?.players?.name || 'Player';
+    const batRuns = {};
+    const bowlWkts = {};
+    for (const d of deliveries) {
+      if (d.batsman_id) batRuns[d.batsman_id] = (batRuns[d.batsman_id] || 0) + (d.runs_off_bat || 0);
+      if (d.bowler_id && d.is_wicket && ['bowled','caught','lbw','stumped','hit_wicket'].includes(d.wicket_type)) {
+        bowlWkts[d.bowler_id] = (bowlWkts[d.bowler_id] || 0) + 1;
+      }
+    }
+    for (const [pid, runs] of Object.entries(batRuns)) {
+      for (const m of [50, 100]) {
+        const key = `bat-${m}-${pid}`;
+        if (runs >= m && !fired.has(key)) {
+          fired.add(key);
+          toast.success(`🏏 ${getName(pid)} ${m === 100 ? 'CENTURY' : 'FIFTY'}!`, { duration: 4000 });
+        }
+      }
+    }
+    for (const [pid, wkts] of Object.entries(bowlWkts)) {
+      for (const t of [3, 4, 5]) {
+        const key = `bowl-${t}w-${pid}`;
+        if (wkts >= t && !fired.has(key)) {
+          fired.add(key);
+          toast.success(`🎳 ${getName(pid)} takes ${t} wickets!`, { duration: 4000 });
+        }
+      }
+    }
+  }, [deliveries]);
+
   async function confirmEndMatch() {
     endingMatchRef.current = true;
     setWinConfirmOpen(false);
@@ -352,10 +392,26 @@ export default function LiveScoring() {
         winning_team_name: winConfirmInfo.winInfo.winner,
         winning_margin: winConfirmInfo.winInfo.margin,
       });
+      // Banner shows first; its "Continue" opens MoTM
     } else {
-      // All-out in 2nd innings — end innings then navigate to summary
-      await handleEndInnings();
+      // All-out in 2nd innings — end innings then show MoTM (no win banner)
+      await store.endInnings('manual');
+      setMotmOpen(true);
     }
+  }
+
+
+
+  async function handleMotmSave() {
+    if (motmPlayerId && !motmSaving) {
+      setMotmSaving(true);
+      try {
+        await matchService.updateMatch(id, { man_of_match_id: motmPlayerId });
+      } catch { /* non-critical — scorer can set from summary page */ }
+      setMotmSaving(false);
+    }
+    setMotmOpen(false);
+    navigate(`/matches/${id}/summary`);
   }
 
   async function undoFromWinConfirm() {
@@ -441,7 +497,40 @@ export default function LiveScoring() {
         )
     : null;
 
+  // Partnership: runs + balls since the last wicket
+  const partnershipStats = (() => {
+    let lastWicketIdx = -1;
+    for (let i = deliveries.length - 1; i >= 0; i--) {
+      if (deliveries[i].is_wicket) { lastWicketIdx = i; break; }
+    }
+    const since = deliveries.slice(lastWicketIdx + 1);
+    const runs = since.reduce((s, d) => s + (d.total_runs_on_delivery ?? 0), 0);
+    const balls = since.filter(d => d.extra_type !== 'wide').length;
+    return { runs, balls };
+  })();
+
+  // Chase meter: only in 2nd innings with a target
+  const chaseStats = (() => {
+    if (currentInnings?.innings_number !== 2 || !currentInnings?.target) return null;
+    if (!match?.total_overs) return null;
+    const { target, total_runs: currentRuns, total_legal_balls: ballsUsed } = currentInnings;
+    const totalBalls = match.total_overs * 6;
+    const ballsRemaining = Math.max(0, totalBalls - ballsUsed);
+    const runsNeeded = Math.max(0, target - currentRuns);
+    const crr = ballsUsed > 0 ? (currentRuns / ballsUsed) * 6 : 0;
+    const rrr = ballsRemaining > 0 ? (runsNeeded / ballsRemaining) * 6 : 0;
+    return { target, currentRuns, runsNeeded, ballsRemaining, ballsUsed, crr, rrr, progress: Math.min(1, currentRuns / target) };
+  })();
+
   const joker = jokerId ? matchPlayers.find(mp => mp.player_id === jokerId)?.players : null;
+
+  // All match players sorted by MoTM score for selection sheet
+  const allMatchPlayers = [...new Map(
+    matchPlayers.filter(mp => mp.players).map(mp => [mp.players.id, mp.players])
+  ).values()].sort((a, b) =>
+    calcMotmScore(b.id, battingScorecards, bowlingScorecards, []) -
+    calcMotmScore(a.id, battingScorecards, bowlingScorecards, [])
+  );
 
   async function needOpeners() {
     if (!striker || (!nonStriker && !lastManAlone)) {
@@ -515,7 +604,7 @@ export default function LiveScoring() {
       await store.startInnings(bowlingTeam, currentInnings.total_runs + 1);
       toast.success('Second innings started');
     } else {
-      navigate(`/matches/${id}/summary`);
+      setMotmOpen(true);
     }
   }
 
@@ -581,6 +670,16 @@ export default function LiveScoring() {
           />
         )}
 
+        {/* Partnership tracker */}
+        {striker && (
+          <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-ink-50 dark:bg-white/5 text-xs">
+            <span className="font-medium text-ink-600 dark:text-ink-300">Partnership</span>
+            <span className="font-semibold tabular-nums text-ink-900 dark:text-white">
+              {partnershipStats.runs} <span className="font-normal text-ink-400">({partnershipStats.balls}b)</span>
+            </span>
+          </div>
+        )}
+
         {bowlerObj ? (
           <div className="card p-3 flex items-center justify-between gap-2">
             <div className="flex-1 min-w-0">
@@ -616,6 +715,38 @@ export default function LiveScoring() {
           onCallToBat={() => toast('Send joker in via "Select opening batsmen" / new batsman flow')}
           onCallToBowl={() => setBowlerModalOpen(true)}
         />
+
+        {/* Chase meter — 2nd innings only */}
+        {chaseStats && (
+          <div className="card p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-ink-800 dark:text-white">
+                Need {chaseStats.runsNeeded} off {chaseStats.ballsRemaining} ball{chaseStats.ballsRemaining !== 1 ? 's' : ''}
+              </span>
+              <span className="text-ink-400">Target {chaseStats.target}</span>
+            </div>
+            <div className="h-2 rounded-full bg-ink-100 dark:bg-white/10 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-cricket-green transition-all duration-300"
+                style={{ width: `${chaseStats.progress * 100}%` }}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="bg-ink-50 dark:bg-white/5 rounded-lg py-1.5">
+                <p className="text-[10px] text-ink-400 uppercase tracking-wide">CRR</p>
+                <p className="text-sm font-bold tabular-nums text-ink-900 dark:text-white">
+                  {chaseStats.ballsUsed > 0 ? fmt(chaseStats.crr, 2) : '—'}
+                </p>
+              </div>
+              <div className={`rounded-lg py-1.5 ${chaseStats.rrr > chaseStats.crr ? 'bg-red-50 dark:bg-red-500/10' : 'bg-green-50 dark:bg-green-500/10'}`}>
+                <p className="text-[10px] text-ink-400 uppercase tracking-wide">RRR</p>
+                <p className={`text-sm font-bold tabular-nums ${chaseStats.rrr > chaseStats.crr ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                  {chaseStats.ballsRemaining > 0 ? fmt(chaseStats.rrr, 2) : '—'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* First innings summary — visible during 2nd innings */}
         {firstInningsData && (
@@ -690,7 +821,7 @@ export default function LiveScoring() {
         onSelect={handleNewBatsman}
       />
       <BowlerSelectModal open={bowlerModalOpen} onClose={() => setBowlerModalOpen(false)} eligible={eligibleBowlers} onSelect={handleBowlerSelect} forcedBowler={bowlingTeamPlayers.find(p => p.id === prevBowler)} />
-      <MatchResultBanner summary={result} onClose={() => navigate(`/matches/${id}/summary`)} />
+      <MatchResultBanner summary={result} onClose={() => { setResult(null); setMotmOpen(true); }} />
       <PlayerStatsDrawer />
       <ConfirmDialog
         open={abandonOpen}
@@ -746,6 +877,49 @@ export default function LiveScoring() {
               className="py-3 rounded-xl bg-brand-green text-white text-sm font-semibold"
             >
               End Match
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
+
+      {/* Man of the Match selection */}
+      <BottomSheet open={motmOpen} onClose={handleMotmSave} title="Man of the Match" heightClass="h-[70vh]">
+        <div className="space-y-3 pb-4">
+          <p className="text-xs text-ink-500 dark:text-ink-300">Select the standout performer — sorted by performance score.</p>
+          <div className="space-y-1">
+            {allMatchPlayers.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setMotmPlayerId(p.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
+                  motmPlayerId === p.id
+                    ? 'bg-cricket-gold/10 border border-cricket-gold/40 text-ink-900 dark:text-white'
+                    : 'hover:bg-ink-50 dark:hover:bg-white/5 text-ink-700 dark:text-ink-200'
+                }`}
+              >
+                <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                  motmPlayerId === p.id ? 'bg-cricket-gold text-white' : 'bg-ink-100 dark:bg-white/10 text-ink-500'
+                }`}>
+                  {p.name?.charAt(0).toUpperCase()}
+                </span>
+                <span className="font-medium">{p.name}</span>
+                {motmPlayerId === p.id && <span className="ml-auto text-cricket-gold">★</span>}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <button
+              onClick={() => { setMotmPlayerId(''); handleMotmSave(); }}
+              className="py-3 rounded-xl border border-ink-200 dark:border-white/10 text-sm font-semibold text-ink-600 dark:text-ink-300"
+            >
+              Skip
+            </button>
+            <button
+              onClick={handleMotmSave}
+              disabled={!motmPlayerId || motmSaving}
+              className="py-3 rounded-xl bg-cricket-gold text-white text-sm font-semibold disabled:opacity-50"
+            >
+              {motmSaving ? 'Saving…' : 'Confirm'}
             </button>
           </div>
         </div>

@@ -7,6 +7,21 @@ import PlayerAvatar from '../components/player/PlayerAvatar';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
 
+// ── MVP score formula ─────────────────────────────────────────────────────────
+function calcMvpScore(s) {
+  return (
+    (s.bat_runs || 0) * 0.5 +
+    (s.bowl_wickets || 0) * 20 +
+    (s.bat_fours || 0) * 1 +
+    (s.bat_sixes || 0) * 2 +
+    (s.bat_fifties || 0) * 10 +
+    (s.bat_hundreds || 0) * 25 +
+    (s.field_catches || 0) * 5 +
+    (s.field_stumpings || 0) * 5 +
+    (s.field_run_outs || 0) * 3
+  );
+}
+
 // ── Stat helpers ──────────────────────────────────────────────────────────────
 const batAvg   = s => { const o = (s.bat_innings||0)-(s.bat_not_outs||0); return o>0 ? s.bat_runs/o : (s.bat_runs>0 ? 999 : 0); };
 const batSR    = s => s.bat_balls>0 ? (s.bat_runs/s.bat_balls)*100 : 0;
@@ -18,6 +33,12 @@ const fmt      = (v, dec=2) => v===Infinity||v===999||v==null ? '—' : Number(v
 
 // ── Sort helpers ──────────────────────────────────────────────────────────────
 const SORTS = {
+  mvp: {
+    default: (a, b) => calcMvpScore(b) - calcMvpScore(a),
+    mvp_score: (a, b) => calcMvpScore(b) - calcMvpScore(a),
+    bat_runs: (a, b) => (b.bat_runs || 0) - (a.bat_runs || 0),
+    bowl_wickets: (a, b) => (b.bowl_wickets || 0) - (a.bowl_wickets || 0),
+  },
   batting: {
     default: (a,b) => b.bat_runs-a.bat_runs || batAvg(b)-batAvg(a) || batSR(b)-batSR(a),
     bat_runs:    (a,b) => b.bat_runs-a.bat_runs,
@@ -121,7 +142,12 @@ export default function Leaderboard() {
     .filter(s => (s.bowl_innings||0) > 0 && (s.bowl_wickets||0) > 0)
     .sort(sorter(sortKey));
 
-  const rows = tab === 'batting' ? battingRows : bowlingRows;
+  const mvpRows = stats
+    .filter(s => (s.bat_matches||0) >= 1)
+    .map(s => ({ ...s, _mvp: calcMvpScore(s) }))
+    .sort(sorter(sortKey));
+
+  const rows = tab === 'batting' ? battingRows : tab === 'bowling' ? bowlingRows : mvpRows;
 
   const sh = (label, key, cls) => (
     <SortHeader
@@ -163,6 +189,7 @@ export default function Leaderboard() {
         {[
           { key: 'batting', label: 'Batting' },
           { key: 'bowling', label: 'Bowling' },
+          { key: 'mvp', label: '🏆 MVP' },
         ].map(t => (
           <button
             key={t.key}
@@ -251,6 +278,36 @@ export default function Leaderboard() {
                       <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{fmt(bowlAvg(row))}</td>
                       <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{fmt(bowlEcon(row))}</td>
                       <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums">{bb(row)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
+
+            {/* ── MVP ── */}
+            {tab === 'mvp' && (
+              <>
+                <thead>
+                  <tr className="border-b border-ink-100 dark:border-white/10">
+                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide w-8">#</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Player</th>
+                    {sh('Score', 'mvp_score', '')}
+                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Breakdown</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mvpRows.map((row, i) => (
+                    <tr key={row.player_id} className="border-b border-ink-50 dark:border-white/5 last:border-0 hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
+                      <td className="px-3 py-2.5"><RankBadge rank={i+1} /></td>
+                      {playerCell(row)}
+                      <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums">{row._mvp.toFixed(1)}</td>
+                      <td className="px-3 py-2.5 text-xs text-ink-500 dark:text-ink-400 whitespace-nowrap">
+                        {[
+                          row.bat_runs > 0 && `${row.bat_runs}R`,
+                          row.bowl_wickets > 0 && `${row.bowl_wickets}W`,
+                          row.bat_sixes > 0 && `${row.bat_sixes}×6`,
+                        ].filter(Boolean).join(' · ') || '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

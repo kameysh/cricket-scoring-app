@@ -6,6 +6,8 @@ import { BattingSummaryGrid, RunBreakdownGrid, BowlingSummaryGrid, FieldingSumma
 import RunTypeChart from '../components/player/RunTypeChart';
 import WicketTypeDonut from '../components/player/WicketTypeDonut';
 import MatchHistoryTable from '../components/player/MatchHistoryTable';
+import FormSparkline from '../components/player/FormSparkline';
+import HeadToHeadPanel from '../components/player/HeadToHeadPanel';
 import * as playerService from '../services/playerService';
 import { useRole } from '../hooks/useRole';
 import { supabase } from '../lib/supabase';
@@ -14,7 +16,7 @@ import {
   calcBowlingStrikeRate, formatOvers, formatBestFigures, fmt,
 } from '../lib/cricketUtils';
 
-const TABS = ['Batting', 'Bowling', 'Fielding', 'Match History'];
+const TABS = ['Batting', 'Bowling', 'Fielding', 'Match History', 'H2H'];
 
 export default function PlayerProfile() {
   const { id } = useParams();
@@ -123,6 +125,7 @@ export default function PlayerProfile() {
       {tab === 0 && (
         <div className="space-y-3">
           <BattingSummaryGrid stats={s} derived={battingDerived} />
+          <FormSparkline history={history} />
           <RunBreakdownGrid stats={s} />
           <RunTypeChart stats={s} />
         </div>
@@ -138,6 +141,8 @@ export default function PlayerProfile() {
       {tab === 2 && <FieldingSummaryGrid stats={s} />}
 
       {tab === 3 && <MatchHistoryTable history={history} />}
+
+      {tab === 4 && <HeadToHeadPanel batsmanId={id} />}
     </div>
   );
 }

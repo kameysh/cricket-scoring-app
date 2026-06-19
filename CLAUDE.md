@@ -122,6 +122,26 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - `oversLimitOpen` state triggers BottomSheet when `total_legal_balls >= total_overs * 6`
 - BottomSheet has "Undo Last Ball" and "End Innings" actions
 - Guard: `if (winConfirmOpen) return` prevents conflict with win condition modal
+- **Partnership tracker:** `partnershipStats` IIFE computes runs+balls since last wicket; shown as pill below striker indicator
+- **Chase meter (2nd innings):** `chaseStats` IIFE computes CRR/RRR/progress; card shown only when `innings_number === 2` and `target` is set; RRR cell turns red when behind
+- **Milestone toasts:** `milestonesRef` Set tracks fired toasts; resets on innings change; fires once per batsman 50/100 and bowler 3/4/5 wickets
+- **MoTM flow:** After match ends, `MatchResultBanner` shows win celebration; clicking "Continue" closes it and opens MoTM `BottomSheet`; players sorted by `calcMotmScore`; confirm saves to `matches.man_of_match_id`; skip navigates without saving
+
+### `src/components/player/FormSparkline.jsx`
+- Props: `{ history: Array }` — filters batting rows from match history, slices last 10, renders `LineChart` (recharts) of runs
+- Custom tooltip shows runs/balls/SR per innings; not-out innings displayed with `*`
+
+### `src/components/match/MomentumGraph.jsx`
+- Props: `{ deliveries: Array }` — groups by `over_number`, sums runs (excludes byes/leg-byes), counts wickets
+- Bars turn red for overs with ≥1 wicket, green otherwise; tooltip: "Over N: X runs, Y wkt(s)"
+
+### `src/components/player/BatterSRChart.jsx`
+- Props: `{ deliveries: Array, batsmanId: string }` — filters by batsman, groups by over, computes SR
+- Color scale: green ≥150, blue ≥100, gold ≥50, red <50, gray =0 balls faced
+
+### `src/components/player/HeadToHeadPanel.jsx`
+- Props: `{ batsmanId: string }` — fetches via `getHeadToHeadAll()`, list of bowlers with B/R/Dis columns
+- Tapping a bowler drills into a 3×2 stat grid (balls, runs, dismissed, SR, dot%, 4s/6s)
 
 ### `src/pages/AdminUsers.jsx`
 - `friendlyInviteError(msg)` maps raw error strings to user-friendly messages
@@ -138,12 +158,24 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 
 ### `src/pages/Leaderboard.jsx`
 - Route: `/leaderboard` (any logged-in user)
-- Two tabs: **Batting** (runs → avg → SR), **Bowling** (wickets → avg → economy)
+- Three tabs: **Batting** (runs → avg → SR), **Bowling** (wickets → avg → economy), **MVP** (weighted points)
 - Only shows players with at least one innings in the relevant category; 0-wicket players excluded from Bowling tab
 - Column headers are tappable to re-sort; second tap reverses direction
 - Realtime: subscribes to `postgres_changes UPDATE` on `player_career_stats` — refreshes automatically when an innings completes
 - Live indicator (green pulsing dot) shown when any match has `status = 'in_progress'`
 - Bottom nav entry: "Rankings" tab with `BarChart2` icon
+- **MVP formula:** `runs×0.5 + wickets×20 + fours×1 + sixes×2 + fifties×10 + hundreds×25 + catches×5 + stumpings×5 + run_outs×3`
+
+### `src/pages/Scorecard.jsx`
+- Tap any batsman row → `BatterSRChart` BottomSheet shows SR per over for that batsman
+- `MomentumGraph` displayed above each innings block
+- MoTM player gets a `★` gold badge next to their name in the batting table; `motmId` sourced from `match.man_of_match.id` (joined in `getMatch`)
+
+### `src/pages/MatchSummary.jsx`
+- MoTM shown as gold card with Trophy icon when `match.man_of_match_id` is set
+- Off-screen 400px div (`cardRef`) captures rich share card: result, MoTM, top scorer, top bowler
+- Single "Share Result" button: Web Share API (mobile) → clipboard copy (desktop) → PNG download fallback
+- MoTM selector auto-suggests best performer by `calcMotmScore` when not yet set
 
 ---
 
@@ -176,6 +208,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `Venues.jsx` | Non-admin users could click venue cards and navigate to edit page (route wall, but confusing UX) | Cards are now plain `<div>` for non-admins; only admins get clickable `<button>` |
 | `PlayerEdit.jsx` | Auth check ran after DB fetch — unauthorized users triggered a player data fetch before being redirected | Rewritten to wait for auth loading to complete, then run permission check before fetching player |
 | `migrations/012` | `venues` and `tournaments` had no DELETE policy; 8 tables still on blanket `allow_all` from migration 001 | Added DELETE policies for venues/tournaments; replaced `allow_all` with role-scoped policies on all remaining tables |
+| `LiveScoring.jsx` | `MatchResultBanner` and MoTM BottomSheet both opened simultaneously — banner's "Continue" navigated without MoTM | Removed `setMotmOpen(true)` from win path; banner's `onClose` now closes banner then opens MoTM |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:

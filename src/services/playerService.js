@@ -167,3 +167,38 @@ export async function getMatchHistory(playerId, limit = 50, offset = 0) {
     return { match, batting: bat, bowling: bowl, fielding: field };
   });
 }
+
+export async function getHeadToHeadAll(batsmanId) {
+  const { data, error } = await supabase
+    .from('deliveries')
+    .select('bowler_id, bowler:players!bowler_id(id,name), runs_off_bat, extra_type, is_wicket, wicket_type')
+    .eq('batsman_id', batsmanId);
+  if (error) throw error;
+
+  const bowlerMap = new Map();
+  for (const d of data || []) {
+    if (!d.bowler_id) continue;
+    if (d.extra_type === 'wide') continue;
+    if (!bowlerMap.has(d.bowler_id)) {
+      bowlerMap.set(d.bowler_id, {
+        bowlerId: d.bowler_id,
+        bowlerName: d.bowler?.name || 'Unknown',
+        balls: 0, runs: 0, dismissals: 0, dots: 0, fours: 0, sixes: 0,
+      });
+    }
+    const e = bowlerMap.get(d.bowler_id);
+    e.balls += 1;
+    const r = d.runs_off_bat ?? 0;
+    e.runs += r;
+    if (r === 0) e.dots += 1;
+    if (r === 4) e.fours += 1;
+    if (r === 6) e.sixes += 1;
+    if (d.is_wicket && ['bowled','caught','lbw','stumped','hit_wicket'].includes(d.wicket_type)) {
+      e.dismissals += 1;
+    }
+  }
+
+  return Array.from(bowlerMap.values())
+    .map(e => ({ ...e, sr: e.balls > 0 ? (e.runs / e.balls) * 100 : 0, dotPct: e.balls > 0 ? (e.dots / e.balls) * 100 : 0 }))
+    .sort((a, b) => b.balls - a.balls);
+}

@@ -3,6 +3,9 @@ import { useParams } from 'react-router-dom';
 import * as matchService from '../services/matchService';
 import PlayerLink from '../components/player/PlayerLink';
 import { calcStrikeRate, calcEconomy, formatOvers, fmt } from '../lib/cricketUtils';
+import MomentumGraph from '../components/match/MomentumGraph';
+import BatterSRChart from '../components/player/BatterSRChart';
+import BottomSheet from '../components/shared/BottomSheet';
 
 function buildStatsFromDeliveries(deliveries) {
   // Batting: ordered by first appearance
@@ -118,7 +121,7 @@ function PlayerBadges({ pid, playerMeta }) {
   );
 }
 
-function InningsBlock({ innings, deliveries, playerMeta }) {
+function InningsBlock({ innings, deliveries, playerMeta, onBatterClick, motmId }) {
   const { batOrder, batMap, dismissalMap, bowlOrder, bowlMap, maidenMap } = buildStatsFromDeliveries(deliveries);
 
   const extras = deliveries.reduce((acc, d) => {
@@ -159,11 +162,16 @@ function InningsBlock({ innings, deliveries, playerMeta }) {
               const s = batMap.get(pid);
               const dis = dismissalMap.get(pid);
               return (
-                <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
+                <tr
+                  key={i}
+                  className="border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                  onClick={() => onBatterClick && onBatterClick(pid, s.name)}
+                >
                   <td className="py-2 pr-1 font-medium">
                     <span className="inline-flex items-center gap-0.5 flex-wrap">
                       <PlayerLink id={pid} name={s.name} />
                       <PlayerBadges pid={pid} playerMeta={playerMeta} />
+                      {pid === motmId && <span className="ml-0.5 text-[10px] text-cricket-gold" title="Man of the Match">★</span>}
                     </span>
                   </td>
                   <td className="py-2 px-1 text-gray-500 text-[11px]">{dismissalText(dis)}</td>
@@ -246,6 +254,7 @@ export default function Scorecard() {
   const [deliveriesMap, setDeliveriesMap] = useState({});
   const [playerMeta, setPlayerMeta] = useState(new Map());
   const [activeTab, setActiveTab] = useState(0);
+  const [srBatter, setSrBatter] = useState(null);
 
   useEffect(() => {
     matchService.getMatch(id).then(setMatch);
@@ -272,12 +281,23 @@ export default function Scorecard() {
 
   const active = inningsList[activeTab];
 
+  const motmId = match?.man_of_match?.id;
+  const activeDeliveries = deliveriesMap[active?.id] ?? [];
+
   return (
     <div className="p-4 space-y-4 page-transition">
       <h1 className="text-lg font-bold text-gray-900 dark:text-white">{match.team1_name} vs {match.team2_name}</h1>
+
       {match.man_of_match && (
-        <p className="text-sm">Man of the Match: <PlayerLink id={match.man_of_match.id} name={match.man_of_match.name} /></p>
+        <div className="flex items-center gap-3 p-3 rounded-2xl bg-cricket-gold/10 border border-cricket-gold/30">
+          <span className="text-cricket-gold text-lg">★</span>
+          <div>
+            <p className="text-[11px] font-semibold text-cricket-gold uppercase tracking-wider">Man of the Match</p>
+            <PlayerLink id={match.man_of_match.id} name={match.man_of_match.name} className="font-bold text-ink-900 dark:text-white" />
+          </div>
+        </div>
       )}
+
       <div className="flex gap-2">
         {inningsList.map((inn, i) => (
           <button key={inn.id} onClick={() => setActiveTab(i)} className={`px-3 py-1.5 rounded-full text-sm font-medium ${activeTab === i ? 'bg-cricket-green text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
@@ -285,12 +305,33 @@ export default function Scorecard() {
           </button>
         ))}
       </div>
-      {deliveriesMap[active?.id] && (
-        <InningsBlock innings={active} deliveries={deliveriesMap[active.id]} playerMeta={playerMeta} />
+
+      <MomentumGraph deliveries={activeDeliveries} />
+
+      {active && (
+        <InningsBlock
+          innings={active}
+          deliveries={activeDeliveries}
+          playerMeta={playerMeta}
+          motmId={motmId}
+          onBatterClick={(pid, name) => setSrBatter({ id: pid, name })}
+        />
       )}
+
       {playerMeta.size > 0 && (
-        <p className="text-[11px] text-ink-400 text-center pt-1">(C) Captain · (WK) Wicket Keeper</p>
+        <p className="text-[11px] text-ink-400 text-center pt-1">(C) Captain · (WK) Wicket Keeper · Tap a batsman row for SR chart</p>
       )}
+
+      <BottomSheet
+        open={!!srBatter}
+        onClose={() => setSrBatter(null)}
+        title={srBatter ? `${srBatter.name} — SR by Over` : ''}
+        heightClass="h-[50vh]"
+      >
+        {srBatter && (
+          <BatterSRChart deliveries={activeDeliveries} batsmanId={srBatter.id} />
+        )}
+      </BottomSheet>
     </div>
   );
 }
