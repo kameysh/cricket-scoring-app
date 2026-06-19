@@ -116,6 +116,7 @@ async function handleSubmit(data, photoFile) {
         onSubmit={handleSubmit}
         submitLabel={isPlayer ? 'Create My Profile' : 'Add Player'}
         appUsers={canManagePlayers ? appUsers : []}
+        isAdmin={canManagePlayers}
       />
     </div>
   );

@@ -334,6 +334,11 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                         Inactive
                       </span>
                     )}
+                    {player.is_guest && (
+                      <span className="absolute top-2 left-2 text-[9px] font-bold bg-amber-500/80 text-white px-1.5 py-0.5 rounded-full">
+                        Guest
+                      </span>
+                    )}
                     <div style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.25)' }} className="rounded-full">
                       <PlayerAvatar name={player.name} photoUrl={player.photo_url} size={110} />
                     </div>

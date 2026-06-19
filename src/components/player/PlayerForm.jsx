@@ -11,10 +11,12 @@ const schema = z.object({
   bowling_style: z.string().optional(),
 });
 
-// appUsers: [{ id, full_name, email }] — shown only on admin create path
-export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Player', appUsers = [] }) {
+// appUsers: [{ id, full_name, email }] — shown only on admin create/edit path
+// isAdmin: show guest toggle + link dropdown
+export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Player', appUsers = [], isAdmin = false }) {
   const [photoFile, setPhotoFile] = useState(null);
   const [linkedUserId, setLinkedUserId] = useState('');
+  const [isGuest, setIsGuest] = useState(initial?.is_guest ?? false);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: initial || { name: '', role: '', batting_style: '', bowling_style: '' },
@@ -22,7 +24,13 @@ export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Play
 
   return (
     <form
-      onSubmit={handleSubmit(data => onSubmit({ ...data, user_id: linkedUserId || undefined }, photoFile))}
+      onSubmit={handleSubmit(data => onSubmit({
+        ...data,
+        is_guest: isGuest,
+        user_id: linkedUserId || undefined,
+        // clear guest flag when linking to a real account
+        ...(linkedUserId ? { is_guest: false } : {}),
+      }, photoFile))}
       className="space-y-4"
     >
       <PhotoUploader name={initial?.name || 'New Player'} value={initial?.photo_url} onChange={setPhotoFile} />
@@ -71,7 +79,23 @@ export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Play
         </select>
       </div>
 
-      {appUsers.length > 0 && (
+      {isAdmin && (
+        <div className="flex items-center justify-between p-3 rounded-xl bg-ink-50 dark:bg-white/5 border border-ink-100 dark:border-white/10">
+          <div>
+            <p className="text-sm font-medium text-ink-700 dark:text-ink-200">Guest player</p>
+            <p className="text-xs text-ink-400 mt-0.5">No app account — playing as a guest</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setIsGuest(v => !v); if (!isGuest) setLinkedUserId(''); }}
+            className={`relative inline-flex items-center w-11 h-6 rounded-full transition-colors ${isGuest ? 'bg-brand-green' : 'bg-ink-200 dark:bg-white/20'}`}
+          >
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow transition-transform ${isGuest ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+      )}
+
+      {isAdmin && !isGuest && appUsers.length > 0 && (
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Link to user account <span className="text-ink-400 font-normal">(optional)</span>
