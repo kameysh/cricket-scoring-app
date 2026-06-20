@@ -87,6 +87,7 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 019 | `019_player_claim.sql` | **`players_claim_own` RLS policy — player-role user can UPDATE a row where `user_id IS NULL`, setting it to their own `auth.uid()`. Prevents duplicates when admin pre-creates a player before the user accepts their invite.** |
 | 020 | `020_guest_player.sql` | **`is_guest boolean default false` added to `players` — marks players added without an app account. Shown as amber "Guest" badge on carousel. Admin can link a guest to a real account later via PlayerEdit.** |
 | 021 | `021_team_players.sql` | **`is_guest boolean default false` added to `teams`; new `team_players` join table (team_id + player_id, PK) with RLS — admins/scorers insert/delete, all authenticated select. Powers guest team default roster feature.** |
+| 022 | `022_matches_played_counter.sql` | **`matches_played int default 0` added to `player_career_stats`; RPC `increment_matches_played(match_id)` increments counter for all squad members atomically; backfills existing completed matches. Called from `matchService.incrementMatchesPlayed()` alongside `autoAssignManOfMatch` on match completion.** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -406,7 +407,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `StrikerIndicator.jsx` | "Swap striker" button label ambiguous | Renamed to "Swap ends" |
 | `MatchSetupStepper.jsx` | Free-text team name inputs bypassed Teams registry — same team stored under different spellings, breaking HeadToHead + rename backfill | When `globalTeams.length > 0`, show registry dropdown + "Other / New team…" option; new names typed via Other are auto-registered via `teamService.addTeam()` on match creation |
 | `matchService.js` + `Home.jsx` | Matches listed newest-first — first played match appeared at bottom | Changed `listMatches()` to `ascending: true`; Home "Recent Matches" uses `slice(-3)` to show the 3 most recent in chronological order |
-| `Leaderboard.jsx` + `playerService.js` | "M" column showed matches batted/bowled, not total matches played — players in both matches showed 1M if they only batted in one | Added `getPlayerMatchCounts()` (counts from `match_players`); `totalM(row)` helper uses squad participation count as "M" in both Batting and Bowling tabs |
+| `Leaderboard.jsx` + `playerService.js` + `matchService.js` + `022_matches_played_counter.sql` | "M" column showed matches where player batted, not total matches in squad — no counter existed for squad participation | Added `matches_played` counter to `player_career_stats`; RPC `increment_matches_played` called atomically on match completion; migration backfills existing matches; leaderboard reads `row.matches_played` — single fast counter, no live query |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:
@@ -420,7 +421,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**9 test files, 169 tests — all passing:**
+**10 test files, 175 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -432,7 +433,8 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 | `src/components/scoring/StrikerIndicator.test.jsx` | Striker/nonStriker render, Swap ends, retire callback, expand breakdown |
 | `src/components/shared/ConfirmDialog.test.jsx` | open/closed state, danger style, confirm/cancel callbacks, disabled, type="button" |
 | `src/components/shared/BottomSheet.test.jsx` | open/closed, overflow lock/restore, backdrop/X close, noScroll |
-| `src/services/playerService.test.js` | getPlayerMatchCounts — distinct match counting, dedup, empty/null data, multi-player isolation |
+| `src/services/playerService.test.js` | getPlayerMatchCounts — distinct match counting, dedup, empty/null data, multi-player isolation; getPlayerInningsCounts — batting/bowling innings from live scorecard rows, yet_to_bat excluded, 0-legal-ball rows excluded |
+| `src/services/matchService.test.js` | incrementMatchesPlayed — correct RPC name + args, throws on DB error |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 

@@ -404,12 +404,12 @@ export default function LiveScoring() {
         winning_team_name: winConfirmInfo.winInfo.winner,
         winning_margin: winConfirmInfo.winInfo.margin,
       });
-      await matchService.autoAssignManOfMatch(id);
+      await Promise.all([matchService.autoAssignManOfMatch(id), matchService.incrementMatchesPlayed(id)]);
       // Banner shows; its "Continue" navigates to summary
     } else {
       // All-out in 2nd innings — end innings, auto-assign MoTM, navigate
       await store.endInnings('manual');
-      await matchService.autoAssignManOfMatch(id);
+      await Promise.all([matchService.autoAssignManOfMatch(id), matchService.incrementMatchesPlayed(id)]);
       navigate(`/matches/${id}/summary`);
     }
   }
@@ -631,7 +631,7 @@ export default function LiveScoring() {
       await store.startInnings(bowlingTeam, currentInnings.total_runs + 1);
       toast.success('Second innings started');
     } else {
-      await matchService.autoAssignManOfMatch(id);
+      await Promise.all([matchService.autoAssignManOfMatch(id), matchService.incrementMatchesPlayed(id)]);
       navigate(`/matches/${id}/summary`);
     }
   }

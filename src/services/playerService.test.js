@@ -7,7 +7,7 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-import { getPlayerMatchCounts } from './playerService';
+import { getPlayerMatchCounts, getPlayerInningsCounts } from './playerService';
 import { supabase } from '../lib/supabase';
 
 function mockFrom(data) {
@@ -62,5 +62,62 @@ describe('getPlayerMatchCounts', () => {
     expect(result['a']).toBe(1);
     expect(result['b']).toBe(2);
     expect(result['c']).toBe(2);
+  });
+});
+
+describe('getPlayerInningsCounts', () => {
+  it('counts batting innings excluding yet_to_bat rows', async () => {
+    supabase.from.mockImplementation(table => ({
+      select: vi.fn().mockResolvedValue({
+        data: table === 'batting_scorecards'
+          ? [
+              { player_id: 'p1', status: 'out' },
+              { player_id: 'p1', status: 'batting' },
+              { player_id: 'p2', status: 'yet_to_bat' },
+              { player_id: 'p2', status: 'out' },
+            ]
+          : [],
+        error: null,
+      }),
+    }));
+    const { batInnings } = await getPlayerInningsCounts();
+    expect(batInnings['p1']).toBe(2);
+    expect(batInnings['p2']).toBe(1); // yet_to_bat row excluded
+  });
+
+  it('counts bowling innings excluding rows with 0 legal balls', async () => {
+    supabase.from.mockImplementation(table => ({
+      select: vi.fn().mockResolvedValue({
+        data: table === 'bowling_scorecards'
+          ? [
+              { player_id: 'p1', legal_balls: 6 },
+              { player_id: 'p1', legal_balls: 0 },  // excluded
+              { player_id: 'p2', legal_balls: 3 },
+            ]
+          : [],
+        error: null,
+      }),
+    }));
+    const { bowlInnings } = await getPlayerInningsCounts();
+    expect(bowlInnings['p1']).toBe(1); // 0-ball row excluded
+    expect(bowlInnings['p2']).toBe(1);
+  });
+
+  it('returns empty objects when no scorecard rows exist', async () => {
+    supabase.from.mockImplementation(() => ({
+      select: vi.fn().mockResolvedValue({ data: [], error: null }),
+    }));
+    const { batInnings, bowlInnings } = await getPlayerInningsCounts();
+    expect(batInnings).toEqual({});
+    expect(bowlInnings).toEqual({});
+  });
+
+  it('handles null data from both tables', async () => {
+    supabase.from.mockImplementation(() => ({
+      select: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }));
+    const { batInnings, bowlInnings } = await getPlayerInningsCounts();
+    expect(batInnings).toEqual({});
+    expect(bowlInnings).toEqual({});
   });
 });

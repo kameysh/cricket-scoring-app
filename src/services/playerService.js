@@ -26,6 +26,29 @@ export async function getPlayerMatchCounts() {
   );
 }
 
+// Returns { batInnings: { [player_id]: count }, bowlInnings: { [player_id]: count } }
+// Computed live from scorecards — never drifts from actual data unlike RPC counters.
+export async function getPlayerInningsCounts() {
+  const [bat, bowl] = await Promise.all([
+    supabase.from('batting_scorecards').select('player_id, status'),
+    supabase.from('bowling_scorecards').select('player_id, legal_balls'),
+  ]);
+
+  const batInnings = {};
+  for (const row of bat.data || []) {
+    if (row.status === 'yet_to_bat') continue;
+    batInnings[row.player_id] = (batInnings[row.player_id] || 0) + 1;
+  }
+
+  const bowlInnings = {};
+  for (const row of bowl.data || []) {
+    if ((row.legal_balls || 0) === 0) continue;
+    bowlInnings[row.player_id] = (bowlInnings[row.player_id] || 0) + 1;
+  }
+
+  return { batInnings, bowlInnings };
+}
+
 export async function listPlayers({ search = '', activeOnly = false } = {}) {
   let q = supabase.from('players').select('*').order('name');
   if (activeOnly) q = q.eq('is_active', true);

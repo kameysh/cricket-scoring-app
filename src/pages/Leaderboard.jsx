@@ -45,7 +45,7 @@ const SORTS = {
     default: (a,b) => b.bat_runs-a.bat_runs || batAvg(b)-batAvg(a) || batSR(b)-batSR(a),
     bat_runs:    (a,b) => b.bat_runs-a.bat_runs,
     bat_innings: (a,b) => b.bat_innings-a.bat_innings,
-    bat_matches: (a,b) => b.bat_matches-a.bat_matches,
+    bat_matches: (a,b) => (b.matches_played??b.bat_matches??0)-(a.matches_played??a.bat_matches??0),
     avg:         (a,b) => batAvg(b)-batAvg(a),
     sr:          (a,b) => batSR(b)-batSR(a),
     bat_highest_score: (a,b) => (b.bat_highest_score||0)-(a.bat_highest_score||0),
@@ -55,7 +55,7 @@ const SORTS = {
   bowling: {
     default: (a,b) => b.bowl_wickets-a.bowl_wickets || bowlAvg(a)-bowlAvg(b) || bowlEcon(a)-bowlEcon(b),
     bowl_wickets: (a,b) => b.bowl_wickets-a.bowl_wickets,
-    bowl_matches: (a,b) => b.bowl_matches-a.bowl_matches,
+    bowl_matches: (a,b) => (b.matches_played??b.bowl_matches??0)-(a.matches_played??a.bowl_matches??0),
     bowl_runs:    (a,b) => b.bowl_runs-a.bowl_runs,
     avg:          (a,b) => bowlAvg(a)-bowlAvg(b),
     econ:         (a,b) => bowlEcon(a)-bowlEcon(b),
@@ -172,18 +172,11 @@ export default function Leaderboard() {
   const [sortDir, setSortDir] = useState('desc');
   const [liveMatch, setLiveMatch] = useState(false);
   const [mvpFormulaOpen, setMvpFormulaOpen] = useState(false);
-  const [matchCounts, setMatchCounts] = useState({});
-
   useEffect(() => {
-    // Initial load
-    Promise.all([
-      playerService.getAllCareerStats(),
-      playerService.getPlayerMatchCounts(),
-    ]).then(([data, counts]) => {
-      setStats(data);
-      setMatchCounts(counts);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    // Initial load — single query, all counters from player_career_stats
+    playerService.getAllCareerStats()
+      .then(data => { setStats(data); setLoading(false); })
+      .catch(() => setLoading(false));
 
     // Check for live match (one-shot)
     supabase.from('matches').select('id').eq('status', 'in_progress').limit(1)
@@ -237,7 +230,7 @@ export default function Leaderboard() {
     />
   );
 
-  const totalM = row => matchCounts[row.player_id] || Math.max(row.bat_matches || 0, row.bowl_matches || 0);
+  const totalM   = row => row.matches_played ?? row.bat_matches ?? 0;
 
   const stickyBg = 'bg-white dark:bg-ink-900';
 
@@ -342,7 +335,7 @@ export default function Leaderboard() {
                       {rankCell(i+1)}
                       {playerCell(row)}
                       <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{totalM(row)}</td>
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bat_innings||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bat_innings || 0}</td>
                       <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums whitespace-nowrap">{row.bat_runs||0}</td>
                       <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">
                         {row.bat_highest_score != null ? `${row.bat_highest_score}${row.bat_highest_score_not_out ? '*' : ''}` : '—'}

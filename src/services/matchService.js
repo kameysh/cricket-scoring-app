@@ -162,6 +162,11 @@ export async function autoAssignManOfMatch(matchId) {
   } catch { /* non-critical */ }
 }
 
+export async function incrementMatchesPlayed(matchId) {
+  const { error } = await supabase.rpc('increment_matches_played', { p_match_id: matchId });
+  if (error) throw error;
+}
+
 export async function autoAssignManOfSeries(tournamentId) {
   const { data: tourMatches } = await supabase
     .from('matches')
