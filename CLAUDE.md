@@ -23,7 +23,7 @@ Mobile-first cricket scoring PWA. React + Vite SPA, Supabase backend (PostgreSQL
 ---
 
 ## Tech Stack
-- **Frontend:** React 19, React Router v7, Zustand stores, react-hot-toast, lucide-react, recharts
+- **Frontend:** React 19, React Router v7, Zustand stores, react-hot-toast, lucide-react, recharts, satori (SVG card generation)
 - **Backend:** Supabase (PostgreSQL, RLS policies, Storage buckets, Auth, Edge Functions in Deno/TypeScript)
 - **Styling:** Tailwind CSS with custom design tokens (`ink-*`, `brand-green`, `brand-teal`)
 - **Forms:** react-hook-form + zod
@@ -257,11 +257,27 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 
 ### `src/components/match/PlayerMatchCardSheet.jsx`
 - Props: `{ open, onClose, player, match, inningsList, batStats, dismissal, bowlStats, bowlMaidens, deliveries }`
-- Renders an off-screen 360×640px `PerformanceCard` (9:16) captured by html2canvas at `scale: 3` → 1080×1920px PNG (Instagram/WhatsApp Story format). `PerformanceCard` uses inline styles throughout (not Tailwind) for reliable html2canvas rendering
-- Share flow: html2canvas → `navigator.share({files})` → clipboard → PNG download fallback (same pattern as MatchSummary)
-- Card sections: header strip, player avatar/initials + name + role, both team scores (from `inningsList`), batting stat grid (Runs/Balls/4s/6s + dismissal + SR), bowling stat grid (Overs/Mdns/Runs/Wkts + Econ — hidden when `bowlStats.legal_balls === 0`), result summary, watermark
-- Preview in sheet: same `PerformanceCard` JSX at `scale(0.72)` with `overflow:hidden` wrapper
+- **Satori-based** (not html2canvas) — generates 1080×1920px PNG via `generatePlayerCard()` from `src/lib/generateShareCard.jsx`
+- `useEffect([open, player?.id])` generates card on open; revokes previous object URL; shows spinner while generating
+- Preview: `<img src={cardUrl}>` in a 440px dark container — the exact exported PNG at display size
+- Share flow: blob → `navigator.share({files})` → `navigator.clipboard.write` → download fallback
 - "View SR Chart" secondary button opens nested BottomSheet with `BatterSRChart`
+
+### `src/lib/generateShareCard.jsx`
+- Exports `generatePlayerCard({ player, match, inningsList, batStats, dismissal, bowlStats })` → PNG Blob
+- Uses **satori** (Vercel) to render JSX → SVG → PNG via `canvas.toBlob`. No DOM screenshot — pixel-perfect across all devices
+- Font: Inter WOFF (400 + 700) loaded once from jsDelivr CDN, cached in module-level `_fonts`
+- Photo: fetched as base64 data URL per-URL, cached in `_photoCache`; gracefully falls back to initials avatar if no photo
+- Card is 1080×1920px **light design** (white background); sections: green gradient top band (app name + player's team badge), player identity (avatar left + name/role right), match scores (both teams, 🏆 on winner), green result strip (winning team name + summary), batting stats (Runs/Balls/SR + 4s/6s + dismissal), bowling 2×2 grid (Overs/Wickets top row, Runs/Economy bottom row — hidden when `legal_balls === 0`), footer watermark
+- **Player's team** sourced from `player.team` (integer 1/2 written into `playersMap` in Scorecard.jsx from `match_players.team`)
+- **Man of the Match badge**: gold "🏆 Man of the Match" pill next to the role pill, shown only when `match.man_of_match.id === player.id`
+- **Winner** sourced from `match.winning_team_name`; 🏆 badge shown on winning team score; green result strip shows winning team name + `match.result_summary`
+- **Vite config requirement:** `define: { global: 'globalThis', 'process.env': '{}', 'process.version': '"v18.0.0"', 'process.platform': '"browser"' }` — Satori's deps reference Node.js globals that don't exist in the browser
+- **Satori gotchas (hard-won):**
+  - **No React Fragments** (`<>...</>`) — Satori does not flatten them; a Fragment is treated as an offset flex item and indents its whole subtree. Wrap conditional groups in a real `<div style={{display:'flex',flexDirection:'column'}}>` instead. (This broke bowling-section column alignment until fixed.)
+  - Stat columns use explicit `width` + `flexShrink: 0`; an empty/whitespace cell collapses, so use `justifyContent: 'space-between'` to pin the two bowling values to the RUNS / STRIKE-RATE columns (centres 227 / 853 at 1080px width) rather than relying on a spacer cell.
+  - Every text container needs `justifyContent: 'center'` + `width: '100%'` to actually centre.
+  - **No emoji / special glyphs** — only the loaded Inter WOFF is available, so emoji (🏆) and symbols (★) render as tofu boxes. For icons, embed an inline SVG as a data-URI `<img>` (e.g. `TROPHY_DATA_URL` for the MoTM badge).
 
 ### `src/pages/Scorecard.jsx`
 - Tap any batsman row → `PlayerMatchCardSheet` opens with performance card preview + Share button + "View SR Chart" secondary
@@ -396,8 +412,8 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `Players.jsx` | "19 of 28" count wrapped inside pill on narrow screens; wouldn't scale to triple digits | Removed pill entirely; count is now inline `tabular-nums whitespace-nowrap` text — plain number when unfiltered, `19 / 28` (bold/lighter) when filtered. |
 | `Players.jsx` | Re-tapping a selected player in compare mode showed "Already selected" toast instead of deselecting | `handleSelectForCompare` now deselects on re-tap: clears p1 (promoting p2→p1) or clears p2. |
 | `PlayerCarousel.jsx` | "Tap" badge clipped by card's `rounded-3xl` corner at `top-3 right-3` | Moved to `top-4 right-4` with slightly more padding; badge now clear of rounded corner. |
-| `Scorecard.jsx` + `PlayerMatchCardSheet.jsx` (new) | No way to share individual player performance after a match | Tapping a batsman row or the share icon on a bowling row opens `PlayerMatchCardSheet` — shows a 9:16 performance card preview with player stats + both team scores; "Share Performance" generates 1080×1920px PNG via html2canvas scale 3; shares via Web Share API (mobile) → clipboard → download fallback |
-| `PlayerMatchCardSheet.jsx` | Saved PNG had skewed/italic-looking text — html2canvas captured transforms from positioned ancestor | Off-screen capture div moved to `document.body` via `createPortal` with `position:fixed left:-9999px`; added `windowWidth:360 windowHeight:640` to html2canvas options |
+| `Scorecard.jsx` + `PlayerMatchCardSheet.jsx` (new) | No way to share individual player performance after a match | Tapping a batsman row or the share icon on a bowling row opens `PlayerMatchCardSheet` — shows a 9:16 performance card preview with player stats + both team scores; "Share Performance" generates 1080×1920px PNG via Satori; shares via Web Share API (mobile) → clipboard → download fallback |
+| `PlayerMatchCardSheet.jsx` + `generateShareCard.jsx` | html2canvas produced skewed/inconsistent cards across devices | **Replaced html2canvas with Satori** — renders JSX → SVG → PNG entirely in JS; pixel-perfect on every device; no DOM screenshot. Requires `vite.config.js` `define` block for Node.js globals polyfill. |
 | `BallLog.jsx` + `LiveScoring.jsx` | Ball popover showed blank batsman/bowler names — in-session delivery objects only have IDs, no joined name objects | Added `matchPlayers` prop to `BallLog`; `resolveName(id, joinedObj)` helper falls back to `matchPlayers` lookup when joined data is absent |
 | `matchStore.js` | App hangs when scoring rapidly — no concurrency lock on `scoreBall()` → double-tap caused two parallel DB writes with same ball number | Added `scoringInProgress: false` state; `scoreBall()` returns null immediately on re-entry; `finally` always clears flag |
 | `BallInputPanel.jsx` | No-ball + 6 runs not available — extras run selector capped at 5 for all extra types | `extraRunOptions` function returns `[0,1,2,3,4,6]` for no_ball and `[0,1,2,3,4,5]` for all others; 6 button styled in teal |
@@ -421,7 +437,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**10 test files, 175 tests — all passing:**
+**11 test files, 192 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -435,6 +451,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 | `src/components/shared/BottomSheet.test.jsx` | open/closed, overflow lock/restore, backdrop/X close, noScroll |
 | `src/services/playerService.test.js` | getPlayerMatchCounts — distinct match counting, dedup, empty/null data, multi-player isolation; getPlayerInningsCounts — batting/bowling innings from live scorecard rows, yet_to_bat excluded, 0-legal-ball rows excluded |
 | `src/services/matchService.test.js` | incrementMatchesPlayed — correct RPC name + args, throws on DB error |
+| `src/lib/generateShareCard.test.jsx` | getInitials, calcSR, calcEcon, dismissalText — pure helper functions for Satori card generation |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 

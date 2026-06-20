@@ -288,8 +288,9 @@ export default function Scorecard() {
         meta.set(row.player_id, {
           isCaptain: row.is_captain === true,
           isWicketKeeper: row.players?.role === 'wicket_keeper',
+          team: row.team,
         });
-        if (row.players) pMap[row.player_id] = row.players;
+        if (row.players) pMap[row.player_id] = { ...row.players, team: row.team };
       }
       setPlayerMeta(meta);
       setPlayersMap(pMap);
