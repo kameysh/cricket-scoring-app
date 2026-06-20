@@ -11,17 +11,22 @@ const EXTRA_BUTTONS = [
   { key: 'penalty_batting', label: 'Penalty' },
 ];
 
-// Monochrome by default; color is reserved for the two boundary values so they pop at a glance.
+// No-ball allows 6 off the bat; wide/bye/leg-bye cap at 5
+function extraRunOptions(extraType) {
+  return extraType === 'no_ball' ? [0, 1, 2, 3, 4, 6] : [0, 1, 2, 3, 4, 5];
+}
+
 function runButtonClass(r) {
   if (r === 4) return 'bg-gradient-to-br from-brand-green to-brand-teal text-white';
   if (r === 6) return 'bg-gradient-to-br from-brand-teal to-brand-blue text-white';
   return 'bg-ink-900 dark:bg-white text-white dark:text-ink-900';
 }
 
-export default function BallInputPanel({ onRuns, onExtra, onWicket, onUndo, undoDisabled }) {
+export default function BallInputPanel({ onRuns, onExtra, onWicket, onUndo, undoDisabled, disabled = false }) {
   const [extraSheet, setExtraSheet] = useState(null);
 
   function openExtra(key) {
+    if (disabled) return;
     if (key === 'penalty_batting') {
       onExtra(key, 5);
       return;
@@ -36,7 +41,7 @@ export default function BallInputPanel({ onRuns, onExtra, onWicket, onUndo, undo
   }
 
   return (
-    <div className="p-3 bg-white dark:bg-ink-900 border-t border-ink-100 dark:border-white/5 space-y-2">
+    <div className={`p-3 bg-white dark:bg-ink-900 border-t border-ink-100 dark:border-white/5 space-y-2 transition-opacity ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
       <div className="grid grid-cols-6 gap-1.5">
         {RUN_BUTTONS.map(r => (
           <button
@@ -71,11 +76,11 @@ export default function BallInputPanel({ onRuns, onExtra, onWicket, onUndo, undo
           <div className="bg-white dark:bg-ink-800 w-full rounded-t-3xl px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()}>
             <h4 className="font-semibold mb-3 capitalize text-ink-900 dark:text-white">{extraSheet.replace('_', ' ')} — select runs</h4>
             <div className="grid grid-cols-6 gap-2">
-              {[0, 1, 2, 3, 4, 5].map(n => (
+              {extraRunOptions(extraSheet).map(n => (
                 <button
                   key={n}
                   onClick={() => selectExtraRuns(n)}
-                  className="min-h-[52px] rounded-xl font-bold text-base bg-ink-900 dark:bg-white text-white dark:text-ink-900 active:scale-95 transition-transform"
+                  className={`min-h-[52px] rounded-xl font-bold text-base active:scale-95 transition-transform ${n === 6 ? 'bg-gradient-to-br from-brand-teal to-brand-blue text-white' : 'bg-ink-900 dark:bg-white text-white dark:text-ink-900'}`}
                 >
                   {n}
                 </button>

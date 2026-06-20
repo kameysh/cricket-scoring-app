@@ -50,7 +50,7 @@ export default function Home() {
   }
 
   const live = matches.filter(m => m.status === 'live' || m.status === 'paused');
-  const recent = matches.filter(m => m.status === 'completed').slice(0, 3);
+  const recent = matches.filter(m => m.status === 'completed').slice(-3);
   const topScorer = allStats.length > 0 ? allStats[0] : null; // already sorted by bat_runs desc
   const topWickets = [...allStats].sort((a, b) => b.bowl_wickets - a.bowl_wickets).find(s => s.bowl_wickets > 0) || null;
   const activeTournament = tournaments.find(t => t.status !== 'completed') || null;

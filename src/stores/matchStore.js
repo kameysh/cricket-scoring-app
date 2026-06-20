@@ -32,6 +32,7 @@ export const useMatchStore = create((set, get) => ({
   undoAvailable: false,
   isOnline: navigator.onLine,
   isLoading: false,
+  scoringInProgress: false,
   jokerCalledIn: false,
   statsDrawerPlayerId: null,
 
@@ -95,10 +96,18 @@ export const useMatchStore = create((set, get) => ({
     set({ keeper: keeperId });
   },
 
-  swapStriker() {
-    const { striker, nonStriker } = get();
-    if (!nonStriker) return; // last man standing — nothing to swap
+  async swapStriker() {
+    const { striker, nonStriker, deliveries } = get();
+    if (!nonStriker) return;
     set({ striker: nonStriker, nonStriker: striker });
+    // Persist so the swap survives a page reload
+    const lastDelivery = deliveries[deliveries.length - 1];
+    if (lastDelivery?.id) {
+      await supabase.from('deliveries').update({
+        striker_after: lastDelivery.non_striker_after,
+        non_striker_after: lastDelivery.striker_after,
+      }).eq('id', lastDelivery.id);
+    }
   },
 
   async retireBatsman(playerId, status = 'retired_hurt') {
@@ -118,6 +127,16 @@ export const useMatchStore = create((set, get) => ({
   },
 
   async scoreBall({ runsOffBat = 0, extraType = 'none', extraRuns = 0, isWicket = false, wicketType = null, fielderId = null, batsmanOutId = null, isJokerBatting = false, isJokerBowling = false }) {
+    if (get().scoringInProgress) return null;
+    set({ scoringInProgress: true });
+    try {
+    return await get()._scoreBallInner({ runsOffBat, extraType, extraRuns, isWicket, wicketType, fielderId, batsmanOutId, isJokerBatting, isJokerBowling });
+    } finally {
+      set({ scoringInProgress: false });
+    }
+  },
+
+  async _scoreBallInner({ runsOffBat = 0, extraType = 'none', extraRuns = 0, isWicket = false, wicketType = null, fielderId = null, batsmanOutId = null, isJokerBatting = false, isJokerBowling = false }) {
     const state = get();
     const { currentInnings, striker, nonStriker, bowler, match, freeHit, deliveries } = state;
     // Allow nonStriker=null only when last man is batting alone (LMS mode + no remaining candidates)
@@ -279,7 +298,7 @@ export const useMatchStore = create((set, get) => ({
       match: null, matchPlayers: [], innings: [], currentInnings: null,
       battingScorecards: [], bowlingScorecards: [], fieldingScorecards: [], deliveries: [],
       striker: null, nonStriker: null, bowler: null, prevBowler: null, keeper: null, freeHit: false,
-      undoAvailable: false, jokerCalledIn: false, statsDrawerPlayerId: null,
+      undoAvailable: false, scoringInProgress: false, jokerCalledIn: false, statsDrawerPlayerId: null,
     });
   },
 }));

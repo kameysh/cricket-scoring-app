@@ -56,7 +56,7 @@ export default function StrikerIndicator({ striker, nonStriker, strikerCard, non
       )}
       {nonStriker && (
         <button onClick={onSwap} className="mt-1 flex items-center gap-1 text-xs text-cricket-green dark:text-cricket-gold">
-          <Repeat size={12} /> Swap striker
+          <Repeat size={12} /> Swap ends
         </button>
       )}
     </div>

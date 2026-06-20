@@ -216,7 +216,7 @@ export default function LiveScoring() {
   const navigate = useNavigate();
   const { isOnline } = useOfflineSync();
   const store = useMatchStore();
-  const { match, matchPlayers, currentInnings, innings, battingScorecards, bowlingScorecards, striker, nonStriker, bowler, prevBowler, keeper, freeHit, deliveries, undoAvailable } = store;
+  const { match, matchPlayers, currentInnings, innings, battingScorecards, bowlingScorecards, striker, nonStriker, bowler, prevBowler, keeper, freeHit, deliveries, undoAvailable, scoringInProgress } = store;
 
   const [wicketOpen, setWicketOpen] = useState(false);
   const [newBatsmanOpen, setNewBatsmanOpen] = useState(false);
@@ -841,6 +841,7 @@ export default function LiveScoring() {
           onWicket={() => setWicketOpen(true)}
           onUndo={store.undo}
           undoDisabled={!undoAvailable}
+          disabled={scoringInProgress}
         />
       </div>
 

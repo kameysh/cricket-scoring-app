@@ -5,7 +5,7 @@ export async function listMatches() {
   const { data, error } = await supabase
     .from('matches')
     .select('*, venues(name,city), tournaments(name)')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: true });
   if (error) throw error;
   return data;
 }

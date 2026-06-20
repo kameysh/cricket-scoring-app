@@ -29,6 +29,8 @@ export default function MatchSetupStepper() {
 
   const [tournamentTeams, setTournamentTeams] = useState([]);
   const [globalTeams, setGlobalTeams] = useState([]);
+  const [team1Other, setTeam1Other] = useState(false);
+  const [team2Other, setTeam2Other] = useState(false);
   const [form, setForm] = useState({
     tournament_id: '', venue_id: '', total_overs: 20, team_size: 11,
     team1_name: 'Team A', team2_name: 'Team B',
@@ -44,7 +46,11 @@ export default function MatchSetupStepper() {
     fetchPlayers({ activeOnly: true });
     venueService.listVenues().then(setVenues);
     tournamentService.listTournaments().then(setTournaments);
-    teamService.listTeams().then(setGlobalTeams).catch(err => console.error('Failed to load teams:', err));
+    teamService.listTeams().then(teams => {
+      setGlobalTeams(teams);
+      // Reset defaults so the select shows the placeholder, not 'Team A'/'Team B'
+      if (teams.length > 0) setForm(f => ({ ...f, team1_name: '', team2_name: '' }));
+    }).catch(err => console.error('Failed to load teams:', err));
   }, []);
 
   useEffect(() => {
@@ -172,6 +178,16 @@ export default function MatchSetupStepper() {
       }
     }
     try {
+      // Auto-register new team names typed via "Other / New team…" into the Teams registry
+      const t1 = form.team1_name.trim();
+      const t2 = form.team2_name.trim();
+      if (team1Other && t1 && !globalTeams.find(t => t.name === t1)) {
+        teamService.addTeam(t1).catch(() => {}); // non-blocking, best-effort
+      }
+      if (team2Other && t2 && !globalTeams.find(t => t.name === t2)) {
+        teamService.addTeam(t2).catch(() => {}); // non-blocking, best-effort
+      }
+
       const joker_player_id = form.jokerId || null;
       const match = await matchService.createMatch({
         tournament_id: form.tournament_id || null,
@@ -321,12 +337,31 @@ export default function MatchSetupStepper() {
                   ))}
                 </select>
               ) : globalTeams.length > 0 ? (
-                <select value={form.team1_name} onChange={e => { set({ team1_name: e.target.value }); applyGuestTeam(e.target.value, 1); }} className="field-input">
-                  <option value="">Select team…</option>
-                  {globalTeams.filter(t => t.name !== form.team2_name).map(t => (
-                    <option key={t.id} value={t.name}>{t.is_guest ? `${t.name} ★` : t.name}</option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    value={team1Other ? '__other__' : form.team1_name}
+                    onChange={e => {
+                      if (e.target.value === '__other__') { setTeam1Other(true); set({ team1_name: '' }); }
+                      else { setTeam1Other(false); set({ team1_name: e.target.value }); applyGuestTeam(e.target.value, 1); }
+                    }}
+                    className="field-input"
+                  >
+                    <option value="">Select team…</option>
+                    {globalTeams.filter(t => t.name !== form.team2_name).map(t => (
+                      <option key={t.id} value={t.name}>{t.is_guest ? `${t.name} ★` : t.name}</option>
+                    ))}
+                    <option value="__other__">Other / New team…</option>
+                  </select>
+                  {team1Other && (
+                    <input
+                      autoFocus
+                      value={form.team1_name}
+                      onChange={e => set({ team1_name: e.target.value })}
+                      placeholder="Type new team name"
+                      className="field-input mt-1.5"
+                    />
+                  )}
+                </>
               ) : (
                 <input value={form.team1_name} onChange={e => set({ team1_name: e.target.value })} className="field-input" />
               )}
@@ -340,12 +375,31 @@ export default function MatchSetupStepper() {
                   ))}
                 </select>
               ) : globalTeams.length > 0 ? (
-                <select value={form.team2_name} onChange={e => { set({ team2_name: e.target.value }); applyGuestTeam(e.target.value, 2); }} className="field-input">
-                  <option value="">Select team…</option>
-                  {globalTeams.filter(t => t.name !== form.team1_name).map(t => (
-                    <option key={t.id} value={t.name}>{t.is_guest ? `${t.name} ★` : t.name}</option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    value={team2Other ? '__other__' : form.team2_name}
+                    onChange={e => {
+                      if (e.target.value === '__other__') { setTeam2Other(true); set({ team2_name: '' }); }
+                      else { setTeam2Other(false); set({ team2_name: e.target.value }); applyGuestTeam(e.target.value, 2); }
+                    }}
+                    className="field-input"
+                  >
+                    <option value="">Select team…</option>
+                    {globalTeams.filter(t => t.name !== form.team1_name).map(t => (
+                      <option key={t.id} value={t.name}>{t.is_guest ? `${t.name} ★` : t.name}</option>
+                    ))}
+                    <option value="__other__">Other / New team…</option>
+                  </select>
+                  {team2Other && (
+                    <input
+                      autoFocus
+                      value={form.team2_name}
+                      onChange={e => set({ team2_name: e.target.value })}
+                      placeholder="Type new team name"
+                      className="field-input mt-1.5"
+                    />
+                  )}
+                </>
               ) : (
                 <input value={form.team2_name} onChange={e => set({ team2_name: e.target.value })} className="field-input" />
               )}
