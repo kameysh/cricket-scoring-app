@@ -9,6 +9,23 @@ export async function getAllCareerStats() {
   return data || [];
 }
 
+// Returns { [player_id]: totalMatchesPlayed } counted from match_players (squad participation).
+// This is different from bat_matches/bowl_matches which only count matches the player batted/bowled in.
+export async function getPlayerMatchCounts() {
+  const { data, error } = await supabase
+    .from('match_players')
+    .select('player_id, match_id');
+  if (error) throw error;
+  const counts = {};
+  for (const row of data || []) {
+    if (!counts[row.player_id]) counts[row.player_id] = new Set();
+    counts[row.player_id].add(row.match_id);
+  }
+  return Object.fromEntries(
+    Object.entries(counts).map(([id, set]) => [id, set.size])
+  );
+}
+
 export async function listPlayers({ search = '', activeOnly = false } = {}) {
   let q = supabase.from('players').select('*').order('name');
   if (activeOnly) q = q.eq('is_active', true);

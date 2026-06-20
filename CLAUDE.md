@@ -406,6 +406,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `StrikerIndicator.jsx` | "Swap striker" button label ambiguous | Renamed to "Swap ends" |
 | `MatchSetupStepper.jsx` | Free-text team name inputs bypassed Teams registry — same team stored under different spellings, breaking HeadToHead + rename backfill | When `globalTeams.length > 0`, show registry dropdown + "Other / New team…" option; new names typed via Other are auto-registered via `teamService.addTeam()` on match creation |
 | `matchService.js` + `Home.jsx` | Matches listed newest-first — first played match appeared at bottom | Changed `listMatches()` to `ascending: true`; Home "Recent Matches" uses `slice(-3)` to show the 3 most recent in chronological order |
+| `Leaderboard.jsx` + `playerService.js` | "M" column showed matches batted/bowled, not total matches played — players in both matches showed 1M if they only batted in one | Added `getPlayerMatchCounts()` (counts from `match_players`); `totalM(row)` helper uses squad participation count as "M" in both Batting and Bowling tabs |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:
@@ -419,7 +420,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**8 test files, 164 tests — all passing:**
+**9 test files, 169 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -431,6 +432,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 | `src/components/scoring/StrikerIndicator.test.jsx` | Striker/nonStriker render, Swap ends, retire callback, expand breakdown |
 | `src/components/shared/ConfirmDialog.test.jsx` | open/closed state, danger style, confirm/cancel callbacks, disabled, type="button" |
 | `src/components/shared/BottomSheet.test.jsx` | open/closed, overflow lock/restore, backdrop/X close, noScroll |
+| `src/services/playerService.test.js` | getPlayerMatchCounts — distinct match counting, dedup, empty/null data, multi-player isolation |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 

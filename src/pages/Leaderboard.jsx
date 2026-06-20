@@ -172,12 +172,18 @@ export default function Leaderboard() {
   const [sortDir, setSortDir] = useState('desc');
   const [liveMatch, setLiveMatch] = useState(false);
   const [mvpFormulaOpen, setMvpFormulaOpen] = useState(false);
+  const [matchCounts, setMatchCounts] = useState({});
 
   useEffect(() => {
     // Initial load
-    playerService.getAllCareerStats()
-      .then(data => { setStats(data); setLoading(false); })
-      .catch(() => setLoading(false));
+    Promise.all([
+      playerService.getAllCareerStats(),
+      playerService.getPlayerMatchCounts(),
+    ]).then(([data, counts]) => {
+      setStats(data);
+      setMatchCounts(counts);
+      setLoading(false);
+    }).catch(() => setLoading(false));
 
     // Check for live match (one-shot)
     supabase.from('matches').select('id').eq('status', 'in_progress').limit(1)
@@ -230,6 +236,8 @@ export default function Leaderboard() {
       onSort={handleSort} className={cls}
     />
   );
+
+  const totalM = row => matchCounts[row.player_id] || Math.max(row.bat_matches || 0, row.bowl_matches || 0);
 
   const stickyBg = 'bg-white dark:bg-ink-900';
 
@@ -333,7 +341,7 @@ export default function Leaderboard() {
                     <tr key={row.player_id} className="border-b border-ink-50 dark:border-white/5 last:border-0 hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
                       {rankCell(i+1)}
                       {playerCell(row)}
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bat_matches||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{totalM(row)}</td>
                       <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bat_innings||0}</td>
                       <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums whitespace-nowrap">{row.bat_runs||0}</td>
                       <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">
@@ -370,7 +378,7 @@ export default function Leaderboard() {
                     <tr key={row.player_id} className="border-b border-ink-50 dark:border-white/5 last:border-0 hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
                       {rankCell(i+1)}
                       {playerCell(row)}
-                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bowl_matches||0}</td>
+                      <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{totalM(row)}</td>
                       <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums whitespace-nowrap">{row.bowl_wickets||0}</td>
                       <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{overs(row)}</td>
                       <td className="px-2 py-2.5 text-right text-xs text-ink-600 dark:text-ink-300 tabular-nums whitespace-nowrap">{row.bowl_runs||0}</td>
