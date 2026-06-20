@@ -173,7 +173,7 @@ function InningsBlock({ innings, deliveries, playerMeta, playersMap, onBatterCli
                   onClick={() => onBatterClick && onBatterClick(pid, s.name)}
                 >
                   <td className="py-2 pr-1 font-medium">
-                    <span className="inline-flex items-center gap-0.5 flex-wrap">
+                    <span className="inline-flex items-center gap-0.5 whitespace-nowrap">
                       <PlayerLink id={pid} name={s.name} />
                       <PlayerBadges pid={pid} playerMeta={playerMeta} />
                       {pid === motmId && <span className="ml-0.5 text-[10px] text-cricket-gold" title="Man of the Match">★</span>}
