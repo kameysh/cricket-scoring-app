@@ -20,9 +20,16 @@ function chipColor(d) {
   return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200';
 }
 
-export default function BallLog({ deliveries }) {
+export default function BallLog({ deliveries, matchPlayers = [] }) {
   const [popover, setPopover] = useState(null);
   const recent = deliveries.slice(-24);
+
+  // Deliveries added during the session carry only IDs (no joined name objects).
+  // Fall back to matchPlayers lookup so names always show in the popover.
+  function resolveName(id, joinedObj) {
+    if (joinedObj?.name) return joinedObj.name;
+    return matchPlayers.find(mp => mp.players?.id === id)?.players?.name || null;
+  }
 
   return (
     <div className="card p-3">
@@ -43,8 +50,8 @@ export default function BallLog({ deliveries }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPopover(null)}>
           <div className="card p-4 max-w-xs w-full text-sm space-y-1" onClick={e => e.stopPropagation()}>
             <p>Over {popover.over_number}.{popover.ball_number}</p>
-            <p>Batsman: <PlayerLink id={popover.batsman_id} name={popover.batsman?.name} liveScoring /></p>
-            <p>Bowler: <PlayerLink id={popover.bowler_id} name={popover.bowler?.name} liveScoring /></p>
+            <p>Batsman: <PlayerLink id={popover.batsman_id} name={resolveName(popover.batsman_id, popover.batsman)} liveScoring /></p>
+            <p>Bowler: <PlayerLink id={popover.bowler_id} name={resolveName(popover.bowler_id, popover.bowler)} liveScoring /></p>
             <p>Runs: {popover.total_runs_on_delivery}{popover.is_wicket ? ' · WICKET' : ''}</p>
           </div>
         </div>

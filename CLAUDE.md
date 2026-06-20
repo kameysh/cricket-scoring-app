@@ -391,6 +391,8 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `Players.jsx` | Re-tapping a selected player in compare mode showed "Already selected" toast instead of deselecting | `handleSelectForCompare` now deselects on re-tap: clears p1 (promoting p2→p1) or clears p2. |
 | `PlayerCarousel.jsx` | "Tap" badge clipped by card's `rounded-3xl` corner at `top-3 right-3` | Moved to `top-4 right-4` with slightly more padding; badge now clear of rounded corner. |
 | `Scorecard.jsx` + `PlayerMatchCardSheet.jsx` (new) | No way to share individual player performance after a match | Tapping a batsman row or the share icon on a bowling row opens `PlayerMatchCardSheet` — shows a 9:16 performance card preview with player stats + both team scores; "Share Performance" generates 1080×1920px PNG via html2canvas scale 3; shares via Web Share API (mobile) → clipboard → download fallback |
+| `PlayerMatchCardSheet.jsx` | Saved PNG had skewed/italic-looking text — html2canvas captured transforms from positioned ancestor | Off-screen capture div moved to `document.body` via `createPortal` with `position:fixed left:-9999px`; added `windowWidth:360 windowHeight:640` to html2canvas options |
+| `BallLog.jsx` + `LiveScoring.jsx` | Ball popover showed blank batsman/bowler names — in-session delivery objects only have IDs, no joined name objects | Added `matchPlayers` prop to `BallLog`; `resolveName(id, joinedObj)` helper falls back to `matchPlayers` lookup when joined data is absent |
 
 ## Supabase Realtime Prerequisite
 For auto-logout on user removal to work, `app_users` must have Replication enabled:

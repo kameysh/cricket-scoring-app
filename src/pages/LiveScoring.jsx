@@ -830,7 +830,7 @@ export default function LiveScoring() {
           deliveries={deliveries}
         />
 
-        <BallLog deliveries={deliveries} />
+        <BallLog deliveries={deliveries} matchPlayers={matchPlayers} />
 
       </div>
 
