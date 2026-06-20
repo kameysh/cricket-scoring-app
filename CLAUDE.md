@@ -5,6 +5,11 @@
 1. **Self-audit after every change set.** Before reporting a task as done, re-read every file touched and check for: logic errors, missing null guards, unhandled async errors, state not reset, RLS gaps, and broken flows introduced by the change. Fix anything found.
 2. **After fixes pass self-audit**, update `CLAUDE.md` and the memory files to reflect what changed.
 3. **End every task** with a one-paragraph summary of what changed, and a clear merge recommendation (safe / needs testing / not ready).
+4. **Test-then-build gate (no exceptions).** For every code change — no matter how small — before reporting done:
+   a. Write or update test cases covering the changed behaviour.
+   b. Run `npm test` and confirm all tests pass (fix source logic if tests reveal bugs — never weaken tests).
+   c. Run `npm run build` and confirm zero errors.
+   Only after both pass is the task considered complete. Deliver the final `CLAUDE.md` update as part of the same response.
 
 ---
 
@@ -408,6 +413,28 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 
 ---
 
+## Test Suite
+
+**Stack:** Vitest + jsdom + @testing-library/react + @testing-library/user-event + @testing-library/jest-dom  
+**Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
+**Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
+
+**8 test files, 164 tests — all passing:**
+
+| File | What's tested |
+|------|---------------|
+| `src/lib/cricketUtils.test.js` | formatOvers, calcCRR/RRR/NRR, calcStrikeRate/Average/Economy, formatBestFigures, isMaiden, detectHatTrick, deriveRunType, applyStrikerSwap, calcWinByWickets/Runs, round, fmt, computeBadges (all 7 badges), calcMotmScore, pickMotm |
+| `src/services/scoringService.test.js` | checkWinCondition — all 6 paths (innings 1, win by wickets, last-ball win, win by runs all-out, win by runs overs, tie) |
+| `src/hooks/useRole.test.js` | All 5 roles × all capability flags |
+| `src/components/scoring/BallInputPanel.test.jsx` | Run buttons, extras, no-ball+6, disabled state, Penalty immediate call, WICKET |
+| `src/components/scoring/BallLog.test.jsx` | Chip labels (dot/4/W/wd+N/nb+N/Nb/Lb), 24-chip limit, popover, resolveName fallback |
+| `src/components/scoring/StrikerIndicator.test.jsx` | Striker/nonStriker render, Swap ends, retire callback, expand breakdown |
+| `src/components/shared/ConfirmDialog.test.jsx` | open/closed state, danger style, confirm/cancel callbacks, disabled, type="button" |
+| `src/components/shared/BottomSheet.test.jsx` | open/closed, overflow lock/restore, backdrop/X close, noScroll |
+
+**Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
+
+---
+
 ## Pending / Known Issues
 - Invite emails land in spam for new recipients (Gmail account is new, no domain reputation). Long-term fix: custom domain + proper SPF/DKIM.
-- No test suite — all verification done manually via preview server.

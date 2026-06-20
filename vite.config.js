@@ -7,4 +7,9 @@ export default defineConfig({
   server: {
     port: process.env.PORT ? Number(process.env.PORT) : 3000,
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test-setup.js'],
+  },
 })
