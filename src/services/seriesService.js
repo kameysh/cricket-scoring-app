@@ -24,6 +24,17 @@ export async function deleteSeries(id) {
   if (error) throw error;
 }
 
+export async function updateSeries(id, name) {
+  const { data, error } = await supabase
+    .from('tournament_series')
+    .update({ name: name.trim() })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function getSeries(id) {
   const { data, error } = await supabase
     .from('tournament_series')

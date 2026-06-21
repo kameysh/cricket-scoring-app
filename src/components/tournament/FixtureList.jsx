@@ -57,12 +57,12 @@ function DeletedFixtureCard({ matchNumber }) {
 }
 
 export default function FixtureList({ matches, onStart, seriesTotal }) {
-  const deletedCount = seriesTotal ? Math.max(0, seriesTotal - (matches?.length ?? 0)) : 0;
+  const realCount = matches?.length ?? 0;
+  // Only show tombstones when at least one real match exists — otherwise it's a clean slate.
+  const deletedCount = (seriesTotal && realCount > 0) ? Math.max(0, seriesTotal - realCount) : 0;
 
-  if (!matches || matches.length === 0) {
-    if (deletedCount === 0) {
-      return <p className="text-sm text-gray-400 text-center py-8">No matches scheduled</p>;
-    }
+  if (realCount === 0) {
+    return <p className="text-sm text-gray-400 text-center py-8">No matches scheduled</p>;
   }
 
   return (

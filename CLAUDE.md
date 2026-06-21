@@ -509,7 +509,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**25 test files, 380 tests — all passing:**
+**26 test files, 387 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -538,6 +538,7 @@ For realtime to work, each table must have Replication enabled:
 | `src/services/playerService.test.js` (extended) | getSeriesMatchIds — empty when no tournaments, returns match IDs across all series tournaments; getPlayerSeriesStats — null when no data, aggregates all stat fields, MAX for best bowling figures |
 | `src/pages/Series.test.jsx` | Empty state when no series; renders series cards; shows add form on New click; creates series on submit (calls addSeries); prompts ConfirmDialog on delete |
 | `src/pages/SeriesDetail.test.jsx` | Shows series name; shows season list with count; shows empty stats message when no data; passes aggregated stats array to TournamentLeaderboard; shows not-found when series is null |
+| `src/components/tournament/FixtureList.test.jsx` | Empty state when no matches (with and without seriesTotal); tombstones only shown when real matches exist alongside gaps; no tombstones when all slots filled; no tombstones without seriesTotal |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 

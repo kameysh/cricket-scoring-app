@@ -7,6 +7,7 @@ vi.mock('../services/seriesService', () => ({
   listSeries: vi.fn(),
   addSeries: vi.fn(),
   deleteSeries: vi.fn(),
+  updateSeries: vi.fn(),
 }));
 
 vi.mock('../hooks/useRole', () => ({
@@ -59,6 +60,25 @@ describe('Series page', () => {
     fireEvent.change(screen.getByPlaceholderText(/K7 Trophy/i), { target: { value: 'Test Cup' } });
     fireEvent.click(screen.getByText(/Create Series/i));
     await waitFor(() => expect(seriesService.addSeries).toHaveBeenCalledWith('Test Cup'));
+  });
+
+  it('shows rename input when pencil icon clicked', async () => {
+    seriesService.listSeries.mockResolvedValue([{ id: 's1', name: 'K7 Trophy' }]);
+    renderSeries();
+    await waitFor(() => screen.getByText('K7 Trophy'));
+    fireEvent.click(screen.getByLabelText(/Rename K7 Trophy/i));
+    expect(screen.getByDisplayValue('K7 Trophy')).toBeInTheDocument();
+  });
+
+  it('calls updateSeries on confirm rename', async () => {
+    seriesService.listSeries.mockResolvedValue([{ id: 's1', name: 'K7 Trophy' }]);
+    seriesService.updateSeries.mockResolvedValue({ id: 's1', name: 'K7 Cup' });
+    renderSeries();
+    await waitFor(() => screen.getByText('K7 Trophy'));
+    fireEvent.click(screen.getByLabelText(/Rename K7 Trophy/i));
+    fireEvent.change(screen.getByDisplayValue('K7 Trophy'), { target: { value: 'K7 Cup' } });
+    fireEvent.click(screen.getByLabelText('Save'));
+    await waitFor(() => expect(seriesService.updateSeries).toHaveBeenCalledWith('s1', 'K7 Cup'));
   });
 
   it('prompts to delete a series', async () => {
