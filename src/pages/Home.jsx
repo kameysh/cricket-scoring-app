@@ -225,6 +225,7 @@ export default function Home() {
                   <MatchScoreCard
                     key={m.id}
                     match={m}
+                    matchNumber={matches.indexOf(m) + 1}
                     stats={matchStats[m.id]}
                     onDelete={canScore ? setToDelete : undefined}
                     onNavigate={id => navigate(`/matches/${id}/summary`)}
@@ -251,7 +252,7 @@ export default function Home() {
 
 // ── Rich match card — Google-style with scores + top performers ─────────────
 
-export function MatchScoreCard({ match, stats, onDelete, onNavigate }) {
+export function MatchScoreCard({ match, matchNumber, stats, onDelete, onNavigate }) {
   const { canScore } = useRole();
 
   const innings = stats?.innings || [];
@@ -286,6 +287,12 @@ export function MatchScoreCard({ match, stats, onDelete, onNavigate }) {
         className="w-full text-left px-4 pt-4 pb-3"
         onClick={() => onNavigate(match.id)}
       >
+        {matchNumber != null && (
+          <p className="text-[10px] font-semibold tracking-widest text-ink-400 uppercase mb-2">
+            Match {String(matchNumber).padStart(2, '0')}
+            {match.tournaments?.name ? ` · ${match.tournaments.name}` : ''}
+          </p>
+        )}
         <div className="grid grid-cols-3 gap-1 items-center">
           {/* Team 1 */}
           <div>

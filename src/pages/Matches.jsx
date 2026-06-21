@@ -76,7 +76,7 @@ export default function Matches() {
       ) : matches.length === 0 ? (
         <EmptyState icon={Swords} title="No matches yet" message="Set up your first match." />
       ) : (
-        <div className="space-y-2">{matches.map(m => <MatchCard key={m.id} match={m} onDelete={setToDelete} />)}</div>
+        <div className="space-y-2">{matches.map((m, i) => <MatchCard key={m.id} match={m} matchNumber={i + 1} onDelete={setToDelete} />)}</div>
       )}
 
       <ConfirmDialog

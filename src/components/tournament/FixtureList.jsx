@@ -72,7 +72,7 @@ export default function FixtureList({ matches, onStart, seriesTotal }) {
         const locked = seriesTotal && i > 0 && prev && !DONE_STATUSES.includes(prev.status);
         return onStart && m.status === 'upcoming'
           ? <UpcomingFixtureCard key={m.id} match={m} onStart={onStart} matchNumber={i + 1} locked={locked} prevMatchNumber={i} />
-          : <MatchCard key={m.id} match={m} matchNumber={seriesTotal ? i + 1 : undefined} />;
+          : <MatchCard key={m.id} match={m} matchNumber={i + 1} />;
       })}
       {Array.from({ length: deletedCount }, (_, i) => (
         <DeletedFixtureCard key={`deleted-${i}`} matchNumber={matches.length + i + 1} />

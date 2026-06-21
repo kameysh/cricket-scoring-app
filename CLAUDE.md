@@ -128,7 +128,10 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
   2. **Live Match Hero** — shown only when `status === 'live' || 'paused'`; green gradient card with "Resume Scoring" (canScore) + "View Scorecard" buttons
   3. **Quick Stats Strip** — 2×2 grid: Matches count, Players count, Top Scorer (tap → player profile), Top Wickets (tap → player profile). Shows "—" when no data.
   4. **Active Tournament Banner** — shown when any tournament has `status !== 'completed'`; taps to `/tournaments/:id`
-  5. **Recent Matches** — last 3 completed matches via `<MatchCard>`; "See all" link if >3 exist; role-aware empty state message
+  5. **Recent Matches** — last 3 completed matches via `<MatchScoreCard>` (named export); Google-style card: both team scores side-by-side (team name + score + overs), result centred, top 2 batters + top 1 bowler per team with avatar and figures. Scores sourced from `innings` join on `listMatchesWithScores()`; top performers computed inline from `cardMap` (batting/bowling scorecards keyed by innings id). Shows `—` gracefully when stats are missing.
+- `MatchScoreCard` props: `{ match, stats: { innings[], cardMap }, onDelete, onNavigate }` — `stats` is optional (renders gracefully without it)
+- Team assignment: `team1BatInn = innings.find(i => i.batting_team === 1)`, `team2BatInn` for batting_team===2 — correct even when team2 bats first
+- Top performers: batters sorted by runs desc, slice(0,2); bowler sorted by wickets desc then runs_conceded asc, [0]
 - `StatPill` helper component rendered inline — renders as `<button>` when `onClick` prop provided, plain `<div>` otherwise
 
 ### `src/pages/Players.jsx`
@@ -439,6 +442,9 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `StrikerIndicator.jsx` | "Swap striker" button label ambiguous | Renamed to "Swap ends" |
 | `MatchSetupStepper.jsx` | Free-text team name inputs bypassed Teams registry — same team stored under different spellings, breaking HeadToHead + rename backfill | When `globalTeams.length > 0`, show registry dropdown + "Other / New team…" option; new names typed via Other are auto-registered via `teamService.addTeam()` on match creation |
 | `matchService.js` + `Home.jsx` | Matches listed newest-first — first played match appeared at bottom | Changed `listMatches()` to `ascending: true`; Home "Recent Matches" uses `slice(-3)` to show the 3 most recent in chronological order |
+| `Home.jsx` | Recent Matches cards showed only team names + result text — no scores, no player stats | Replaced `MatchCard` with `MatchScoreCard` (named export); `listMatchesWithScores()` joins innings + scorecards; card shows both team scores side-by-side + top 2 batters + top bowler per team, Google cricket widget style |
+| `PlayerSubSheet.jsx` | Sheet always opened at `h-[85vh]` regardless of squad size — huge whitespace below short player lists | Changed to `max-h-[80vh]`; removed hardcoded `maxHeight: 260px / 300px` pixel caps on player list divs; sheet now sizes to content and scrolls only when needed |
+| `matchService.js` + `Matches.jsx` + `FixtureList.jsx` + `Home.jsx` + `LiveScoring.jsx` + `MatchSummary.jsx` + `Scoreboard.jsx` | No match numbers anywhere — impossible to tell which match was Match 1, 2, 3 | Added `getMatchNumber(id)` service (counts matches with `created_at ≤` this match); Matches page passes `matchNumber={i+1}` to every MatchCard; FixtureList always passes `matchNumber={i+1}` (not just series); Home MatchScoreCard shows global number; LiveScoring Scoreboard and MatchSummary header both fetch + display match number |
 | `Leaderboard.jsx` + `playerService.js` + `matchService.js` + `022_matches_played_counter.sql` | "M" column showed matches where player batted, not total matches in squad — no counter existed for squad participation | Added `matches_played` counter to `player_career_stats`; RPC `increment_matches_played` called atomically on match completion; migration backfills existing matches; leaderboard reads `row.matches_played` — single fast counter, no live query |
 
 ## Supabase Realtime Prerequisite
@@ -453,7 +459,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**14 test files, 213 tests — all passing:**
+**15 test files, 230 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -466,11 +472,12 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 | `src/components/shared/ConfirmDialog.test.jsx` | open/closed state, danger style, confirm/cancel callbacks, disabled, type="button" |
 | `src/components/shared/BottomSheet.test.jsx` | open/closed, overflow lock/restore, backdrop/X close, noScroll |
 | `src/services/playerService.test.js` | getPlayerMatchCounts — distinct match counting, dedup, empty/null data, multi-player isolation; getPlayerInningsCounts — batting/bowling innings from live scorecard rows, yet_to_bat excluded, 0-legal-ball rows excluded |
-| `src/services/matchService.test.js` | incrementMatchesPlayed — correct RPC name + args, throws on DB error; addSubPlayer — inserts with is_substitute=true + is_active=true + subbed_out_player_id, null when omitted, throws on DB error; setPlayerActive — updates is_active on row, throws on error |
+| `src/services/matchService.test.js` | incrementMatchesPlayed — correct RPC name + args, throws on DB error; addSubPlayer — inserts with is_substitute=true + is_active=true + subbed_out_player_id, null when omitted, throws on DB error; setPlayerActive — updates is_active on row, throws on error; getMatchNumber — returns 1-based position by created_at, returns 1 for first match, returns null when not found, uses lte on created_at |
 | `src/stores/matchStore.test.js` | swapPlayer — sequential order (insert before deactivate), setPlayerActive not called if insert throws, correct subbedOutPlayerId passed, store state updated correctly; swapBack — finds linked sub via subbed_out_player_id not any active sub, throws if no linked active sub, store state updated correctly |
 | `src/lib/generateShareCard.test.jsx` | getInitials, calcSR, calcEcon, dismissalText — pure helper functions for Satori card generation |
 | `src/services/teamService.test.js` | getAllTeamPlayers — returns rows, empty array on null, throws on DB error |
 | `src/pages/Teams.test.jsx` | Roster player filtering: all players shown when no assignments; own-team player not disabled; cross-team player disabled + "In X" label; unassigned player enabled; clicking disabled player does not call setTeamPlayers |
+| `src/pages/Home.test.jsx` | MatchScoreCard — scores from correct innings (batting_team field), team assignment when team2 bats first, top 2 batters per team sorted by runs, top bowler per team, bowling figures display, null-safe rendering with missing stats, navigation callback, delete button visibility |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 
@@ -487,6 +494,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 - Sequential write in `swapPlayer`: insert sub first (throws on failure), then deactivate outgoing — prevents squad losing a player on partial failure
 - `subbed_out_player_id` (migration 025) links each sub to the exact player they replaced — `swapBack` looks up the linked active sub, not "any active sub", so multiple swaps in one match work correctly
 - "Swap Back" button only shown when a linked active sub exists for that specific benched player
+- **Sheet sizing:** `heightClass="max-h-[80vh]"` (not `h-[85vh]`) — sheet shrinks to fit content, no whitespace gap when squad is small; BottomSheet's `flex-1 overflow-y-auto` content area handles scrolling for large squads automatically
 
 ## Pending / Known Issues
 - Invite emails land in spam for new recipients (Gmail account is new, no domain reputation). Long-term fix: custom domain + proper SPF/DKIM.

@@ -7,7 +7,7 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-import { incrementMatchesPlayed, addSubPlayer } from './matchService';
+import { incrementMatchesPlayed, addSubPlayer, getMatchNumber } from './matchService';
 import { supabase } from '../lib/supabase';
 
 describe('incrementMatchesPlayed', () => {
@@ -55,6 +55,65 @@ describe('addSubPlayer', () => {
   it('throws when supabase returns an error', async () => {
     mockChain({ data: null, error: { message: 'constraint violation' } });
     await expect(addSubPlayer('m1', 'p1', 1)).rejects.toMatchObject({ message: 'constraint violation' });
+  });
+});
+
+describe('getMatchNumber', () => {
+  function mockFromChain({ singleData, countResult }) {
+    // First call: .from('matches').select('created_at').eq('id', id).single()
+    const single = vi.fn().mockResolvedValue({ data: singleData, error: null });
+    const eqForSingle = vi.fn().mockReturnValue({ single });
+    const selectForSingle = vi.fn().mockReturnValue({ eq: eqForSingle });
+
+    // Second call: .from('matches').select('id', { count: 'exact', head: true }).lte('created_at', ...)
+    const lte = vi.fn().mockResolvedValue(countResult);
+    const selectForCount = vi.fn().mockReturnValue({ lte });
+
+    let callCount = 0;
+    supabase.from.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) return { select: selectForSingle };
+      return { select: selectForCount };
+    });
+
+    return { single, eqForSingle, lte };
+  }
+
+  it('returns the 1-based position of the match by created_at', async () => {
+    mockFromChain({
+      singleData: { created_at: '2026-06-20T10:00:00Z' },
+      countResult: { count: 3, error: null },
+    });
+    const result = await getMatchNumber('match-3');
+    expect(result).toBe(3);
+  });
+
+  it('returns 1 for the very first match', async () => {
+    mockFromChain({
+      singleData: { created_at: '2026-06-01T00:00:00Z' },
+      countResult: { count: 1, error: null },
+    });
+    const result = await getMatchNumber('match-1');
+    expect(result).toBe(1);
+  });
+
+  it('returns null when the match row is not found', async () => {
+    const single = vi.fn().mockResolvedValue({ data: null, error: null });
+    const eq = vi.fn().mockReturnValue({ single });
+    const select = vi.fn().mockReturnValue({ eq });
+    supabase.from.mockReturnValue({ select });
+
+    const result = await getMatchNumber('nonexistent');
+    expect(result).toBeNull();
+  });
+
+  it('uses lte on created_at to count earlier-or-equal matches', async () => {
+    const { lte } = mockFromChain({
+      singleData: { created_at: '2026-06-21T08:00:00Z' },
+      countResult: { count: 5, error: null },
+    });
+    await getMatchNumber('match-5');
+    expect(lte).toHaveBeenCalledWith('created_at', '2026-06-21T08:00:00Z');
   });
 });
 

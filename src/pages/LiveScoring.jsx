@@ -236,9 +236,11 @@ export default function LiveScoring() {
   const [oversLimitOpen, setOversLimitOpen] = useState(false);
   const [subOpen, setSubOpen] = useState(false);
   const [allPlayers, setAllPlayers] = useState([]);
+  const [matchNumber, setMatchNumber] = useState(null);
   const endingMatchRef = useRef(false);
   const milestonesRef = useRef(new Set());
   useEffect(() => { store.loadMatch(id); return () => store.reset(); }, [id]);
+  useEffect(() => { matchService.getMatchNumber(id).then(n => setMatchNumber(n)).catch(() => {}); }, [id]);
 
   // Redirect completed matches to summary — only kameshwaran26@gmail.com can re-enter
   useEffect(() => {
@@ -690,7 +692,7 @@ export default function LiveScoring() {
           Abandon
         </button>
       </div>
-      <Scoreboard match={match} innings={currentInnings} battingTeamName={battingTeamName} />
+      <Scoreboard match={match} innings={currentInnings} battingTeamName={battingTeamName} matchNumber={matchNumber} />
       <PowerplayBanner match={match} innings={currentInnings} />
       <FreehitBanner active={freeHit} />
 

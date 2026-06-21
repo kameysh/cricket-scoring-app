@@ -279,6 +279,9 @@ export default function MatchSummary() {
   const [savingMotm, setSavingMotm] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [cardPlayer, setCardPlayer] = useState(null);
+  const [matchNumber, setMatchNumber] = useState(null);
+
+  useEffect(() => { matchService.getMatchNumber(id).then(n => setMatchNumber(n)).catch(() => {}); }, [id]);
 
   useEffect(() => {
     matchService.getMatch(id).then(m => {
@@ -439,6 +442,12 @@ export default function MatchSummary() {
       </div>
 
       {/* Match score header */}
+      {matchNumber != null && (
+        <p className="px-4 pt-2 text-[10px] font-semibold tracking-widest text-ink-400 uppercase">
+          Match {String(matchNumber).padStart(2, '0')}
+          {match.tournaments?.name ? ` · ${match.tournaments.name}` : ''}
+        </p>
+      )}
       <div className="px-4 py-3 grid grid-cols-3 gap-2 items-center">
         <div className="text-left">
           <p className="text-xs text-ink-400 font-medium truncate">{match.team1_name}</p>

@@ -10,6 +10,17 @@ export async function listMatches() {
   return data;
 }
 
+export async function getMatchNumber(id) {
+  // Returns the 1-based sequential number of this match (globally, by created_at)
+  const { data: target } = await supabase.from('matches').select('created_at').eq('id', id).single();
+  if (!target) return null;
+  const { count } = await supabase
+    .from('matches')
+    .select('id', { count: 'exact', head: true })
+    .lte('created_at', target.created_at);
+  return count ?? null;
+}
+
 export async function getMatch(id) {
   const { data, error } = await supabase
     .from('matches')
