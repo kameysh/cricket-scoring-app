@@ -26,6 +26,8 @@ import Scorecard from './pages/Scorecard';
 import MatchSummary from './pages/MatchSummary';
 import AdminUsers from './pages/AdminUsers';
 import Teams from './pages/Teams';
+import Series from './pages/Series';
+import SeriesDetail from './pages/SeriesDetail';
 import Leaderboard from './pages/Leaderboard';
 import HeadToHead from './pages/HeadToHead';
 import AcceptInvite from './pages/AcceptInvite';
@@ -102,6 +104,12 @@ export default function App() {
             <Route path="/tournaments/:id/setup" element={<TournamentSetup />} />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/teams" element={<Teams />} />
+            <Route path="/series" element={<Series />} />
+          </Route>
+
+          {/* Series detail — all authenticated users can view */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/series/:id" element={<SeriesDetail />} />
           </Route>
         </Routes>
       </main>

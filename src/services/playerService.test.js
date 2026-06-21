@@ -7,7 +7,7 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-import { getPlayerMatchCounts, getPlayerInningsCounts } from './playerService';
+import { getPlayerMatchCounts, getPlayerInningsCounts, getPlayerSeriesStats, getSeriesMatchIds } from './playerService';
 import { supabase } from '../lib/supabase';
 
 function mockFrom(data) {
@@ -119,5 +119,84 @@ describe('getPlayerInningsCounts', () => {
     const { batInnings, bowlInnings } = await getPlayerInningsCounts();
     expect(batInnings).toEqual({});
     expect(bowlInnings).toEqual({});
+  });
+});
+
+describe('getSeriesMatchIds', () => {
+  it('returns empty array when series has no tournaments', async () => {
+    supabase.from.mockImplementation(table => {
+      const chain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({ data: [], error: null }),
+      };
+      if (table === 'tournaments') chain.eq = vi.fn().mockResolvedValue({ data: [], error: null });
+      return chain;
+    });
+    const result = await getSeriesMatchIds('s1');
+    expect(result).toEqual([]);
+  });
+
+  it('returns match IDs from all series tournaments', async () => {
+    supabase.from.mockImplementation(table => {
+      const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn(), in: vi.fn() };
+      if (table === 'tournaments') {
+        chain.eq = vi.fn().mockResolvedValue({ data: [{ id: 't1' }, { id: 't2' }], error: null });
+      } else {
+        chain.select = vi.fn().mockReturnThis();
+        chain.in = vi.fn().mockResolvedValue({ data: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }], error: null });
+      }
+      return chain;
+    });
+    const result = await getSeriesMatchIds('s1');
+    expect(result).toEqual(['m1', 'm2', 'm3']);
+  });
+});
+
+describe('getPlayerSeriesStats', () => {
+  it('returns null when player has no stats in series tournaments', async () => {
+    supabase.from.mockImplementation(table => {
+      const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn(), in: vi.fn() };
+      if (table === 'tournaments') {
+        chain.eq = vi.fn().mockResolvedValue({ data: [{ id: 't1' }], error: null });
+      } else {
+        chain.select = vi.fn().mockReturnThis();
+        chain.eq = vi.fn().mockReturnThis();
+        chain.in = vi.fn().mockResolvedValue({ data: [], error: null });
+      }
+      return chain;
+    });
+    const result = await getPlayerSeriesStats('p1', 's1');
+    expect(result).toBeNull();
+  });
+
+  it('aggregates stats across multiple tournament rows', async () => {
+    supabase.from.mockImplementation(table => {
+      const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn(), in: vi.fn() };
+      if (table === 'tournaments') {
+        chain.eq = vi.fn().mockResolvedValue({ data: [{ id: 't1' }, { id: 't2' }], error: null });
+      } else {
+        chain.select = vi.fn().mockReturnThis();
+        chain.eq = vi.fn().mockReturnThis();
+        chain.in = vi.fn().mockResolvedValue({
+          data: [
+            { bat_runs: 40, bat_innings: 2, bat_not_outs: 0, bat_balls: 50, bat_highest_score: 25, bat_fours: 3, bat_sixes: 1, bat_ducks: 0, bat_thirties: 1, bat_fifties: 0, bat_hundreds: 0, bat_dot_balls: 10, bat_ones: 5, bat_twos: 2, bat_threes: 0, bat_matches: 1, bowl_wickets: 2, bowl_runs: 30, bowl_legal_balls: 18, bowl_maidens: 1, bowl_four_wicket_hauls: 0, bowl_five_wicket_hauls: 0, bowl_best_wickets: 2, bowl_best_runs: 15, bowl_matches: 1, bowl_innings: 1, field_catches: 1, field_stumpings: 0, field_run_outs: 0 },
+            { bat_runs: 60, bat_innings: 2, bat_not_outs: 1, bat_balls: 45, bat_highest_score: 55, bat_fours: 4, bat_sixes: 2, bat_ducks: 1, bat_thirties: 0, bat_fifties: 1, bat_hundreds: 0, bat_dot_balls: 8, bat_ones: 6, bat_twos: 1, bat_threes: 0, bat_matches: 1, bowl_wickets: 3, bowl_runs: 20, bowl_legal_balls: 12, bowl_maidens: 0, bowl_four_wicket_hauls: 0, bowl_five_wicket_hauls: 0, bowl_best_wickets: 3, bowl_best_runs: 12, bowl_matches: 1, bowl_innings: 1, field_catches: 2, field_stumpings: 0, field_run_outs: 1 },
+          ],
+          error: null,
+        });
+      }
+      return chain;
+    });
+    const result = await getPlayerSeriesStats('p1', 's1');
+    expect(result).not.toBeNull();
+    expect(result.bat_runs).toBe(100);
+    expect(result.bat_innings).toBe(4);
+    expect(result.bat_not_outs).toBe(1);
+    expect(result.bat_highest_score).toBe(55); // max
+    expect(result.bat_fifties).toBe(1);
+    expect(result.bowl_wickets).toBe(5);
+    expect(result.bowl_best_wickets).toBe(3); // better figures
+    expect(result.field_catches).toBe(3);
   });
 });

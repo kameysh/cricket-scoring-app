@@ -245,11 +245,86 @@ export async function getDuckHunterCount(playerId) {
   }).length;
 }
 
-export async function getHeadToHeadAll(batsmanId) {
+// Returns match IDs for all matches in a series (via its tournaments)
+export async function getSeriesMatchIds(seriesId) {
+  const { data: tournaments, error: tErr } = await supabase
+    .from('tournaments').select('id').eq('series_id', seriesId);
+  if (tErr) throw tErr;
+  const tIds = (tournaments || []).map(t => t.id);
+  if (!tIds.length) return [];
+  const { data: matches, error: mErr } = await supabase
+    .from('matches').select('id').in('tournament_id', tIds);
+  if (mErr) throw mErr;
+  return (matches || []).map(m => m.id);
+}
+
+// Aggregate player_tournament_stats for one player across all tournaments in a series
+export async function getPlayerSeriesStats(playerId, seriesId) {
+  const { data: tournaments, error: tErr } = await supabase
+    .from('tournaments').select('id').eq('series_id', seriesId);
+  if (tErr) throw tErr;
+  const tIds = (tournaments || []).map(t => t.id);
+  if (!tIds.length) return null;
   const { data, error } = await supabase
+    .from('player_tournament_stats').select('*')
+    .eq('player_id', playerId).in('tournament_id', tIds);
+  if (error) throw error;
+  if (!data?.length) return null;
+  const agg = {
+    bat_matches: 0, bat_innings: 0, bat_not_outs: 0, bat_runs: 0, bat_balls: 0,
+    bat_highest_score: 0, bat_fours: 0, bat_sixes: 0, bat_ducks: 0,
+    bat_thirties: 0, bat_fifties: 0, bat_hundreds: 0, bat_dot_balls: 0,
+    bat_ones: 0, bat_twos: 0, bat_threes: 0,
+    bowl_matches: 0, bowl_innings: 0, bowl_legal_balls: 0, bowl_runs: 0, bowl_wickets: 0,
+    bowl_maidens: 0, bowl_four_wicket_hauls: 0, bowl_five_wicket_hauls: 0,
+    bowl_best_wickets: 0, bowl_best_runs: 999,
+    field_catches: 0, field_stumpings: 0, field_run_outs: 0,
+  };
+  for (const row of data) {
+    agg.bat_matches        += row.bat_matches        || 0;
+    agg.bat_innings        += row.bat_innings        || 0;
+    agg.bat_not_outs       += row.bat_not_outs       || 0;
+    agg.bat_runs           += row.bat_runs           || 0;
+    agg.bat_balls          += row.bat_balls          || 0;
+    agg.bat_highest_score   = Math.max(agg.bat_highest_score, row.bat_highest_score || 0);
+    agg.bat_fours          += row.bat_fours          || 0;
+    agg.bat_sixes          += row.bat_sixes          || 0;
+    agg.bat_ducks          += row.bat_ducks          || 0;
+    agg.bat_thirties       += row.bat_thirties       || 0;
+    agg.bat_fifties        += row.bat_fifties        || 0;
+    agg.bat_hundreds       += row.bat_hundreds       || 0;
+    agg.bat_dot_balls      += row.bat_dot_balls      || 0;
+    agg.bat_ones           += row.bat_ones           || 0;
+    agg.bat_twos           += row.bat_twos           || 0;
+    agg.bat_threes         += row.bat_threes         || 0;
+    agg.bowl_matches       += row.bowl_matches       || 0;
+    agg.bowl_innings       += row.bowl_innings       || 0;
+    agg.bowl_legal_balls   += row.bowl_legal_balls   || 0;
+    agg.bowl_runs          += row.bowl_runs          || 0;
+    agg.bowl_wickets       += row.bowl_wickets       || 0;
+    agg.bowl_maidens       += row.bowl_maidens       || 0;
+    agg.bowl_four_wicket_hauls += row.bowl_four_wicket_hauls || 0;
+    agg.bowl_five_wicket_hauls += row.bowl_five_wicket_hauls || 0;
+    if ((row.bowl_best_wickets || 0) > agg.bowl_best_wickets ||
+        ((row.bowl_best_wickets || 0) === agg.bowl_best_wickets && (row.bowl_best_runs || 999) < agg.bowl_best_runs)) {
+      agg.bowl_best_wickets = row.bowl_best_wickets || 0;
+      agg.bowl_best_runs    = row.bowl_best_runs    || 0;
+    }
+    agg.field_catches      += row.field_catches      || 0;
+    agg.field_stumpings    += row.field_stumpings    || 0;
+    agg.field_run_outs     += row.field_run_outs     || 0;
+  }
+  if (agg.bowl_best_runs === 999) agg.bowl_best_runs = 0;
+  return agg;
+}
+
+export async function getHeadToHeadAll(batsmanId, inningsIds) {
+  let query = supabase
     .from('deliveries')
-    .select('bowler_id, bowler:players!bowler_id(id,name), runs_off_bat, extra_type, is_wicket, wicket_type')
+    .select('bowler_id, bowler:players!bowler_id(id,name), runs_off_bat, extra_type, is_wicket, wicket_type, innings_id')
     .eq('batsman_id', batsmanId);
+  if (inningsIds?.length) query = query.in('innings_id', inningsIds);
+  const { data, error } = await query;
   if (error) throw error;
 
   const bowlerMap = new Map();

@@ -13,18 +13,19 @@ function StatCard({ label, value }) {
   );
 }
 
-export default function HeadToHeadPanel({ batsmanId }) {
+export default function HeadToHeadPanel({ batsmanId, inningsIds }) {
   const [bowlers, setBowlers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     setLoading(true);
-    getHeadToHeadAll(batsmanId)
+    setSelected(null);
+    getHeadToHeadAll(batsmanId, inningsIds)
       .then(setBowlers)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [batsmanId]);
+  }, [batsmanId, inningsIds]);
 
   if (loading) return <LoadingSkeleton rows={4} />;
 

@@ -94,6 +94,7 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 025 | `025_sub_linkage.sql` | **`subbed_out_player_id uuid references match_players(id)` added — each sub row links to the exact match_players row they replaced, enabling correct swap-back with multiple subs in one match.** |
 | 026 | `026_super_over.sql` | **`is_super_over boolean default false` added to `innings` — marks super over innings (3 and 4); used by LiveScoring, Scorecard, MatchSummary to label and handle SO innings correctly.** |
 | 027 | `027_innings_number_check.sql` | **Replaced `innings_number IN (1,2,3)` check constraint with `innings_number >= 1` — allows SO innings (4+) and successive SO rounds (5,6…).** |
+| 028 | `028_tournament_series.sql` | **`tournament_series` registry table (id, name UNIQUE, created_at) with RLS — admin insert/delete, all authenticated select; `series_id uuid REFERENCES tournament_series(id) ON DELETE SET NULL` added to `tournaments` — links each tournament to a recurring series.** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -314,6 +315,29 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - **Man of the Series card**: shown when `tournament.man_of_series` is set (gold Trophy card, same style as MoTM on MatchSummary).
 - `getTournament` select includes `man_of_series:man_of_series_id(id, name)` join (migration 017 required).
 
+### `src/pages/Series.jsx`
+- Route: `/series` (admin only)
+- Admin management page for tournament series registry
+- List of series cards → navigate to `/series/:id`; trash icon → ConfirmDialog delete
+- Inline add form (New button) — series name input; error handling for duplicate name (unique constraint)
+- `deleteSeries` sets FK on tournaments to NULL (tournaments become one-off events, data kept)
+
+### `src/pages/SeriesDetail.jsx`
+- Route: `/series/:id` (all authenticated users)
+- Loads `getSeries`, `getSeriesTournaments`, `getSeriesPlayerStats` in parallel
+- **Seasons section:** list of tournament cards linking to `/tournaments/:id`, with status badge and start date
+- **Stats section:** aggregated stats across all seasons passed to `TournamentLeaderboard` (same `batting/bowling/fielding` props, each receiving the full aggregated array)
+- Empty stats message when no matches played yet
+
+### `src/services/seriesService.js`
+- `listSeries()` — all series ordered by name
+- `addSeries(name)` — insert with unique constraint; throws on duplicate name
+- `deleteSeries(id)` — deletes series; FK on tournaments set to NULL by DB cascade (ON DELETE SET NULL)
+- `getSeries(id)` — single series by id
+- `getSeriesTournaments(seriesId)` — tournaments linked to this series, ordered by start_date asc
+- `getSeriesPlayerStats(seriesId)` — two-step: fetch tournament IDs, fetch all `player_tournament_stats` for those IDs, aggregate per player (sum all fields, MAX for `bat_highest_score`)
+- Column names match `player_tournament_stats` exactly: `bat_not_outs`, `bat_highest_score`, `bowl_five_wicket_hauls`, `field_catches`, `field_stumpings`, `field_run_outs`
+
 ### `src/pages/HeadToHead.jsx`
 - Route: `/h2h` (any logged-in user), accessed via "Compare" chip on Matches page
 - Team selector: two dropdowns filtered to exclude each other + swap button (↔)
@@ -485,7 +509,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**21 test files, 324 tests — all passing:**
+**24 test files, 346 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -510,6 +534,10 @@ For realtime to work, each table must have Replication enabled:
 | `src/pages/Home.test.jsx` | MatchScoreCard — scores from correct innings (batting_team field), team assignment when team2 bats first, top 2 batters per team sorted by runs, top bowler per team, bowling figures display, null-safe rendering with missing stats, navigation callback, delete button visibility; **live hero** — runs/wickets/overs shown, Batting label on active team, Yet to bat for uninitiated team, realtime innings UPDATE patches score in-place |
 | `src/pages/LiveScoring.test.jsx` | Dual modal prevention (tie→SO, win→Match Result, null→nothing); all-out even innings no winConfirm; SO odd innings triggers endInnings; BallInputPanel disabled for ALL modals (winConfirmOpen, superOverOpen, oversLimitOpen); SO over-limit shows "Super Over Complete"; regular innings shows "N Overs Complete"; successive SO — tied SO shows Super Over sheet again, SO winner shows Match Result; SO disabled shows Match Result on tie; End Match calls setMatchStatus; manual End Innings on final innings calls setMatchStatus |
 | `src/pages/Scorecard.test.jsx` | Realtime subscriptions — LIVE indicator shown/hidden on match UPDATE, innings UPDATE patches score in-place without reload, innings INSERT triggers reloadInnings, deliveries INSERT appends to deliveriesMap for known innings, ignores foreign innings_id, all 3 channels removed on unmount; **realtime delivery name resolution** — player name shown (not UUID) when realtime delivery has no joined player objects, resolved via playersMap |
+| `src/services/seriesService.test.js` | listSeries, addSeries, deleteSeries — error propagation; getSeriesPlayerStats — empty when no tournaments, aggregates multiple rows per player (sums all numeric stats, MAX for bat_highest_score) |
+| `src/services/playerService.test.js` (extended) | getSeriesMatchIds — empty when no tournaments, returns match IDs across all series tournaments; getPlayerSeriesStats — null when no data, aggregates all stat fields, MAX for best bowling figures |
+| `src/pages/Series.test.jsx` | Empty state when no series; renders series cards; shows add form on New click; creates series on submit (calls addSeries); prompts ConfirmDialog on delete |
+| `src/pages/SeriesDetail.test.jsx` | Shows series name; shows season list with count; shows empty stats message when no data; passes aggregated stats array to TournamentLeaderboard; shows not-found when series is null |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 
@@ -527,6 +555,8 @@ For realtime to work, each table must have Replication enabled:
 - `subbed_out_player_id` (migration 025) links each sub to the exact player they replaced — `swapBack` looks up the linked active sub, not "any active sub", so multiple swaps in one match work correctly
 - "Swap Back" button only shown when a linked active sub exists for that specific benched player
 - **Sheet sizing:** `heightClass="max-h-[80vh]"` (not `h-[85vh]`) — sheet shrinks to fit content, no whitespace gap when squad is small; BottomSheet's `flex-1 overflow-y-auto` content area handles scrolling for large squads automatically
+
+| `TournamentNew.jsx` + `seriesService.js` + `tournamentService.js` + `App.jsx` + `BottomNav.jsx` + `028_tournament_series.sql` | No way to group recurring tournaments under a series name — admins typed the same tournament name differently each season | Added `tournament_series` registry table; Series management page at `/series` (admin); SeriesDetail at `/series/:id` (all authenticated); TournamentNew has series picker dropdown + inline "Create new series" flow; TournamentDetail shows series breadcrumb link; tournamentService joins `series:series_id(id,name)` in listTournaments + getTournament; BottomNav admin sheet has "Tournament Series" link |
 
 ## Pending / Known Issues
 - Invite emails land in spam for new recipients (Gmail account is new, no domain reputation). Long-term fix: custom domain + proper SPF/DKIM.

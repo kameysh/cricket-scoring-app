@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 export async function listTournaments() {
   const { data, error } = await supabase
     .from('tournaments')
-    .select('*, venues(name,city), tournament_teams(count)')
+    .select('*, venues(name,city), tournament_teams(count), series:series_id(id,name)')
     .eq('is_deleted', false)
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -13,7 +13,7 @@ export async function listTournaments() {
 export async function getTournament(id) {
   const { data, error } = await supabase
     .from('tournaments')
-    .select('*, venues(name,city), man_of_series:man_of_series_id(id, name)')
+    .select('*, venues(name,city), man_of_series:man_of_series_id(id, name), series:series_id(id,name)')
     .eq('id', id)
     .single();
   if (error) throw error;

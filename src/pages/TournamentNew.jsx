@@ -5,6 +5,7 @@ import { Plus, X } from 'lucide-react';
 import * as venueService from '../services/venueService';
 import * as tournamentService from '../services/tournamentService';
 import * as teamService from '../services/teamService';
+import * as seriesService from '../services/seriesService';
 import { useTournamentStore } from '../stores/tournamentStore';
 
 const MAX_TEAMS = 8;
@@ -15,13 +16,17 @@ export default function TournamentNew() {
   const addTournament = useTournamentStore(s => s.addTournament);
   const [venues, setVenues] = useState([]);
   const [globalTeams, setGlobalTeams] = useState([]);
-  const [form, setForm] = useState({ name: '', type: 'league', venue_id: '', start_date: '', end_date: '', series_matches: '' });
+  const [seriesList, setSeriesList] = useState([]);
+  const [form, setForm] = useState({ name: '', type: 'league', venue_id: '', start_date: '', end_date: '', series_matches: '', series_id: '' });
+  const [newSeriesName, setNewSeriesName] = useState('');
+  const [creatingSeries, setCreatingSeries] = useState(false);
   const [teams, setTeams] = useState(['', '']);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     venueService.listVenues().then(setVenues);
-    teamService.listTeams().then(setGlobalTeams).catch(err => console.error('Failed to load teams:', err));
+    teamService.listTeams().then(setGlobalTeams).catch(() => {});
+    seriesService.listSeries().then(setSeriesList).catch(() => {});
   }, []);
 
   function setTeamName(i, val) {
@@ -34,6 +39,23 @@ export default function TournamentNew() {
 
   function removeTeam(i) {
     if (teams.length > MIN_TEAMS) setTeams(t => t.filter((_, idx) => idx !== i));
+  }
+
+  async function handleCreateSeries() {
+    const name = newSeriesName.trim();
+    if (!name) return;
+    setCreatingSeries(true);
+    try {
+      const s = await seriesService.addSeries(name);
+      setSeriesList(prev => [...prev, s].sort((a, b) => a.name.localeCompare(b.name)));
+      setForm(f => ({ ...f, series_id: s.id }));
+      setNewSeriesName('');
+      toast.success(`Series "${name}" created`);
+    } catch (err) {
+      toast.error(err.message?.includes('unique') ? 'That series name already exists.' : (err.message || 'Failed to create series'));
+    } finally {
+      setCreatingSeries(false);
+    }
   }
 
   async function handleSubmit(e) {
@@ -55,6 +77,7 @@ export default function TournamentNew() {
         start_date: form.start_date || null,
         end_date: form.end_date || null,
         series_matches: form.series_matches || null,
+        series_id: (form.series_id && form.series_id !== '__new__') ? form.series_id : null,
       });
       await Promise.all(teamNames.map(name => tournamentService.addTournamentTeam(t.id, name)));
       toast.success('Tournament created');
@@ -73,7 +96,48 @@ export default function TournamentNew() {
 
         <div>
           <label className="field-label">Tournament name</label>
-          <input placeholder="e.g. IPL 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="field-input" />
+          <input placeholder="e.g. K7 Trophy Season 1" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="field-input" />
+        </div>
+
+        {/* Series picker — prevents typo-duplicates */}
+        <div>
+          <label className="field-label">Series <span className="text-ink-400 font-normal">(optional)</span></label>
+          <select
+            value={form.series_id}
+            onChange={e => {
+              if (e.target.value === '__new__') {
+                setForm(f => ({ ...f, series_id: '__new__' }));
+              } else {
+                setForm(f => ({ ...f, series_id: e.target.value }));
+                setNewSeriesName('');
+              }
+            }}
+            className="field-input"
+          >
+            <option value="">None / One-off event</option>
+            {seriesList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            <option value="__new__">+ Create new series…</option>
+          </select>
+          {form.series_id === '__new__' && (
+            <div className="flex gap-2 mt-2">
+              <input
+                value={newSeriesName}
+                onChange={e => setNewSeriesName(e.target.value)}
+                placeholder="Series name, e.g. K7 Trophy"
+                className="field-input flex-1"
+                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleCreateSeries())}
+              />
+              <button
+                type="button"
+                onClick={handleCreateSeries}
+                disabled={creatingSeries || !newSeriesName.trim()}
+                className="px-3 py-2 rounded-xl bg-brand-green text-white text-sm font-semibold disabled:opacity-40"
+              >
+                {creatingSeries ? '…' : 'Save'}
+              </button>
+            </div>
+          )}
+          <p className="text-xs text-ink-400 mt-1">Linking to a series lets you view cumulative stats across all seasons.</p>
         </div>
 
         <div>

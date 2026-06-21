@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Users, Users2, Swords, Trophy, BarChart2, LogIn, LogOut, Shield, MapPin, ChevronRight } from 'lucide-react';
+import { Home, Users, Users2, Swords, Trophy, BarChart2, LogIn, LogOut, Shield, MapPin, ChevronRight, Repeat2 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 
 const ROLE_LABELS = {
@@ -63,6 +63,13 @@ export default function BottomNav() {
                   className="w-full flex items-center justify-between py-3 px-1 border-t border-ink-100 dark:border-white/10 text-sm font-medium text-ink-700 dark:text-ink-200"
                 >
                   <span className="flex items-center gap-2"><Users2 size={16} /> Teams</span>
+                  <ChevronRight size={16} className="text-ink-400" />
+                </button>
+                <button
+                  onClick={() => { setShowSheet(false); navigate('/series'); }}
+                  className="w-full flex items-center justify-between py-3 px-1 border-t border-ink-100 dark:border-white/10 text-sm font-medium text-ink-700 dark:text-ink-200"
+                >
+                  <span className="flex items-center gap-2"><Repeat2 size={16} /> Tournament Series</span>
                   <ChevronRight size={16} className="text-ink-400" />
                 </button>
                 <button

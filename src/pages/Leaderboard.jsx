@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, ChevronUp, ChevronDown, Activity, X, Sparkles } from 'lucide-react';
+import { Trophy, ChevronUp, ChevronDown, Activity, X, Sparkles, Repeat2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import * as playerService from '../services/playerService';
+import * as seriesService from '../services/seriesService';
 import PlayerAvatar from '../components/player/PlayerAvatar';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
@@ -165,6 +166,7 @@ function SortHeader({ label, sortKey, active, dir, onSort, className = '' }) {
 
 export default function Leaderboard() {
   const navigate = useNavigate();
+  const [careerStats, setCareerStats] = useState([]);
   const [stats, setStats]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState('batting');
@@ -172,26 +174,51 @@ export default function Leaderboard() {
   const [sortDir, setSortDir] = useState('desc');
   const [liveMatch, setLiveMatch] = useState(false);
   const [mvpFormulaOpen, setMvpFormulaOpen] = useState(false);
+  const [seriesList, setSeriesList] = useState([]);
+  const [selectedSeries, setSelectedSeries] = useState('');
+  const [seriesName, setSeriesName] = useState('');
+  const [seriesLoading, setSeriesLoading] = useState(false);
+
   useEffect(() => {
     // Initial load — single query, all counters from player_career_stats
     playerService.getAllCareerStats()
-      .then(data => { setStats(data); setLoading(false); })
+      .then(data => { setCareerStats(data); setStats(data); setLoading(false); })
       .catch(() => setLoading(false));
 
     // Check for live match (one-shot)
     supabase.from('matches').select('id').eq('status', 'in_progress').limit(1)
       .then(({ data }) => setLiveMatch((data||[]).length > 0));
 
-    // Realtime: refresh when any career stats row updates (innings completed)
+    // Load series for filter dropdown
+    seriesService.listSeries().then(setSeriesList).catch(() => {});
+
+    // Realtime: refresh career stats when innings completed (only when not in series view)
     const channel = supabase
       .channel('leaderboard:career_stats')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'player_career_stats' },
-        () => playerService.getAllCareerStats().then(setStats)
+        () => { if (!selectedSeries) playerService.getAllCareerStats().then(data => { setCareerStats(data); setStats(data); }); }
       )
       .subscribe();
 
     return () => supabase.removeChannel(channel);
   }, []);
+
+  // When series filter changes, load series-aggregated stats
+  useEffect(() => {
+    if (!selectedSeries) {
+      setStats(careerStats);
+      setSeriesName('');
+      return;
+    }
+    setSeriesLoading(true);
+    seriesService.getSeriesPlayerStats(selectedSeries)
+      .then(data => {
+        setStats(data);
+        setSeriesName(seriesList.find(s => s.id === selectedSeries)?.name || '');
+      })
+      .catch(() => {})
+      .finally(() => setSeriesLoading(false));
+  }, [selectedSeries, careerStats]);
 
   function handleSort(key) {
     if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
@@ -243,7 +270,7 @@ export default function Leaderboard() {
   const playerCell = row => (
     <td className={`sticky left-10 z-10 ${stickyBg} px-2 py-2.5 shadow-[1px_0_0_0_rgba(0,0,0,0.06)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.06)]`}>
       <button
-        onClick={() => navigate(`/players/${row.players?.id}`)}
+        onClick={() => navigate(`/players/${row.players?.id}${selectedSeries ? `?series=${selectedSeries}` : ''}`)}
         className="flex items-center gap-2 text-left"
       >
         <PlayerAvatar name={row.players?.name} photoUrl={row.players?.photo_url} size={28} />
@@ -289,6 +316,32 @@ export default function Leaderboard() {
         ))}
       </div>
 
+      {/* Series filter */}
+      {seriesList.length > 0 && (
+        <div className="flex items-center gap-2 -mt-1">
+          <Repeat2 size={14} className="text-ink-400 shrink-0" />
+          <select
+            value={selectedSeries}
+            onChange={e => { setSelectedSeries(e.target.value); setSortKey(null); setSortDir('desc'); }}
+            className="flex-1 text-xs rounded-xl border border-ink-200 dark:border-white/10 bg-white dark:bg-ink-800 text-ink-700 dark:text-ink-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-green/40"
+          >
+            <option value="">All time (Career)</option>
+            {seriesList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          {selectedSeries && (
+            <button onClick={() => setSelectedSeries('')} className="p-1.5 rounded-lg text-ink-400 hover:text-ink-700 dark:hover:text-white hover:bg-ink-100 dark:hover:bg-white/10">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {selectedSeries && seriesName && (
+        <p className="text-[11px] text-brand-green font-medium -mt-1">
+          Showing stats for <strong>{seriesName}</strong> — tap a player to view their series profile
+        </p>
+      )}
+
       {tab === 'mvp' && (
         <div className="flex items-center justify-end -mt-2">
           <button
@@ -304,7 +357,7 @@ export default function Leaderboard() {
 
       {mvpFormulaOpen && <MvpFormulaModal onClose={() => setMvpFormulaOpen(false)} />}
 
-      {loading ? (
+      {(loading || seriesLoading) ? (
         <LoadingSkeleton rows={6} />
       ) : rows.length === 0 ? (
         <EmptyState icon={Activity} title="No stats yet" message="Stats appear here once matches are played and innings are completed." />

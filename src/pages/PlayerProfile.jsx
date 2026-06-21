@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Pencil, Star } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Pencil, Star, Repeat2, X } from 'lucide-react';
+import * as seriesService from '../services/seriesService';
 import PlayerAvatar from '../components/player/PlayerAvatar';
 import RunTypeChart from '../components/player/RunTypeChart';
 import WicketTypeDonut from '../components/player/WicketTypeDonut';
@@ -53,6 +54,13 @@ export default function PlayerProfile() {
   const [isJoker, setIsJoker] = useState(false);
   const [duckHunterCount, setDuckHunterCount] = useState(0);
   const [allStats, setAllStats] = useState([]);
+  const [searchParams] = useSearchParams();
+  const seriesId = searchParams.get('series') || '';
+  const [seriesInfo, setSeriesInfo] = useState(null);
+  const [seriesStats, setSeriesStats] = useState(null);
+  const [seriesMatchIds, setSeriesMatchIds] = useState(null); // null = no filter
+  const [seriesInningsIds, setSeriesInningsIds] = useState(null);
+  const [seriesHistory, setSeriesHistory] = useState(null);
 
   useEffect(() => {
     playerService.getPlayer(id).then(setPlayer);
@@ -76,6 +84,45 @@ export default function PlayerProfile() {
       });
   }, [id]);
 
+  // Load series-scoped data when ?series= param present
+  useEffect(() => {
+    if (!seriesId) {
+      setSeriesInfo(null); setSeriesStats(null);
+      setSeriesMatchIds(null); setSeriesInningsIds(null); setSeriesHistory(null);
+      return;
+    }
+    seriesService.getSeries(seriesId).then(setSeriesInfo).catch(() => {});
+    playerService.getPlayerSeriesStats(id, seriesId).then(setSeriesStats).catch(() => {});
+    playerService.getSeriesMatchIds(seriesId).then(async mIds => {
+      setSeriesMatchIds(mIds);
+      if (!mIds.length) { setSeriesInningsIds([]); setSeriesHistory([]); return; }
+      const { data: inningsData } = await supabase.from('innings').select('id').in('match_id', mIds);
+      setSeriesInningsIds((inningsData || []).map(i => i.id));
+      // filter match history to series matches
+      const { data: mpRows } = await supabase.from('match_players').select('match_id').eq('player_id', id).in('match_id', mIds);
+      const playerMatchIds = (mpRows || []).map(r => r.match_id);
+      if (!playerMatchIds.length) { setSeriesHistory([]); return; }
+      const { data: matches } = await supabase.from('matches').select('*, venues(name,city), tournaments(name)').in('id', playerMatchIds).order('created_at', { ascending: false });
+      const { data: inns } = await supabase.from('innings').select('id, match_id, innings_number').in('match_id', playerMatchIds);
+      const innsIds = (inns || []).map(i => i.id);
+      const [batting, bowling, fielding] = await Promise.all([
+        supabase.from('batting_scorecards').select('*').eq('player_id', id).in('innings_id', innsIds),
+        supabase.from('bowling_scorecards').select('*').eq('player_id', id).in('innings_id', innsIds),
+        supabase.from('fielding_scorecards').select('*').eq('player_id', id).in('innings_id', innsIds),
+      ]);
+      const result = (matches || []).map(match => {
+        const mInns = (inns || []).filter(i => i.match_id === match.id).map(i => i.id);
+        return {
+          match,
+          batting: (batting.data || []).find(b => mInns.includes(b.innings_id)),
+          bowling: (bowling.data || []).find(b => mInns.includes(b.innings_id)),
+          fielding: (fielding.data || []).find(b => mInns.includes(b.innings_id)),
+        };
+      });
+      setSeriesHistory(result);
+    }).catch(() => {});
+  }, [seriesId, id]);
+
   useEffect(() => {
     if (!selectedTournament) { setScopedStats(null); return; }
     playerService.getTournamentStats(id, selectedTournament).then(setScopedStats);
@@ -83,7 +130,10 @@ export default function PlayerProfile() {
 
   if (!player) return null;
 
-  const stats = selectedTournament ? scopedStats : careerStats;
+  // Series scope takes priority over tournament scope
+  const stats = seriesId
+    ? (seriesStats || careerStats)
+    : (selectedTournament ? scopedStats : careerStats);
   const empty = {
     bat_matches: 0, bat_innings: 0, bat_not_outs: 0, bat_runs: 0, bat_balls: 0,
     bat_highest_score: 0, bat_ones: 0, bat_twos: 0, bat_threes: 0, bat_fours: 0,
@@ -164,8 +214,19 @@ export default function PlayerProfile() {
       {/* ── Body ─────────────────────────────────────────── */}
       <div className="px-4 space-y-4 pb-8">
 
-        {/* Tournament filter */}
-        {tournamentOptions.length > 0 && (
+        {/* Series scope banner */}
+        {seriesId && seriesInfo && (
+          <div className="flex items-center gap-2 mt-4 px-3 py-2 rounded-xl bg-brand-green/10 dark:bg-brand-green/20 border border-brand-green/20">
+            <Repeat2 size={14} className="text-brand-green shrink-0" />
+            <span className="flex-1 text-xs font-semibold text-brand-green truncate">{seriesInfo.name} — Series Stats</span>
+            <button onClick={() => navigate(`/players/${id}`, { replace: true })} className="text-brand-green/60 hover:text-brand-green">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Tournament filter — only shown when not in series scope */}
+        {!seriesId && tournamentOptions.length > 0 && (
           <select
             value={selectedTournament}
             onChange={e => setSelectedTournament(e.target.value)}
@@ -246,10 +307,10 @@ export default function PlayerProfile() {
         )}
 
         {/* ── Match History ── */}
-        {tab === 3 && <MatchHistoryTable history={history} />}
+        {tab === 3 && <MatchHistoryTable history={seriesId ? (seriesHistory || []) : history} />}
 
         {/* ── H2H ── */}
-        {tab === 4 && <HeadToHeadPanel batsmanId={id} />}
+        {tab === 4 && <HeadToHeadPanel batsmanId={id} inningsIds={seriesInningsIds} />}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BarChart3, Pencil, Trophy } from 'lucide-react';
+import { BarChart3, Pencil, Trophy, Repeat2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as tournamentService from '../services/tournamentService';
 import * as matchService from '../services/matchService';
@@ -98,6 +98,12 @@ export default function TournamentDetail() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-1">
+          {tournament.series && (
+            <Link to={`/series/${tournament.series.id}`} className="flex items-center gap-1 text-xs text-brand-green font-medium mb-0.5">
+              <Repeat2 size={11} />
+              {tournament.series.name}
+            </Link>
+          )}
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">{tournament.name}</h1>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${
