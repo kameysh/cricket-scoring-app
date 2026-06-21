@@ -251,7 +251,7 @@ export default function Home() {
 
 // ── Rich match card — Google-style with scores + top performers ─────────────
 
-function MatchScoreCard({ match, stats, onDelete, onNavigate }) {
+export function MatchScoreCard({ match, stats, onDelete, onNavigate }) {
   const { canScore } = useRole();
 
   const innings = stats?.innings || [];
