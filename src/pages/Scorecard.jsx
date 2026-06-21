@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Share2 } from 'lucide-react';
 import * as matchService from '../services/matchService';
 import PlayerLink from '../components/player/PlayerLink';
+import PlayerAvatar from '../components/player/PlayerAvatar';
 import { calcStrikeRate, calcEconomy, formatOvers, fmt } from '../lib/cricketUtils';
 import MomentumGraph from '../components/match/MomentumGraph';
 import HighlightsFeed from '../components/match/HighlightsFeed';
@@ -142,121 +143,118 @@ function InningsBlock({ innings, deliveries, playerMeta, playersMap, onBatterCli
       <OverByOverTable deliveries={deliveries} playersMap={playersMap} />
 
       {/* Batting */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-gray-500 border-b border-gray-200 dark:border-gray-700">
-              <th className="py-2 pr-1">Batsman</th>
-              <th className="py-2 px-1">How Out</th>
-              <th className="py-2 px-1 text-center">R</th>
-              <th className="py-2 px-1 text-center">B</th>
-              <th className="py-2 px-1 text-center">1s</th>
-              <th className="py-2 px-1 text-center">2s</th>
-              <th className="py-2 px-1 text-center">3s</th>
-              <th className="py-2 px-1 text-center">4s</th>
-              <th className="py-2 px-1 text-center">6s</th>
-              <th className="py-2 px-1 text-center">Dots</th>
-              <th className="py-2 px-1 text-center">SR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {batOrder.length === 0 && (
-              <tr><td colSpan={11} className="py-3 text-center text-gray-400">No deliveries</td></tr>
-            )}
-            {batOrder.map((pid, i) => {
-              const s = batMap.get(pid);
-              const dis = dismissalMap.get(pid);
-              return (
-                <tr
-                  key={i}
-                  className="border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                  onClick={() => onBatterClick && onBatterClick(pid, s.name)}
-                >
-                  <td className="py-2 pr-1 font-medium">
-                    <span className="inline-flex items-center gap-0.5 whitespace-nowrap">
-                      <PlayerLink id={pid} name={s.name} />
-                      <PlayerBadges pid={pid} playerMeta={playerMeta} />
-                      {pid === motmId && <span className="ml-0.5 text-[10px] text-cricket-gold" title="Man of the Match">★</span>}
-                    </span>
-                  </td>
-                  <td className="py-2 px-1 text-gray-500 text-[11px]">{dismissalText(dis)}</td>
-                  <td className="py-2 px-1 text-center font-semibold">{s.runs}</td>
-                  <td className="py-2 px-1 text-center">{s.balls}</td>
-                  <td className="py-2 px-1 text-center">{s.ones}</td>
-                  <td className="py-2 px-1 text-center">{s.twos}</td>
-                  <td className="py-2 px-1 text-center">{s.threes}</td>
-                  <td className="py-2 px-1 text-center">{s.fours}</td>
-                  <td className="py-2 px-1 text-center">{s.sixes}</td>
-                  <td className="py-2 px-1 text-center">{s.dots}</td>
-                  <td className="py-2 px-1 text-center">{s.balls > 0 ? fmt(calcStrikeRate(s.runs, s.balls)) : '-'}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <div>
+        <p className="text-[11px] font-bold text-ink-500 dark:text-ink-400 uppercase tracking-wider mb-2">Batting</p>
+        <div className="flex items-center text-[11px] font-medium text-ink-400 pb-1.5 border-b border-ink-100 dark:border-white/10">
+          <div className="flex-1">Batter</div>
+          <div className="w-8 text-right">R</div>
+          <div className="w-7 text-right">B</div>
+          <div className="w-7 text-right">4s</div>
+          <div className="w-7 text-right">6s</div>
+          <div className="w-12 text-right">S/R</div>
+        </div>
 
-      <div className="text-xs text-gray-500 flex justify-between bg-gray-50 dark:bg-gray-800 rounded-lg p-2">
-        <span>Extras: wd {extras.wides} nb {extras.no_balls} b {extras.byes} lb {extras.leg_byes} pen {extras.penalty}</span>
-        <span className="font-semibold">Total {totalExtras}</span>
-      </div>
+        {batOrder.length === 0 && (
+          <p className="text-xs text-ink-400 text-center py-6">No deliveries recorded</p>
+        )}
 
-      <div className="text-sm font-bold text-center bg-cricket-green/10 rounded-lg p-2">
-        {innings.total_runs}/{innings.total_wickets} ({formatOvers(innings.total_legal_balls)} ov)
+        {batOrder.map(pid => {
+          const s = batMap.get(pid);
+          const dis = dismissalMap.get(pid);
+          const p = playersMap[pid];
+          const isNotOut = !dis;
+          const sr = s.balls > 0 ? fmt(calcStrikeRate(s.runs, s.balls)) : '-';
+          return (
+            <div
+              key={pid}
+              className="flex items-center gap-2.5 py-2.5 border-b border-ink-50 dark:border-white/5 cursor-pointer hover:bg-ink-50 dark:hover:bg-white/5 -mx-1 px-1 rounded-lg transition-colors"
+              onClick={() => onBatterClick?.(pid, s.name)}
+            >
+              <div className="shrink-0">
+                <PlayerAvatar name={s.name} photoUrl={p?.photo_url} size={30} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-0.5 flex-wrap">
+                  <span className="text-sm font-semibold text-ink-900 dark:text-white">{s.name}</span>
+                  <PlayerBadges pid={pid} playerMeta={playerMeta} />
+                  {pid === motmId && <span className="text-[11px] text-cricket-gold ml-0.5">★</span>}
+                </div>
+                <p className="text-[11px] text-ink-400 mt-0.5 truncate">{dismissalText(dis)}</p>
+              </div>
+              <div className="flex items-center shrink-0">
+                <div className="w-8 text-right text-sm font-bold text-ink-900 dark:text-white">{s.runs}{isNotOut ? '*' : ''}</div>
+                <div className="w-7 text-right text-xs text-ink-500">{s.balls}</div>
+                <div className="w-7 text-right text-xs text-ink-500">{s.fours}</div>
+                <div className="w-7 text-right text-xs text-ink-500">{s.sixes}</div>
+                <div className="w-12 text-right text-xs text-ink-500">{sr}</div>
+              </div>
+            </div>
+          );
+        })}
+
+        <div className="flex justify-between text-xs text-ink-500 py-2 mt-1 border-t border-ink-100 dark:border-white/10">
+          <span>Extras: wd {extras.wides} nb {extras.no_balls} b {extras.byes} lb {extras.leg_byes}{extras.penalty > 0 ? ` pen ${extras.penalty}` : ''}</span>
+          <span className="font-semibold">{totalExtras}</span>
+        </div>
+
+        <div className="flex justify-between items-center py-2 border-t border-ink-200 dark:border-white/10 font-semibold text-sm text-ink-900 dark:text-white">
+          <span>Total ({formatOvers(innings.total_legal_balls)} ov)</span>
+          <span>{innings.total_runs}/{innings.total_wickets}</span>
+        </div>
       </div>
 
       {/* Bowling */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-gray-500 border-b border-gray-200 dark:border-gray-700">
-              <th className="py-2 pr-1">Bowler</th>
-              <th className="py-2 px-1 text-center">O</th>
-              <th className="py-2 px-1 text-center">M</th>
-              <th className="py-2 px-1 text-center">R</th>
-              <th className="py-2 px-1 text-center">W</th>
-              <th className="py-2 px-1 text-center">Econ</th>
-              <th className="py-2 px-1 text-center">Wd</th>
-              <th className="py-2 px-1 text-center">NB</th>
-              <th className="py-2 px-1 text-center"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {bowlOrder.length === 0 && (
-              <tr><td colSpan={9} className="py-3 text-center text-gray-400">No deliveries</td></tr>
-            )}
-            {bowlOrder.map((pid, i) => {
-              const s = bowlMap.get(pid);
-              const maidens = maidenMap.get(pid) || 0;
-              return (
-                <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
-                  <td className="py-2 pr-1 font-medium">
-                    <span className="inline-flex items-center gap-0.5">
-                      <PlayerLink id={pid} name={s.name} />
-                      <PlayerBadges pid={pid} playerMeta={playerMeta} />
-                    </span>
-                  </td>
-                  <td className="py-2 px-1 text-center">{formatOvers(s.legal_balls)}</td>
-                  <td className="py-2 px-1 text-center">{maidens}</td>
-                  <td className="py-2 px-1 text-center">{s.runs}</td>
-                  <td className="py-2 px-1 text-center font-semibold">{s.wickets}</td>
-                  <td className="py-2 px-1 text-center">{s.legal_balls > 0 ? fmt(calcEconomy(s.runs, s.legal_balls)) : '-'}</td>
-                  <td className="py-2 px-1 text-center">{s.wides}</td>
-                  <td className="py-2 px-1 text-center">{s.no_balls}</td>
-                  <td className="py-2 pl-1 text-center">
-                    <button
-                      onClick={() => onBowlerShare && onBowlerShare(pid, s.name)}
-                      className="p-1 rounded-full text-ink-400 hover:text-brand-green hover:bg-brand-green/10 transition-colors"
-                      title="Share performance"
-                    >
-                      <Share2 size={12} />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div>
+        <p className="text-[11px] font-bold text-ink-500 dark:text-ink-400 uppercase tracking-wider mb-2">Bowling</p>
+        <div className="flex items-center text-[11px] font-medium text-ink-400 pb-1.5 border-b border-ink-100 dark:border-white/10">
+          <div className="flex-1">Bowler</div>
+          <div className="w-8 text-right">O</div>
+          <div className="w-7 text-right">M</div>
+          <div className="w-8 text-right">R</div>
+          <div className="w-7 text-right">W</div>
+          <div className="w-12 text-right">Econ</div>
+          <div className="w-7"></div>
+        </div>
+
+        {bowlOrder.length === 0 && (
+          <p className="text-xs text-ink-400 text-center py-6">No deliveries recorded</p>
+        )}
+
+        {bowlOrder.map(pid => {
+          const s = bowlMap.get(pid);
+          const maidens = maidenMap.get(pid) || 0;
+          const p = playersMap[pid];
+          const econ = s.legal_balls > 0 ? fmt(calcEconomy(s.runs, s.legal_balls)) : '-';
+          return (
+            <div key={pid} className="flex items-center gap-2.5 py-2.5 border-b border-ink-50 dark:border-white/5">
+              <div className="shrink-0">
+                <PlayerAvatar name={s.name} photoUrl={p?.photo_url} size={30} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="inline-flex items-center gap-0.5">
+                  <PlayerLink id={pid} name={s.name} className="text-sm font-medium" />
+                  <PlayerBadges pid={pid} playerMeta={playerMeta} />
+                </span>
+              </div>
+              <div className="flex items-center shrink-0">
+                <div className="w-8 text-right text-xs text-ink-700 dark:text-ink-300">{formatOvers(s.legal_balls)}</div>
+                <div className="w-7 text-right text-xs text-ink-500">{maidens}</div>
+                <div className="w-8 text-right text-xs text-ink-500">{s.runs}</div>
+                <div className="w-7 text-right text-xs font-bold text-ink-900 dark:text-white">{s.wickets}</div>
+                <div className="w-12 text-right text-xs text-ink-500">{econ}</div>
+                <div className="w-7 flex justify-end">
+                  <button
+                    onClick={() => onBowlerShare?.(pid, s.name)}
+                    className="p-1 rounded-full text-ink-400 hover:text-brand-green hover:bg-brand-green/10 transition-colors"
+                    title="Share performance"
+                  >
+                    <Share2 size={12} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

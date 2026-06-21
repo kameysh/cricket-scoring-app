@@ -283,13 +283,22 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
   - Every text container needs `justifyContent: 'center'` + `width: '100%'` to actually centre.
   - **No emoji / special glyphs** — only the loaded Inter WOFF is available, so emoji (🏆) and symbols (★) render as tofu boxes. For icons, embed an inline SVG as a data-URI `<img>` (e.g. `TROPHY_DATA_URL` for the MoTM badge).
 
+### `src/pages/MatchSummary.jsx`
+- **Three-tab layout:** SUMMARY | SCORECARD | COMMENTARY — sticky tab bar with underline style
+- **Header:** 3-column grid: team1 score (left) · result (center) · team2 score (right)
+- **Summary tab:** blue gradient MoTM card (name + bat/bowl stats + avatar); per-team performance block with Top Bat + Top Bowl (avatar + stats); MoTM override dropdown (`canScore`); Share Result (Web Share API → clipboard text)
+- **Scorecard tab:** team name tabs switch innings; Google-style rows: avatar + name (C/Wk badges + ★) + dismissal below + R B 4s 6s S/R; yet to bat; fall of wickets (runs/wkts, name, over); bowling O M R W Econ; tap batter to open `PlayerMatchCardSheet`
+- **Commentary tab:** per-innings HighlightsFeed sections
+- Loads innings list + deliveries (parallel) + scorecards in one useEffect; `playerMeta` + `playersMap` built from matchPlayers
+- `scoredPlayers` useMemo must be declared before `if (!match) return null` (Rules of Hooks)
+
 ### `src/pages/Scorecard.jsx`
+- **Updated InningsBlock:** Google-style layout — player avatar + name (C/Wk + ★ MoTM) + dismissal below name; columns R B 4s 6s S/R (batting) and O M R W Econ (bowling); removed 1s/2s/3s/Dots/Wd/NB columns
 - Tap any batsman row → `PlayerMatchCardSheet` opens with performance card preview + Share button + "View SR Chart" secondary
 - Bowling rows have a `<Share2>` icon button that opens the same sheet for that bowler
 - `openPlayerCard(pid)` helper: flattens all innings deliveries, runs `buildStatsFromDeliveries` across all innings, extracts bat/bowl/dismissal stats for the player
 - `MomentumGraph` displayed above each innings block
-- MoTM player gets a `★` gold badge next to their name in the batting table; `motmId` sourced from `match.man_of_match.id` (joined in `getMatch`)
-- **Highlights Feed** (`HighlightsFeed`): collapsible per-innings feed of auto-detected events (boundaries, wickets, milestones, hat-tricks, maiden overs) with Share button
+- **Highlights Feed** (`HighlightsFeed`): collapsible per-innings feed of auto-detected events
 - **Over-by-Over table** (`OverByOverTable`): collapsible per-innings table (Ov | Bowler | R | W | Balls), collapsed by default
 - `playersMap` state built from `matchPlayers`: `{ [player_id]: { name, photo_url } }` — passed to InningsBlock for name resolution
 
@@ -416,6 +425,8 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `BottomSheet.jsx` | Background page scrolled behind open sheet on mobile | Added `document.body.style.overflow = 'hidden'` lock via `useEffect([open])`; restored on close. Added `noScroll` prop for sheets that should never scroll internally. |
 | `Players.jsx` | "19 of 28" count wrapped inside pill on narrow screens; wouldn't scale to triple digits | Removed pill entirely; count is now inline `tabular-nums whitespace-nowrap` text — plain number when unfiltered, `19 / 28` (bold/lighter) when filtered. |
 | `Players.jsx` | Re-tapping a selected player in compare mode showed "Already selected" toast instead of deselecting | `handleSelectForCompare` now deselects on re-tap: clears p1 (promoting p2→p1) or clears p2. |
+| `MatchSummary.jsx` | Single-page result view had no scorecard data or commentary — required navigating to separate Scorecard page | Full redesign: 3-tab layout (SUMMARY · SCORECARD · COMMENTARY) with sticky tab bar; Summary shows blue MoTM card + per-team top performers; Scorecard uses Google-style rows (avatar + dismissal below name, R B 4s 6s S/R / O M R W Econ); Commentary shows per-innings HighlightsFeed |
+| `Scorecard.jsx` | Batting table had 11 columns (incl. 1s/2s/3s/Dots) with no player photos — too wide for mobile, no visual identity | Updated InningsBlock to Google-style: player avatar in every row, dismissal below name, trimmed to R B 4s 6s S/R (batting) and O M R W Econ (bowling) |
 | `PlayerCarousel.jsx` | "Tap" badge clipped by card's `rounded-3xl` corner at `top-3 right-3` | Moved to `top-4 right-4` with slightly more padding; badge now clear of rounded corner. |
 | `Scorecard.jsx` + `PlayerMatchCardSheet.jsx` (new) | No way to share individual player performance after a match | Tapping a batsman row or the share icon on a bowling row opens `PlayerMatchCardSheet` — shows a 9:16 performance card preview with player stats + both team scores; "Share Performance" generates 1080×1920px PNG via Satori; shares via Web Share API (mobile) → clipboard → download fallback |
 | `PlayerMatchCardSheet.jsx` + `generateShareCard.jsx` | html2canvas produced skewed/inconsistent cards across devices | **Replaced html2canvas with Satori** — renders JSX → SVG → PNG entirely in JS; pixel-perfect on every device; no DOM screenshot. Requires `vite.config.js` `define` block for Node.js globals polyfill. |

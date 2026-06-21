@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import { Plus, Swords, Trophy, Users, BarChart2, ChevronRight, Zap, PauseCircle } from 'lucide-react';
+import { Plus, Swords, Trophy, Users, BarChart2, ChevronRight, Zap, PauseCircle, Trash2 } from 'lucide-react';
 import * as matchService from '../services/matchService';
 import * as playerService from '../services/playerService';
 import * as tournamentService from '../services/tournamentService';
-import MatchCard from '../components/match/MatchCard';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import PlayerAvatar from '../components/player/PlayerAvatar';
 import { useRole } from '../hooks/useRole';
 import { useAuthStore } from '../stores/authStore';
+import { formatOvers } from '../lib/cricketUtils';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -22,6 +24,7 @@ export default function Home() {
   const [tournaments, setTournaments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toDelete, setToDelete] = useState(null);
+  const [matchStats, setMatchStats] = useState({});
 
   useEffect(() => {
     Promise.all([
@@ -32,10 +35,34 @@ export default function Home() {
       setMatches(m);
       setAllStats(s);
       setTournaments(t);
-    }).catch(e => {
+    }).catch(() => {
       toast.error('Failed to load home data');
     }).finally(() => setLoading(false));
   }, []);
+
+  // Load innings + scorecards for recent completed matches
+  useEffect(() => {
+    const recent = matches.filter(m => m.status === 'completed').slice(-3);
+    if (recent.length === 0) return;
+
+    Promise.allSettled(recent.map(async m => {
+      const innings = await matchService.getInnings(m.id);
+      const cardMap = {};
+      await Promise.allSettled(innings.map(async inn => {
+        cardMap[inn.id] = await matchService.getScorecards(inn.id);
+      }));
+      return [m.id, { innings, cardMap }];
+    })).then(results => {
+      const statsMap = {};
+      results.forEach(r => {
+        if (r.status === 'fulfilled') {
+          const [matchId, data] = r.value;
+          statsMap[matchId] = data;
+        }
+      });
+      setMatchStats(statsMap);
+    });
+  }, [matches]);
 
   async function handleDelete() {
     try {
@@ -51,7 +78,7 @@ export default function Home() {
 
   const live = matches.filter(m => m.status === 'live' || m.status === 'paused');
   const recent = matches.filter(m => m.status === 'completed').slice(-3);
-  const topScorer = allStats.length > 0 ? allStats[0] : null; // already sorted by bat_runs desc
+  const topScorer = allStats.length > 0 ? allStats[0] : null;
   const topWickets = [...allStats].sort((a, b) => b.bowl_wickets - a.bowl_wickets).find(s => s.bowl_wickets > 0) || null;
   const activeTournament = tournaments.find(t => t.status !== 'completed') || null;
 
@@ -114,10 +141,7 @@ export default function Home() {
 
                   <div className="flex gap-2">
                     {canScore && (
-                      <button
-                        onClick={() => navigate(`/matches/${m.id}`)}
-                        className="flex-1 btn-primary !py-2 text-sm"
-                      >
+                      <button onClick={() => navigate(`/matches/${m.id}`)} className="flex-1 btn-primary !py-2 text-sm">
                         Resume Scoring
                       </button>
                     )}
@@ -136,16 +160,8 @@ export default function Home() {
           {/* Quick Stats Strip */}
           <section>
             <div className="grid grid-cols-2 gap-2.5">
-              <StatPill
-                icon={<Swords size={15} className="text-brand-green" />}
-                label="Matches"
-                value={matches.length}
-              />
-              <StatPill
-                icon={<Users size={15} className="text-brand-teal" />}
-                label="Players"
-                value={allStats.length || '—'}
-              />
+              <StatPill icon={<Swords size={15} className="text-brand-green" />} label="Matches" value={matches.length} />
+              <StatPill icon={<Users size={15} className="text-brand-teal" />} label="Players" value={allStats.length || '—'} />
               <StatPill
                 icon={<BarChart2 size={15} className="text-amber-500" />}
                 label="Top Scorer"
@@ -178,9 +194,7 @@ export default function Home() {
                     <p className="font-semibold text-ink-900 dark:text-white text-sm leading-tight">{activeTournament.name}</p>
                     <p className="text-xs text-ink-400 mt-0.5 capitalize">
                       {activeTournament.status === 'ongoing' ? 'In Progress' : activeTournament.status || 'Upcoming'}
-                      {activeTournament.tournament_teams?.[0]?.count > 0
-                        ? ` · ${activeTournament.tournament_teams[0].count} teams`
-                        : ''}
+                      {activeTournament.tournament_teams?.[0]?.count > 0 ? ` · ${activeTournament.tournament_teams[0].count} teams` : ''}
                     </p>
                   </div>
                 </div>
@@ -194,10 +208,7 @@ export default function Home() {
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-sm font-semibold text-ink-500 dark:text-ink-400">Recent Matches</h2>
               {matches.filter(m => m.status === 'completed').length > 3 && (
-                <button
-                  onClick={() => navigate('/matches')}
-                  className="text-xs text-brand-green font-medium"
-                >
+                <button onClick={() => navigate('/matches')} className="text-xs text-brand-green font-medium">
                   See all
                 </button>
               )}
@@ -209,9 +220,15 @@ export default function Home() {
                 message={canScore ? 'Tap "+ New Match" to start your first match.' : 'No completed matches to show yet.'}
               />
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {recent.map(m => (
-                  <MatchCard key={m.id} match={m} onDelete={canScore ? setToDelete : undefined} />
+                  <MatchScoreCard
+                    key={m.id}
+                    match={m}
+                    stats={matchStats[m.id]}
+                    onDelete={canScore ? setToDelete : undefined}
+                    onNavigate={id => navigate(`/matches/${id}/summary`)}
+                  />
                 ))}
               </div>
             )}
@@ -231,6 +248,151 @@ export default function Home() {
     </div>
   );
 }
+
+// ── Rich match card — Google-style with scores + top performers ─────────────
+
+function MatchScoreCard({ match, stats, onDelete, onNavigate }) {
+  const { canScore } = useRole();
+
+  const innings = stats?.innings || [];
+  const cardMap = stats?.cardMap || {};
+
+  // Innings by batting team (works regardless of who batted first)
+  const team1BatInn = innings.find(i => i.batting_team === 1);
+  const team2BatInn = innings.find(i => i.batting_team === 2);
+
+  // Top 2 batters per team (from the innings they batted in)
+  const team1Batters = team1BatInn
+    ? (cardMap[team1BatInn.id]?.batting || []).slice().sort((a, b) => (b.runs || 0) - (a.runs || 0)).slice(0, 2)
+    : [];
+  const team2Batters = team2BatInn
+    ? (cardMap[team2BatInn.id]?.batting || []).slice().sort((a, b) => (b.runs || 0) - (a.runs || 0)).slice(0, 2)
+    : [];
+
+  // Top bowler per team (from the innings they bowled in)
+  const team1TopBowl = team2BatInn
+    ? (cardMap[team2BatInn.id]?.bowling || []).slice().sort((a, b) => (b.wickets || 0) - (a.wickets || 0) || (a.runs_conceded || 0) - (b.runs_conceded || 0))[0]
+    : null;
+  const team2TopBowl = team1BatInn
+    ? (cardMap[team1BatInn.id]?.bowling || []).slice().sort((a, b) => (b.wickets || 0) - (a.wickets || 0) || (a.runs_conceded || 0) - (b.runs_conceded || 0))[0]
+    : null;
+
+  const hasPerformers = team1Batters.length > 0 || team2Batters.length > 0;
+
+  return (
+    <div className="card overflow-hidden">
+      {/* Clickable score header */}
+      <button
+        className="w-full text-left px-4 pt-4 pb-3"
+        onClick={() => onNavigate(match.id)}
+      >
+        <div className="grid grid-cols-3 gap-1 items-center">
+          {/* Team 1 */}
+          <div>
+            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wide truncate mb-1">{match.team1_name}</p>
+            <p className="text-2xl font-bold text-ink-900 dark:text-white leading-none">
+              {team1BatInn ? `${team1BatInn.total_runs}/${team1BatInn.total_wickets}` : '—'}
+            </p>
+            {team1BatInn && (
+              <p className="text-[11px] text-ink-400 mt-0.5">({formatOvers(team1BatInn.total_legal_balls)} ov)</p>
+            )}
+          </div>
+
+          {/* Result */}
+          <div className="text-center px-1">
+            <p className="text-[11px] font-semibold text-ink-500 dark:text-ink-400 leading-tight">
+              {match.result_summary || '—'}
+            </p>
+          </div>
+
+          {/* Team 2 */}
+          <div className="text-right">
+            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wide truncate mb-1">{match.team2_name}</p>
+            <p className="text-2xl font-bold text-ink-900 dark:text-white leading-none">
+              {team2BatInn ? `${team2BatInn.total_runs}/${team2BatInn.total_wickets}` : '—'}
+            </p>
+            {team2BatInn && (
+              <p className="text-[11px] text-ink-400 mt-0.5">({formatOvers(team2BatInn.total_legal_balls)} ov)</p>
+            )}
+          </div>
+        </div>
+      </button>
+
+      {/* Top performers */}
+      {hasPerformers && (
+        <div
+          className="border-t border-ink-100 dark:border-white/10 px-4 py-3 grid grid-cols-2 gap-x-4 bg-ink-50/60 dark:bg-white/3 cursor-pointer"
+          onClick={() => onNavigate(match.id)}
+        >
+          {/* Team 1 performers */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide mb-1">{match.team1_name}</p>
+            {team1Batters.map(b => (
+              <div key={b.player_id} className="flex items-center gap-1.5">
+                <PlayerAvatar name={b.players?.name || ''} size={20} />
+                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{b.players?.name || '—'}</span>
+                <span className="text-xs font-bold text-ink-900 dark:text-white tabular-nums">{b.runs ?? '—'}</span>
+              </div>
+            ))}
+            {team1TopBowl && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <PlayerAvatar name={team1TopBowl.players?.name || ''} size={20} />
+                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{team1TopBowl.players?.name || '—'}</span>
+                <span className="text-xs font-bold text-brand-green tabular-nums">
+                  {team1TopBowl.wickets}/{team1TopBowl.runs_conceded || 0}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Team 2 performers */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide mb-1">{match.team2_name}</p>
+            {team2Batters.map(b => (
+              <div key={b.player_id} className="flex items-center gap-1.5">
+                <PlayerAvatar name={b.players?.name || ''} size={20} />
+                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{b.players?.name || '—'}</span>
+                <span className="text-xs font-bold text-ink-900 dark:text-white tabular-nums">{b.runs ?? '—'}</span>
+              </div>
+            ))}
+            {team2TopBowl && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <PlayerAvatar name={team2TopBowl.players?.name || ''} size={20} />
+                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{team2TopBowl.players?.name || '—'}</span>
+                <span className="text-xs font-bold text-brand-green tabular-nums">
+                  {team2TopBowl.wickets}/{team2TopBowl.runs_conceded || 0}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="px-4 py-2 border-t border-ink-100 dark:border-white/10 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-ink-400">
+            {match.created_at && format(new Date(match.created_at), 'dd MMM yyyy')}
+          </span>
+          {match.venues?.name && (
+            <span className="text-[11px] text-ink-300">· {match.venues.name}</span>
+          )}
+        </div>
+        {onDelete && canScore && (
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(match); }}
+            aria-label="Delete match"
+            className="p-1.5 rounded-full text-ink-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Stat pill ─────────────────────────────────────────────────────────────────
 
 function StatPill({ icon, label, value, sub, onClick }) {
   const inner = (
