@@ -46,9 +46,11 @@ vi.mock('../components/scoring/BallLog', () => ({ default: () => null }));
 vi.mock('../components/scoring/JokerPanel', () => ({ default: () => null }));
 vi.mock('../components/scoring/WicketModal', () => ({ default: () => null }));
 vi.mock('../components/scoring/NewBatsmanModal', () => ({ default: () => null }));
-// BowlerSelectModal mock renders a sentinel so tests can detect when it's open
+// BowlerSelectModal mock renders a sentinel so tests can detect when it's open and inspect eligible players
 vi.mock('../components/scoring/BowlerSelectModal', () => ({
-  default: ({ open, title }) => open ? <div data-testid="bowler-modal">{title || 'Select Next Bowler'}</div> : null,
+  default: ({ open, title, eligible = [] }) => open
+    ? <div data-testid="bowler-modal" data-eligible={eligible.map(p => p.id).join(',')}>{title || 'Select Next Bowler'}</div>
+    : null,
 }));
 vi.mock('../components/scoring/MatchResultBanner', () => ({ default: () => null }));
 vi.mock('../components/scoring/PlayerStatsDrawer', () => ({ default: () => null }));
@@ -378,6 +380,57 @@ describe('LiveScoring — overs-complete sheet body text', () => {
     await renderLiveScoring();
     expect(screen.getByText(/super over is complete/i)).toBeTruthy();
     expect(screen.queryByText(/All 5 overs have been bowled/)).toBeNull();
+  });
+});
+
+// ─── Keeper modal excludes current bowler ────────────────────────────────────
+// batting_team=1 → bowling team=2; so bowling team players must have team:2
+const BOWLING_TEAM_PLAYERS = [
+  { id: 'mp-bowl', player_id: 'p-bowl', team: 2, is_active: true, players: { id: 'p-bowl', name: 'Kamesh' } },
+  { id: 'mp-keep', player_id: 'p-keep', team: 2, is_active: true, players: { id: 'p-keep', name: 'Manoj' } },
+  { id: 'mp-other', player_id: 'p-other', team: 2, is_active: true, players: { id: 'p-other', name: 'Naveen' } },
+];
+const INN_BATTING_T1 = { id: 'i1', innings_number: 1, batting_team: 1, total_runs: 5, total_wickets: 0, total_legal_balls: 3, is_completed: false, is_super_over: false, target: null };
+
+describe('LiveScoring — keeper modal must NOT include the current bowler', () => {
+  it('keeper modal eligible list excludes the current bowler', async () => {
+    mockStoreState = buildStore({
+      innings: [INN_BATTING_T1],
+      currentInnings: INN_BATTING_T1,
+      matchPlayers: BOWLING_TEAM_PLAYERS,
+      bowler: 'p-bowl',   // Kamesh is currently bowling
+      keeper: 'p-keep',
+    });
+    mockWinInfo = null;
+    await renderLiveScoring();
+
+    // Open keeper modal via "Change" button next to Keeper row
+    // Bowler row shows "Change" first, Keeper row "Change" second
+    const changeBtns = screen.getAllByRole('button', { name: /change/i });
+    await act(async () => { await userEvent.click(changeBtns[1]); });
+
+    const keeperModal = screen.getByTestId('bowler-modal');
+    const eligible = keeperModal.getAttribute('data-eligible');
+    expect(eligible).not.toContain('p-bowl');   // current bowler excluded
+    expect(eligible).toContain('p-keep');        // others still included
+    expect(eligible).toContain('p-other');
+  });
+
+  it('bowler modal eligible list CAN include the current keeper', async () => {
+    mockStoreState = buildStore({
+      innings: [INN_BATTING_T1],
+      currentInnings: INN_BATTING_T1,
+      matchPlayers: BOWLING_TEAM_PLAYERS,
+      bowler: null,        // no bowler → modal auto-opens
+      keeper: 'p-keep',
+    });
+    mockWinInfo = null;
+    await renderLiveScoring();
+
+    const bowlerModal = screen.getByTestId('bowler-modal');
+    const eligible = bowlerModal.getAttribute('data-eligible');
+    // keeper (Manoj/p-keep) CAN appear in bowler modal
+    expect(eligible).toContain('p-keep');
   });
 });
 

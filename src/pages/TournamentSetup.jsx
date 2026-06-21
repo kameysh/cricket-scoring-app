@@ -150,8 +150,7 @@ export default function TournamentSetup() {
     if (totalOvers < 1 || teamSize < 6 || teamSize > 11) return false;
     const squadsReady = teams.every(t => (teamPlayers[t.id] || []).length >= teamSize);
     const captainsReady = teams.every(t => !!captainIds[t.id]);
-    const keepersReady = teams.every(t => !!keeperIds[t.id]);
-    return squadsReady && captainsReady && keepersReady;
+    return squadsReady && captainsReady;
   }, [isSeries, matchesExist, totalOvers, teamSize, teams, teamPlayers, captainIds, keeperIds]);
 
   const canSave = useMemo(() => teams.some(t => (teamPlayers[t.id] || []).length > 0), [teams, teamPlayers]);
@@ -316,14 +315,14 @@ export default function TournamentSetup() {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-ink-400 uppercase tracking-wide mb-1">
-                    Keeper <span className="text-red-400">*</span>
+                    Keeper (optional)
                   </label>
                   <select
                     value={keeperIds[team.id] || ''}
                     onChange={e => setKeeperIds(prev => ({ ...prev, [team.id]: e.target.value || null }))}
                     className="field-input !py-1.5 !text-sm"
                   >
-                    <option value="">Select *</option>
+                    <option value="">Select (optional)</option>
                     {assigned.map(pid => (
                       <option key={pid} value={pid}>{playerName(pid)}</option>
                     ))}

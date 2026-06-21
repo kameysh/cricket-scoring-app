@@ -10,6 +10,7 @@
    b. Run `npm test` and confirm all tests pass (fix source logic if tests reveal bugs — never weaken tests).
    c. Run `npm run build` and confirm zero errors.
    Only after both pass is the task considered complete. Deliver the final `CLAUDE.md` update as part of the same response.
+5. **Every change gets at least one test, no exceptions** — including label changes, optional flag changes, and prop changes. If the component has no test file, create one.
 
 ---
 
@@ -480,7 +481,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**19 test files, 305 tests — all passing:**
+**20 test files, 312 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -497,6 +498,8 @@ For realtime to work, each table must have Replication enabled:
 | `src/services/playerService.test.js` | getPlayerMatchCounts — distinct match counting, dedup, empty/null data, multi-player isolation; getPlayerInningsCounts — batting/bowling innings from live scorecard rows, yet_to_bat excluded, 0-legal-ball rows excluded |
 | `src/services/matchService.test.js` | incrementMatchesPlayed, addSubPlayer, setPlayerActive, getMatchNumber, createSuperOverInnings — inserts with is_super_over=true, passes target, throws on DB error |
 | `src/stores/matchStore.test.js` | swapPlayer — sequential order, no deactivate if insert throws, correct subbedOutPlayerId, store state; swapBack — finds linked sub (not any active sub), throws if no linked sub, store state; startSuperOverInnings — correct innings number, target, state reset (striker/nonStriker/bowler/deliveries), currentInnings updated, innings appended, keeper auto-set for bowling team |
+| `src/components/match/MatchSetupStepper.test.jsx` *(new)* | Keeper optional — "Select keeper (optional)" placeholder shown; "Select keeper *" absent; Wicket Keeper label has no asterisk; no validation error requiring keeper |
+| `src/pages/LiveScoring.test.jsx` | Keeper modal eligible list excludes current bowler; bowler modal eligible list can include current keeper |
 | `src/lib/generateShareCard.test.jsx` | getInitials, calcSR, calcEcon, dismissalText — pure helper functions for Satori card generation |
 | `src/services/teamService.test.js` | getAllTeamPlayers — returns rows, empty array on null, throws on DB error |
 | `src/pages/Teams.test.jsx` | Roster player filtering: all players shown when no assignments; own-team player not disabled; cross-team player disabled + "In X" label; unassigned player enabled; clicking disabled player does not call setTeamPlayers |

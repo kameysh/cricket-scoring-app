@@ -108,7 +108,7 @@ export default function MatchSetupStepper() {
     const teamsValid = !form.jokerId
       ? t1full && t2full
       : (t1full && t2full) || (t1full && t2short) || (t2full && t1short);
-    return teamsValid && !!form.team1CaptainId && !!form.team2CaptainId && !!form.team1KeeperId && !!form.team2KeeperId;
+    return teamsValid && !!form.team1CaptainId && !!form.team2CaptainId;
   }, [form]);
 
   const step3Valid = useMemo(() => !!form.toss_winner && !!form.toss_decision, [form]);
@@ -449,14 +449,14 @@ export default function MatchSetupStepper() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
-                  {form.team1_name} — Wicket Keeper <span className="text-red-400">*</span>
+                  {form.team1_name} — Wicket Keeper
                 </label>
                 <select
                   value={form.team1KeeperId || ''}
                   onChange={e => set({ team1KeeperId: e.target.value || null })}
                   className="field-input"
                 >
-                  <option value="">Select keeper *</option>
+                  <option value="">Select keeper (optional)</option>
                   {form.team1Ids.map(id => {
                     const p = players.find(pl => pl.id === id);
                     return p ? <option key={id} value={id}>{p.name}</option> : null;
@@ -495,14 +495,14 @@ export default function MatchSetupStepper() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
-                  {form.team2_name} — Wicket Keeper <span className="text-red-400">*</span>
+                  {form.team2_name} — Wicket Keeper
                 </label>
                 <select
                   value={form.team2KeeperId || ''}
                   onChange={e => set({ team2KeeperId: e.target.value || null })}
                   className="field-input"
                 >
-                  <option value="">Select keeper *</option>
+                  <option value="">Select keeper (optional)</option>
                   {form.team2Ids.map(id => {
                     const p = players.find(pl => pl.id === id);
                     return p ? <option key={id} value={id}>{p.name}</option> : null;

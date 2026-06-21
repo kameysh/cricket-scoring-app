@@ -975,7 +975,7 @@ export default function LiveScoring() {
         onSelect={handleNewBatsman}
       />
       <BowlerSelectModal open={bowlerModalOpen} onClose={() => setBowlerModalOpen(false)} eligible={eligibleBowlers} onSelect={handleBowlerSelect} forcedBowler={bowlingTeamPlayers.find(p => p.id === prevBowler)} />
-      <BowlerSelectModal open={keeperModalOpen} onClose={() => setKeeperModalOpen(false)} eligible={bowlingTeamPlayers} onSelect={handleKeeperSelect} title="Select Wicket Keeper" />
+      <BowlerSelectModal open={keeperModalOpen} onClose={() => setKeeperModalOpen(false)} eligible={bowlingTeamPlayers.filter(p => p.id !== bowler)} onSelect={handleKeeperSelect} title="Select Wicket Keeper" />
       <MatchResultBanner summary={result} onClose={() => { setResult(null); navigate(`/matches/${id}/summary`); }} />
       <PlayerStatsDrawer />
       <ConfirmDialog
