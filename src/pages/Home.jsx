@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -13,6 +13,7 @@ import PlayerAvatar from '../components/player/PlayerAvatar';
 import { useRole } from '../hooks/useRole';
 import { useAuthStore } from '../stores/authStore';
 import { formatOvers } from '../lib/cricketUtils';
+import { supabase } from '../lib/supabase';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -25,6 +26,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [toDelete, setToDelete] = useState(null);
   const [matchStats, setMatchStats] = useState({});
+
+  const reloadMatches = useCallback(() => {
+    matchService.listMatches().then(setMatches).catch(() => {});
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -39,6 +44,17 @@ export default function Home() {
       toast.error('Failed to load home data');
     }).finally(() => setLoading(false));
   }, []);
+
+  // Realtime: refresh match list when any match status changes (live → completed, etc.)
+  useEffect(() => {
+    const channel = supabase
+      .channel('home:matches')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' },
+        () => reloadMatches()
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [reloadMatches]);
 
   // Load innings + scorecards for recent completed matches
   useEffect(() => {

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Share2 } from 'lucide-react';
 import * as matchService from '../services/matchService';
+import { supabase } from '../lib/supabase';
 import PlayerLink from '../components/player/PlayerLink';
 import PlayerAvatar from '../components/player/PlayerAvatar';
 import { calcStrikeRate, calcEconomy, formatOvers, fmt } from '../lib/cricketUtils';
@@ -269,16 +270,26 @@ export default function Scorecard() {
   const [playersMap, setPlayersMap] = useState({});
   const [activeTab, setActiveTab] = useState(0);
   const [cardPlayer, setCardPlayer] = useState(null);
+  const [isLive, setIsLive] = useState(false);
+  const inningsIdsRef = useRef([]);
+
+  const reloadInnings = useCallback(async () => {
+    const list = await matchService.getInnings(id);
+    setInningsList(list);
+    inningsIdsRef.current = list.map(i => i.id);
+    const all = {};
+    await Promise.all(list.map(async inn => {
+      all[inn.id] = await matchService.getDeliveries(inn.id);
+    }));
+    setDeliveriesMap(all);
+  }, [id]);
 
   useEffect(() => {
-    matchService.getMatch(id).then(setMatch);
-    matchService.getInnings(id).then(async list => {
-      setInningsList(list);
-      const all = {};
-      for (const inn of list) all[inn.id] = await matchService.getDeliveries(inn.id);
-      setDeliveriesMap(all);
+    matchService.getMatch(id).then(m => {
+      setMatch(m);
+      setIsLive(m?.status === 'live' || m?.status === 'paused');
     });
-    // Build playerMeta and playersMap from match_players
+    reloadInnings();
     matchService.getMatchPlayers(id).then(rows => {
       const meta = new Map();
       const pMap = {};
@@ -293,7 +304,56 @@ export default function Scorecard() {
       setPlayerMeta(meta);
       setPlayersMap(pMap);
     });
-  }, [id]);
+  }, [id, reloadInnings]);
+
+  // ── Realtime subscriptions ───────────────────────────────────────────────
+  useEffect(() => {
+    // Match status changes (live → completed, etc.)
+    const matchChannel = supabase
+      .channel(`scorecard:match:${id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: `id=eq.${id}` },
+        payload => {
+          setMatch(prev => ({ ...prev, ...payload.new }));
+          setIsLive(payload.new.status === 'live' || payload.new.status === 'paused');
+        }
+      )
+      .subscribe();
+
+    // Innings score updates (total_runs, total_wickets change on every ball)
+    const inningsChannel = supabase
+      .channel(`scorecard:innings:${id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'innings', filter: `match_id=eq.${id}` },
+        payload => {
+          setInningsList(prev => prev.map(inn => inn.id === payload.new.id ? { ...inn, ...payload.new } : inn));
+        }
+      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'innings', filter: `match_id=eq.${id}` },
+        () => reloadInnings()
+      )
+      .subscribe();
+
+    // New deliveries (ball-by-ball feed) — filter by innings_id IN is not supported,
+    // so we subscribe to all inserts and filter by known innings ids client-side
+    const deliveriesChannel = supabase
+      .channel(`scorecard:deliveries:${id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'deliveries' },
+        payload => {
+          const inningsId = payload.new.innings_id;
+          if (!inningsIdsRef.current.includes(inningsId)) return;
+          setDeliveriesMap(prev => ({
+            ...prev,
+            [inningsId]: [...(prev[inningsId] || []), payload.new],
+          }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(matchChannel);
+      supabase.removeChannel(inningsChannel);
+      supabase.removeChannel(deliveriesChannel);
+    };
+  }, [id, reloadInnings]);
 
   function openPlayerCard(pid) {
     const allDeliveries = Object.values(deliveriesMap).flat();
@@ -317,7 +377,15 @@ export default function Scorecard() {
 
   return (
     <div className="p-4 space-y-4 page-transition">
-      <h1 className="text-lg font-bold text-gray-900 dark:text-white">{match.team1_name} vs {match.team2_name}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-bold text-gray-900 dark:text-white">{match.team1_name} vs {match.team2_name}</h1>
+        {isLive && (
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-green-600 dark:text-green-400">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            LIVE
+          </span>
+        )}
+      </div>
 
       {match.man_of_match && (
         <div className="flex items-center gap-3 p-3 rounded-2xl bg-cricket-gold/10 border border-cricket-gold/30">

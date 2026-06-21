@@ -443,13 +443,22 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `MatchSetupStepper.jsx` | Free-text team name inputs bypassed Teams registry — same team stored under different spellings, breaking HeadToHead + rename backfill | When `globalTeams.length > 0`, show registry dropdown + "Other / New team…" option; new names typed via Other are auto-registered via `teamService.addTeam()` on match creation |
 | `matchService.js` + `Home.jsx` | Matches listed newest-first — first played match appeared at bottom | Changed `listMatches()` to `ascending: true`; Home "Recent Matches" uses `slice(-3)` to show the 3 most recent in chronological order |
 | `Home.jsx` | Recent Matches cards showed only team names + result text — no scores, no player stats | Replaced `MatchCard` with `MatchScoreCard` (named export); `listMatchesWithScores()` joins innings + scorecards; card shows both team scores side-by-side + top 2 batters + top bowler per team, Google cricket widget style |
+| `Scorecard.jsx` + `Home.jsx` | Score updates only visible after manual refresh — no realtime | Added 3 Supabase realtime channels to Scorecard: `matches` UPDATE (status changes), `innings` UPDATE/INSERT (score totals per ball), `deliveries` INSERT (ball-by-ball feed filtered client-side by innings id). Added `matches` UPDATE channel to Home so live hero and recent cards refresh automatically. Live indicator (pulsing green dot + "LIVE") shown in Scorecard header when match is active. **Requires `matches`, `innings`, `deliveries` replication enabled in Supabase Dashboard.** |
 | `PlayerSubSheet.jsx` | Sheet always opened at `h-[85vh]` regardless of squad size — huge whitespace below short player lists | Changed to `max-h-[80vh]`; removed hardcoded `maxHeight: 260px / 300px` pixel caps on player list divs; sheet now sizes to content and scrolls only when needed |
 | `matchService.js` + `Matches.jsx` + `FixtureList.jsx` + `Home.jsx` + `LiveScoring.jsx` + `MatchSummary.jsx` + `Scoreboard.jsx` | No match numbers anywhere — impossible to tell which match was Match 1, 2, 3 | Added `getMatchNumber(id)` service (counts matches with `created_at ≤` this match); Matches page passes `matchNumber={i+1}` to every MatchCard; FixtureList always passes `matchNumber={i+1}` (not just series); Home MatchScoreCard shows global number; LiveScoring Scoreboard and MatchSummary header both fetch + display match number |
 | `Leaderboard.jsx` + `playerService.js` + `matchService.js` + `022_matches_played_counter.sql` | "M" column showed matches where player batted, not total matches in squad — no counter existed for squad participation | Added `matches_played` counter to `player_career_stats`; RPC `increment_matches_played` called atomically on match completion; migration backfills existing matches; leaderboard reads `row.matches_played` — single fast counter, no live query |
 
-## Supabase Realtime Prerequisite
-For auto-logout on user removal to work, `app_users` must have Replication enabled:
-**Dashboard → Database → Replication → toggle `app_users` on**
+## Supabase Realtime Prerequisites
+For realtime to work, each table must have Replication enabled:
+**Dashboard → Database → Replication → toggle the table on**
+
+| Table | Used by | Purpose |
+|-------|---------|---------|
+| `app_users` | `authStore.js` | Auto-logout when admin removes user |
+| `player_career_stats` | `Leaderboard.jsx` | Live leaderboard refresh |
+| `matches` | `Home.jsx` | Live hero + recent matches refresh when match status changes |
+| `innings` | `Scorecard.jsx` | Score updates (total_runs/wickets) on every ball |
+| `deliveries` | `Scorecard.jsx` | Ball-by-ball feed for live viewers |
 
 ---
 
@@ -459,7 +468,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**15 test files, 230 tests — all passing:**
+**16 test files, 240 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -478,6 +487,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 | `src/services/teamService.test.js` | getAllTeamPlayers — returns rows, empty array on null, throws on DB error |
 | `src/pages/Teams.test.jsx` | Roster player filtering: all players shown when no assignments; own-team player not disabled; cross-team player disabled + "In X" label; unassigned player enabled; clicking disabled player does not call setTeamPlayers |
 | `src/pages/Home.test.jsx` | MatchScoreCard — scores from correct innings (batting_team field), team assignment when team2 bats first, top 2 batters per team sorted by runs, top bowler per team, bowling figures display, null-safe rendering with missing stats, navigation callback, delete button visibility |
+| `src/pages/Scorecard.test.jsx` | Realtime subscriptions — LIVE indicator shown/hidden on match UPDATE, innings UPDATE patches score in-place without reload, innings INSERT triggers reloadInnings, deliveries INSERT appends to deliveriesMap for known innings, ignores foreign innings_id, all 3 channels removed on unmount |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 
