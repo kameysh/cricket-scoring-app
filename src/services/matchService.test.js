@@ -7,7 +7,7 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-import { incrementMatchesPlayed, addSubPlayer, getMatchNumber } from './matchService';
+import { incrementMatchesPlayed, addSubPlayer, getMatchNumber, createSuperOverInnings } from './matchService';
 import { supabase } from '../lib/supabase';
 
 describe('incrementMatchesPlayed', () => {
@@ -138,5 +138,36 @@ describe('setPlayerActive', () => {
     mockUpdate({ error: { message: 'update failed' } });
     const { setPlayerActive } = await import('./matchService');
     await expect(setPlayerActive('mp-1', true)).rejects.toMatchObject({ message: 'update failed' });
+  });
+});
+
+describe('createSuperOverInnings', () => {
+  function mockInsertChain(result) {
+    const single = vi.fn().mockResolvedValue(result);
+    const select = vi.fn().mockReturnValue({ single });
+    const insert = vi.fn().mockReturnValue({ select });
+    supabase.from.mockReturnValue({ insert });
+    return { insert };
+  }
+
+  it('inserts innings row with is_super_over=true', async () => {
+    const row = { id: 'inn-3', innings_number: 3, batting_team: 2, is_super_over: true, target: null };
+    const { insert } = mockInsertChain({ data: row, error: null });
+    const result = await createSuperOverInnings('match-1', 3, 2, null);
+    expect(supabase.from).toHaveBeenCalledWith('innings');
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ is_super_over: true, innings_number: 3, batting_team: 2 }));
+    expect(result).toEqual(row);
+  });
+
+  it('passes target when provided', async () => {
+    const row = { id: 'inn-4', innings_number: 4, batting_team: 1, is_super_over: true, target: 13 };
+    const { insert } = mockInsertChain({ data: row, error: null });
+    await createSuperOverInnings('match-1', 4, 1, 13);
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ target: 13 }));
+  });
+
+  it('throws when supabase returns an error', async () => {
+    mockInsertChain({ data: null, error: { message: 'insert failed' } });
+    await expect(createSuperOverInnings('match-1', 3, 2, null)).rejects.toMatchObject({ message: 'insert failed' });
   });
 });

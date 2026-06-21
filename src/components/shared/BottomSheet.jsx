@@ -1,12 +1,23 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
+// Global counter — only the first opener locks body scroll; last closer unlocks it.
+// Prevents permanent scroll-lock when multiple sheets open/close in sequence.
+let _lockCount = 0;
+function acquireScrollLock() {
+  if (_lockCount === 0) document.body.style.overflow = 'hidden';
+  _lockCount++;
+}
+function releaseScrollLock() {
+  _lockCount = Math.max(0, _lockCount - 1);
+  if (_lockCount === 0) document.body.style.overflow = '';
+}
+
 export default function BottomSheet({ open, onClose, title, heightClass = 'h-[70vh]', noScroll = false, children }) {
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    acquireScrollLock();
+    return () => releaseScrollLock();
   }, [open]);
 
   if (!open) return null;

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../services/matchService', () => ({
   addSubPlayer: vi.fn(),
   setPlayerActive: vi.fn(),
+  createSuperOverInnings: vi.fn(),
   // stub everything else the store references at module level
   getMatch: vi.fn(),
   getMatchPlayers: vi.fn(),
@@ -149,5 +150,97 @@ describe('matchStore.swapBack', () => {
     const { matchPlayers } = useMatchStore.getState();
     expect(matchPlayers.find(mp => mp.id === 'mp-orig').is_active).toBe(true);
     expect(matchPlayers.find(mp => mp.id === 'mp-sub').is_active).toBe(false);
+  });
+});
+
+// ── startSuperOverInnings ─────────────────────────────────────────────────────
+
+describe('matchStore.startSuperOverInnings', () => {
+  const MATCH_SO = { id: 'match-so', team1_name: 'A', team2_name: 'B' };
+  const KEEPER_MP = { id: 'mp-k', player_id: 'k1', players: { id: 'k1', name: 'Keeper' }, is_keeper: true, team: 2 };
+
+  function seedForSO(extraMatchPlayers = []) {
+    useMatchStore.setState({
+      match: MATCH_SO,
+      innings: [
+        { id: 'i1', innings_number: 1, is_completed: true },
+        { id: 'i2', innings_number: 2, is_completed: true },
+      ],
+      matchPlayers: [KEEPER_MP, ...extraMatchPlayers],
+      striker: 'old-p1',
+      nonStriker: 'old-p2',
+      bowler: 'old-b',
+      deliveries: [{ id: 'd1' }],
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    const SO_INN = { id: 'i3', innings_number: 3, batting_team: 2, is_super_over: true, target: null,
+      total_runs: 0, total_wickets: 0, total_legal_balls: 0, is_completed: false };
+    matchService.createSuperOverInnings.mockResolvedValue(SO_INN);
+  });
+
+  it('calls createSuperOverInnings with correct innings number, batting team and no target', async () => {
+    seedForSO();
+    await useMatchStore.getState().startSuperOverInnings(2, null);
+    expect(matchService.createSuperOverInnings).toHaveBeenCalledWith('match-so', 3, 2, null);
+  });
+
+  it('passes target to createSuperOverInnings for second SO innings', async () => {
+    useMatchStore.setState({
+      match: MATCH_SO,
+      innings: [
+        { id: 'i1', innings_number: 1, is_completed: true },
+        { id: 'i2', innings_number: 2, is_completed: true },
+        { id: 'i3', innings_number: 3, is_completed: true },
+      ],
+      matchPlayers: [KEEPER_MP],
+    });
+    const SO_INN4 = { id: 'i4', innings_number: 4, batting_team: 1, is_super_over: true, target: 13,
+      total_runs: 0, total_wickets: 0, total_legal_balls: 0, is_completed: false };
+    matchService.createSuperOverInnings.mockResolvedValue(SO_INN4);
+
+    await useMatchStore.getState().startSuperOverInnings(1, 13);
+    expect(matchService.createSuperOverInnings).toHaveBeenCalledWith('match-so', 4, 1, 13);
+  });
+
+  it('resets striker, nonStriker, bowler and deliveries in store', async () => {
+    seedForSO();
+    await useMatchStore.getState().startSuperOverInnings(2, null);
+    const state = useMatchStore.getState();
+    expect(state.striker).toBeNull();
+    expect(state.nonStriker).toBeNull();
+    expect(state.bowler).toBeNull();
+    expect(state.deliveries).toEqual([]);
+  });
+
+  it('sets currentInnings to the newly created SO innings', async () => {
+    seedForSO();
+    await useMatchStore.getState().startSuperOverInnings(2, null);
+    const { currentInnings } = useMatchStore.getState();
+    expect(currentInnings.id).toBe('i3');
+    expect(currentInnings.is_super_over).toBe(true);
+  });
+
+  it('appends new SO innings to the innings array', async () => {
+    seedForSO();
+    await useMatchStore.getState().startSuperOverInnings(2, null);
+    const { innings } = useMatchStore.getState();
+    expect(innings).toHaveLength(3);
+    expect(innings[2].id).toBe('i3');
+  });
+
+  it('auto-sets keeper from matchPlayers for the bowling team', async () => {
+    // batting_team=2, so bowling_team=1; keeper on team=2 should NOT be picked
+    // Use keeper on team=1 (bowling team)
+    const keeperTeam1 = { id: 'mp-k1', player_id: 'k-team1', players: { id: 'k-team1' }, is_keeper: true, team: 1 };
+    useMatchStore.setState({
+      match: MATCH_SO,
+      innings: [{ id: 'i1', is_completed: true }, { id: 'i2', is_completed: true }],
+      matchPlayers: [KEEPER_MP, keeperTeam1],
+    });
+    await useMatchStore.getState().startSuperOverInnings(2, null); // team 2 bats → team 1 bowls
+    expect(useMatchStore.getState().keeper).toBe('k-team1');
   });
 });

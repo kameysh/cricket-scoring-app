@@ -400,7 +400,7 @@ export default function Scorecard() {
       <div className="flex gap-2">
         {inningsList.map((inn, i) => (
           <button key={inn.id} onClick={() => setActiveTab(i)} className={`px-3 py-1.5 rounded-full text-sm font-medium ${activeTab === i ? 'bg-cricket-green text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
-            Innings {inn.innings_number}
+            {inn.is_super_over ? `⚡ Super Over ${inn.innings_number === 3 ? '1' : '2'}` : `Innings ${inn.innings_number}`}
           </button>
         ))}
       </div>

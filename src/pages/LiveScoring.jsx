@@ -234,10 +234,12 @@ export default function LiveScoring() {
   const [winConfirmOpen, setWinConfirmOpen] = useState(false);
   const [winConfirmInfo, setWinConfirmInfo] = useState(null);
   const [oversLimitOpen, setOversLimitOpen] = useState(false);
+  const [superOverOpen, setSuperOverOpen] = useState(false);
   const [subOpen, setSubOpen] = useState(false);
   const [allPlayers, setAllPlayers] = useState([]);
   const [matchNumber, setMatchNumber] = useState(null);
   const endingMatchRef = useRef(false);
+  const winHandledRef = useRef(false);
   const milestonesRef = useRef(new Set());
   useEffect(() => { store.loadMatch(id); return () => store.reset(); }, [id]);
   useEffect(() => { matchService.getMatchNumber(id).then(n => setMatchNumber(n)).catch(() => {}); }, [id]);
@@ -254,8 +256,11 @@ export default function LiveScoring() {
     }
   }, [match]);
 
-  // Reset milestone tracking when innings changes
-  useEffect(() => { milestonesRef.current = new Set(); }, [currentInnings?.id]);
+  // Reset milestone + win-handled tracking when innings changes
+  useEffect(() => {
+    milestonesRef.current = new Set();
+    winHandledRef.current = false;
+  }, [currentInnings?.id]);
 
   // Load first innings scorecards when viewing second innings
   useEffect(() => {
@@ -325,46 +330,62 @@ export default function LiveScoring() {
   };
   const eligibleBowlers = bowlingTeamPlayers.filter(bowlerEligible);
 
+  const winInfo = useWinCondition({ match, currentInnings, innings });
+
+  // Open bowler modal when bowler is unset — but not when a decision sheet is taking over
   useEffect(() => {
     if (winConfirmOpen) { setBowlerModalOpen(false); return; }
-    if (currentInnings && !currentInnings.is_completed && !bowler) setBowlerModalOpen(true);
-  }, [bowler, currentInnings, winConfirmOpen]);
-
-  const winInfo = useWinCondition({ match, currentInnings, innings });
+    if (!currentInnings || currentInnings.is_completed || !match) return;
+    // Don't open when there's a win/tie result — winInfo effect handles the modal
+    if (winInfo?.won) { setBowlerModalOpen(false); return; }
+    // Don't open when the overs limit has been reached — oversLimitOpen sheet handles it
+    const maxBalls = currentInnings.is_super_over ? 6 : match.total_overs * 6;
+    if (currentInnings.total_legal_balls >= maxBalls) { setBowlerModalOpen(false); return; }
+    if (!bowler) setBowlerModalOpen(true);
+  }, [bowler, currentInnings, winConfirmOpen, winInfo?.won, match?.total_overs, currentInnings?.total_legal_balls]);
 
   // End innings when all batsmen are out
   useEffect(() => {
     if (!currentInnings || currentInnings.is_completed || !match) return;
     const teamSize = match.team_size || 11;
-    const wicketLimit = match.last_man_standing ? teamSize : teamSize - 1;
+    // Super over: 2 wickets = all out; regular: team_size - 1 (or full team for last_man_standing)
+    const wicketLimit = currentInnings.is_super_over
+      ? 2
+      : match.last_man_standing ? teamSize : teamSize - 1;
     if (currentInnings.total_wickets >= wicketLimit) {
-      if (currentInnings.innings_number === 1) {
-        // 1st innings all-out: transition straight to 2nd innings, no confirmation
+      // Odd innings (1, 3, 5…) = first of a pair → auto-advance to next innings
+      // Even innings (2, 4, 6…) → winInfo effect handles win/tie/SO prompt
+      if (currentInnings.innings_number % 2 === 1) {
         handleEndInnings();
-      } else {
-        // 2nd innings all-out: bowling team wins — ask before ending match
-        setWinConfirmInfo({ summary: null, winInfo: null, reason: 'allout' });
-        setWinConfirmOpen(true);
       }
     }
-  }, [currentInnings?.total_wickets, match?.last_man_standing]);
+  }, [currentInnings?.total_wickets, match?.last_man_standing, currentInnings?.is_super_over]);
 
   useEffect(() => {
-    if (winInfo?.won && match.status !== 'completed' && !endingMatchRef.current) {
-      // Show confirmation sheet — scorer may need to undo a no-ball re-bowl etc.
-      setWinConfirmInfo({ summary: winInfo.summary, winInfo });
-      setWinConfirmOpen(true);
+    if (!winInfo?.won || match.status === 'completed' || endingMatchRef.current) return;
+    if (winHandledRef.current) return; // already showing a modal for this win condition
+    winHandledRef.current = true;
+    // Always clear the overs-limit sheet — win condition takes priority
+    setOversLimitOpen(false);
+    if (winInfo.type === 'tie' && match.super_over_enabled) {
+      setWinConfirmOpen(false);
+      setSuperOverOpen(true);
+      return;
     }
+    setWinConfirmInfo({ summary: winInfo.summary, winInfo });
+    setWinConfirmOpen(true);
   }, [winInfo]);
 
   // Auto-show end-innings modal when overs limit is reached
   useEffect(() => {
     if (!currentInnings || currentInnings.is_completed || !match || !match.total_overs) return;
-    if (winConfirmOpen) return; // innings 2 win modal takes priority
-    if (currentInnings.total_legal_balls > 0 && currentInnings.total_legal_balls >= match.total_overs * 6) {
+    // Win condition takes full priority — winInfo effect handles the modal
+    if (winConfirmOpen || winInfo?.won) return;
+    const maxBalls = currentInnings.is_super_over ? 6 : match.total_overs * 6;
+    if (currentInnings.total_legal_balls > 0 && currentInnings.total_legal_balls >= maxBalls) {
       setOversLimitOpen(true);
     }
-  }, [currentInnings?.total_legal_balls, match?.total_overs, winConfirmOpen]);
+  }, [currentInnings?.total_legal_balls, match?.total_overs, winConfirmOpen, currentInnings?.is_super_over, winInfo?.won]);
 
   // Milestone toasts — 50s, 100s, 3/4/5 wicket hauls (hat-trick handled in matchStore)
   useEffect(() => {
@@ -426,14 +447,22 @@ export default function LiveScoring() {
 
   async function undoFromWinConfirm() {
     endingMatchRef.current = false;
+    winHandledRef.current = false; // allow win condition to re-evaluate after undo
     setWinConfirmOpen(false);
     setWinConfirmInfo(null);
     await store.undo();
   }
 
   async function handleOversLimitEndInnings() {
+    // Keep oversLimitOpen=true (BallInputPanel stays disabled) until transition completes.
+    // Only close it once the innings is fully ended / new innings started.
+    try {
+      await handleEndInnings();
+    } catch (e) {
+      toast.error(e?.message || 'Failed to end innings');
+      return; // leave sheet open so scoring stays blocked
+    }
     setOversLimitOpen(false);
-    await handleEndInnings();
   }
 
   async function undoFromOversLimit() {
@@ -522,10 +551,11 @@ export default function LiveScoring() {
 
   // Chase meter: only in 2nd innings with a target
   const chaseStats = (() => {
-    if (currentInnings?.innings_number !== 2 || !currentInnings?.target) return null;
+    const isChasing = (currentInnings?.innings_number === 2 || currentInnings?.is_super_over) && currentInnings?.target;
+    if (!isChasing) return null;
     if (!match?.total_overs) return null;
     const { target, total_runs: currentRuns, total_legal_balls: ballsUsed } = currentInnings;
-    const totalBalls = match.total_overs * 6;
+    const totalBalls = currentInnings.is_super_over ? 6 : match.total_overs * 6;
     const ballsRemaining = Math.max(0, totalBalls - ballsUsed);
     const runsNeeded = Math.max(0, target - currentRuns);
     const crr = ballsUsed > 0 ? (currentRuns / ballsUsed) * 6 : 0;
@@ -669,10 +699,45 @@ export default function LiveScoring() {
     if (currentInnings.innings_number === 1) {
       await store.startInnings(bowlingTeam, currentInnings.total_runs + 1);
       toast.success('Second innings started');
+    } else if (currentInnings.is_super_over && !currentInnings.target) {
+      // First innings of any super over round — start second innings with target
+      const soTarget = currentInnings.total_runs + 1;
+      const otherTeam = currentInnings.batting_team === 1 ? 2 : 1;
+      await store.startSuperOverInnings(otherTeam, soTarget);
+      toast.success('Super Over — second team batting!');
     } else {
+      // Final innings ended manually — complete the match
+      await store.setMatchStatus('completed', {
+        result_type: winInfo?.type ?? 'runs',
+        result_summary: winInfo?.summary ?? '',
+        winning_team_name: winInfo?.winner ?? null,
+        winning_margin: winInfo?.margin ?? 0,
+      });
       await Promise.all([matchService.autoAssignManOfMatch(id), matchService.incrementMatchesPlayed(id)]);
       navigate(`/matches/${id}/summary`);
     }
+  }
+
+  async function handleStartSuperOver() {
+    // Keep superOverOpen=true (BallInputPanel stays disabled) until new innings is ready
+    // Capture batting_team before endInnings clears currentInnings
+    let soFirstBatter;
+    if (currentInnings?.is_super_over) {
+      // Successive SO: team that just batted second bats first next — order reverses each round
+      soFirstBatter = currentInnings.batting_team;
+    } else {
+      // First SO: team that batted second in main match bats first
+      const inn2 = innings.find(i => i.innings_number === 2);
+      soFirstBatter = inn2?.batting_team ?? bowlingTeam;
+    }
+    await store.endInnings('manual');
+    await store.startSuperOverInnings(soFirstBatter, null);
+    // Only now close the modal — new innings state is in place
+    setSuperOverOpen(false);
+    setOversLimitOpen(false);
+    winHandledRef.current = false; // allow the new innings' win condition to be handled
+    toast.success('Super Over started! 1 over, 2 wickets max.');
+    milestonesRef.current = new Set();
   }
 
   return (
@@ -883,7 +948,7 @@ export default function LiveScoring() {
           onWicket={() => setWicketOpen(true)}
           onUndo={store.undo}
           undoDisabled={!undoAvailable}
-          disabled={scoringInProgress}
+          disabled={scoringInProgress || oversLimitOpen || winConfirmOpen || superOverOpen}
         />
       </div>
 
@@ -923,10 +988,13 @@ export default function LiveScoring() {
         onCancel={() => setAbandonOpen(false)}
       />
 
-      <BottomSheet open={oversLimitOpen} onClose={() => {}} title={`${match.total_overs} Overs Complete`} heightClass="h-auto">
+      <BottomSheet open={oversLimitOpen} onClose={() => {}} title={currentInnings?.is_super_over ? 'Super Over Complete' : `${match.total_overs} Overs Complete`} heightClass="h-auto">
         <div className="space-y-4 pb-2">
           <p className="text-sm text-center text-ink-600 dark:text-ink-300">
-            All {match.total_overs} overs have been bowled. End the innings to continue, or undo the last ball if a re-bowl is needed.
+            {currentInnings?.is_super_over
+              ? 'The super over is complete. End the innings to continue, or undo the last ball if needed.'
+              : `All ${match.total_overs} overs have been bowled. End the innings to continue, or undo the last ball if a re-bowl is needed.`
+            }
           </p>
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -954,6 +1022,29 @@ export default function LiveScoring() {
         onSwap={handleSwapPlayer}
         onSwapBack={handleSwapBack}
       />
+
+      <BottomSheet open={superOverOpen} onClose={() => {}} title="Match Tied — Super Over!" heightClass="h-auto">
+        <div className="space-y-4 pb-2">
+          <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl p-5 text-center text-white">
+            <p className="text-2xl font-bold mb-1">⚡ Super Over</p>
+            <p className="text-sm opacity-90">The match is tied. Each team faces 1 over (max 2 wickets).</p>
+          </div>
+          <p className="text-sm text-center text-ink-500 dark:text-ink-300">
+            {(() => {
+              const soFirstBatter = currentInnings?.is_super_over
+                ? currentInnings.batting_team
+                : (innings.find(i => i.innings_number === 2)?.batting_team ?? bowlingTeam);
+              return soFirstBatter === 1 ? match.team1_name : match.team2_name;
+            })()} will bat first in the super over.
+          </p>
+          <button
+            onClick={handleStartSuperOver}
+            className="w-full py-3 rounded-xl bg-brand-green text-white text-sm font-semibold"
+          >
+            Start Super Over ⚡
+          </button>
+        </div>
+      </BottomSheet>
 
       <BottomSheet open={winConfirmOpen} onClose={() => {}} title="Match Result" heightClass="h-auto">
         <div className="space-y-4 pb-2">

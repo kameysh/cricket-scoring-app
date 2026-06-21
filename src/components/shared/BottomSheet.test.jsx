@@ -61,4 +61,39 @@ describe('BottomSheet', () => {
     const contentDiv = document.querySelector('.overflow-y-auto');
     expect(contentDiv).not.toBeNull();
   });
+
+  it('two sheets opening/closing in sequence do not permanently lock scroll', () => {
+    // Sheet A opens
+    const { rerender: rerenderA, unmount: unmountA } = render(
+      <BottomSheet open title="A" onClose={vi.fn()}>a</BottomSheet>
+    );
+    expect(document.body.style.overflow).toBe('hidden');
+
+    // Sheet B opens while A is still open
+    const { unmount: unmountB } = render(
+      <BottomSheet open title="B" onClose={vi.fn()}>b</BottomSheet>
+    );
+    expect(document.body.style.overflow).toBe('hidden');
+
+    // Sheet A closes
+    rerenderA(<BottomSheet open={false} title="A" onClose={vi.fn()}>a</BottomSheet>);
+    // Body should still be locked because B is open
+    expect(document.body.style.overflow).toBe('hidden');
+
+    // Sheet B closes
+    unmountB();
+    // Now both closed — body must be unlocked
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  it('opening the same sheet twice does not double-lock (idempotent via open→open)', () => {
+    const { rerender, unmount } = render(
+      <BottomSheet open title="T" onClose={vi.fn()}>x</BottomSheet>
+    );
+    // Re-render with open still true (no change) — count should not double
+    rerender(<BottomSheet open title="T" onClose={vi.fn()}>x</BottomSheet>);
+    unmount();
+    // After one open + one unmount, body should be unlocked
+    expect(document.body.style.overflow).toBe('');
+  });
 });

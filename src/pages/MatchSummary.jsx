@@ -350,7 +350,7 @@ export default function MatchSummary() {
   const motmBat = battingCards.find(c => c.player_id === motmId);
   const motmBowl = bowlingCards.find(c => c.player_id === motmId);
   const motmStats = [
-    motmBat?.runs != null ? `${motmBat.runs}${motmBat.is_not_out ? '*' : ''} (${motmBat.balls || 0})` : null,
+    motmBat?.runs != null ? `${motmBat.runs}${motmBat.is_not_out ? '*' : ''} (${motmBat.balls_faced || 0})` : null,
     motmBowl?.wickets ? `${motmBowl.wickets}/${motmBowl.runs_conceded || 0} (${formatOvers(motmBowl.legal_balls || 0)})` : null,
   ].filter(Boolean).join(' · ');
 
@@ -532,7 +532,7 @@ export default function MatchSummary() {
                           <div className="shrink-0"><PlayerAvatar name={name} photoUrl={p?.photo_url} size={26} /></div>
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-ink-900 dark:text-white truncate">{name}</p>
-                            <p className="text-[11px] text-ink-400">{c.runs ?? '—'}{c.is_not_out ? '*' : ''}{c.balls != null ? ` (${c.balls})` : ''}</p>
+                            <p className="text-[11px] text-ink-400">{c.runs ?? '—'}{c.is_not_out ? '*' : ''}{c.balls_faced != null ? ` (${c.balls_faced})` : ''}</p>
                           </div>
                         </div>
                       );
@@ -608,7 +608,7 @@ export default function MatchSummary() {
                       scorecardInningsIdx === i ? 'bg-brand-green text-white' : 'bg-ink-100 dark:bg-white/10 text-ink-600 dark:text-ink-300'
                     }`}
                   >
-                    {inn.batting_team === 1 ? match.team1_name : match.team2_name}
+                    {inn.is_super_over ? `⚡ SO ${inn.innings_number === 3 ? '1' : '2'}` : (inn.batting_team === 1 ? match.team1_name : match.team2_name)}
                   </button>
                 ))}
               </div>
@@ -640,7 +640,7 @@ export default function MatchSummary() {
             inningsList.map((inn, i) => (
               <div key={inn.id}>
                 <p className="text-xs font-bold text-ink-500 dark:text-ink-400 uppercase tracking-wide mb-2">
-                  Innings {i + 1} — {inn.batting_team === 1 ? match.team1_name : match.team2_name}
+                  {inn.is_super_over ? `⚡ Super Over ${inn.innings_number === 3 ? '1' : '2'}` : `Innings ${i + 1}`} — {inn.batting_team === 1 ? match.team1_name : match.team2_name}
                 </p>
                 <HighlightsFeed deliveries={deliveriesMap[inn.id] ?? []} playersMap={playersMap} />
               </div>

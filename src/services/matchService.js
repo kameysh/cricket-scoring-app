@@ -106,6 +106,16 @@ export async function createInnings(matchId, inningsNumber, battingTeam, target 
   return data;
 }
 
+export async function createSuperOverInnings(matchId, inningsNumber, battingTeam, target = null) {
+  const { data, error } = await supabase
+    .from('innings')
+    .insert({ match_id: matchId, innings_number: inningsNumber, batting_team: battingTeam, target, is_super_over: true })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function getInnings(matchId) {
   const { data, error } = await supabase
     .from('innings')

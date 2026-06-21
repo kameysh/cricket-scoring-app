@@ -84,6 +84,16 @@ export const useMatchStore = create((set, get) => ({
     return newInnings;
   },
 
+  async startSuperOverInnings(battingTeam, target = null) {
+    const { match, innings, matchPlayers } = get();
+    const inningsNumber = innings.length + 1;
+    const newInnings = await matchService.createSuperOverInnings(match.id, inningsNumber, battingTeam, target);
+    const newBowlingTeam = battingTeam === 1 ? 2 : 1;
+    const keeperMp = matchPlayers.find(mp => mp.is_keeper && (mp.team === newBowlingTeam || mp.team === 0));
+    set({ innings: [...innings, newInnings], currentInnings: newInnings, battingScorecards: [], bowlingScorecards: [], fieldingScorecards: [], deliveries: [], striker: null, nonStriker: null, bowler: null, prevBowler: null, keeper: keeperMp?.players?.id || null, freeHit: false });
+    return newInnings;
+  },
+
   setOpeners(strikerId, nonStrikerId) {
     set({ striker: strikerId, nonStriker: nonStrikerId });
   },
