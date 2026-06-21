@@ -84,7 +84,7 @@ export default function PlayerSubSheet({ open, onClose, match, matchPlayers, all
   const step = outgoing ? 2 : 1;
 
   return (
-    <BottomSheet open={open} onClose={() => { setOutgoing(null); onClose(); }} title="Player Sub" heightClass="h-[85vh]">
+    <BottomSheet open={open} onClose={() => { setOutgoing(null); onClose(); }} title="Player Sub" heightClass="max-h-[80vh]">
 
       {/* Team tabs */}
       <div className="flex gap-2 mb-4">
@@ -107,7 +107,7 @@ export default function PlayerSubSheet({ open, onClose, match, matchPlayers, all
             Tap a player to <span className="text-red-500 font-bold">sub out</span>
           </p>
 
-          <div className="space-y-1 overflow-y-auto" style={{ maxHeight: '260px' }}>
+          <div className="space-y-1">
             {activeSquad.length === 0 && (
               <p className="text-xs text-ink-400 text-center py-4">No active players</p>
             )}
@@ -184,7 +184,7 @@ export default function PlayerSubSheet({ open, onClose, match, matchPlayers, all
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search players…" className="field-input !py-1.5 !text-sm mb-3" />
 
-          <div className="space-y-1 overflow-y-auto" style={{ maxHeight: '300px' }}>
+          <div className="space-y-1">
             {available.length === 0 && (
               <p className="text-xs text-ink-400 text-center py-4">
                 {search ? 'No players match your search' : 'No available players to sub in'}
