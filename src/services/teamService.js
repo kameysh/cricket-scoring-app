@@ -40,6 +40,16 @@ export async function deleteTeam(id) {
   if (error) throw error;
 }
 
+// Returns every team_players row — used to know which player is already on
+// which team so a player can't be added to two teams' default rosters.
+export async function getAllTeamPlayers() {
+  const { data, error } = await supabase
+    .from('team_players')
+    .select('team_id, player_id');
+  if (error) throw error;
+  return data || [];
+}
+
 export async function getTeamPlayers(teamId) {
   const { data, error } = await supabase
     .from('team_players')

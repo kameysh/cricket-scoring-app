@@ -22,14 +22,20 @@ export default function Teams() {
 
   // Expanded team state: { [teamId]: { open, playerIds, search, saving } }
   const [expanded, setExpanded] = useState({});
+  // Map of player_id -> team_id for players already on a team's default roster
+  const [assignedTo, setAssignedTo] = useState({});
 
   useEffect(() => {
     Promise.all([
       teamService.listTeams(),
       playerService.listPlayers({ activeOnly: true }),
-    ]).then(([ts, ps]) => {
+      teamService.getAllTeamPlayers(),
+    ]).then(([ts, ps, tp]) => {
       setTeams(ts);
       setAllPlayers(ps || []);
+      const map = {};
+      for (const row of tp) map[row.player_id] = row.team_id;
+      setAssignedTo(map);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -103,6 +109,12 @@ export default function Teams() {
       setExpanded(prev => ({ ...prev, [teamId]: { ...cur, saving: false } }));
       return;
     }
+    setAssignedTo(prev => {
+      const next = { ...prev };
+      if (alreadyIn) delete next[playerId];
+      else next[playerId] = teamId;
+      return next;
+    });
     setExpanded(prev => ({ ...prev, [teamId]: { ...prev[teamId], saving: false } }));
   }
 
@@ -253,8 +265,10 @@ export default function Teams() {
                         <UserPlus size={12} /> Default Roster {exp.saving && <span className="text-brand-green">Saving…</span>}
                       </p>
                       {(() => {
-                        const ogCount = allPlayers.filter(p => !p.is_guest).length;
-                        const guestCount = allPlayers.filter(p => p.is_guest).length;
+                        // Only count players available to this team (not on another team's roster)
+                        const available = allPlayers.filter(p => !assignedTo[p.id] || assignedTo[p.id] === t.id);
+                        const ogCount = available.filter(p => !p.is_guest).length;
+                        const guestCount = available.filter(p => p.is_guest).length;
                         const rosterFilter = exp.rosterFilter || '';
                         const toggle = (val) => { setExpanded(prev => ({ ...prev, [t.id]: { ...prev[t.id], rosterFilter: prev[t.id]?.rosterFilter === val ? '' : val } })); };
                         return (
@@ -295,25 +309,35 @@ export default function Teams() {
                         .filter(p => !exp.search || p.name.toLowerCase().includes(exp.search.toLowerCase()))
                         .map(p => {
                           const selected = exp.playerIds.includes(p.id);
+                          const otherTeamId = assignedTo[p.id] && assignedTo[p.id] !== t.id ? assignedTo[p.id] : null;
+                          const otherTeamName = otherTeamId ? (teams.find(x => x.id === otherTeamId)?.name ?? 'another team') : null;
                           return (
                             <button
                               key={p.id}
                               type="button"
-                              onClick={() => togglePlayer(t.id, p.id)}
+                              onClick={() => !otherTeamId && togglePlayer(t.id, p.id)}
+                              disabled={!!otherTeamId}
                               className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-colors ${
-                                selected
-                                  ? 'bg-brand-green/10 border border-brand-green/30'
-                                  : 'hover:bg-ink-50 dark:hover:bg-white/5 border border-transparent'
+                                otherTeamId
+                                  ? 'opacity-40 cursor-not-allowed border border-transparent'
+                                  : selected
+                                    ? 'bg-brand-green/10 border border-brand-green/30'
+                                    : 'hover:bg-ink-50 dark:hover:bg-white/5 border border-transparent'
                               }`}
                             >
                               <PlayerAvatar name={p.name} photoUrl={p.photo_url} size={28} />
-                              <span className="flex-1 text-sm font-medium text-ink-900 dark:text-white truncate">{p.name}</span>
-                              {p.is_guest && (
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-sm font-medium text-ink-900 dark:text-white truncate">{p.name}</span>
+                                {otherTeamName && (
+                                  <span className="block text-[10px] text-ink-400 truncate">In {otherTeamName}</span>
+                                )}
+                              </span>
+                              {p.is_guest && !otherTeamId && (
                                 <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">
                                   Guest
                                 </span>
                               )}
-                              {selected && (
+                              {selected && !otherTeamId && (
                                 <span className="shrink-0 w-4 h-4 rounded-full bg-brand-green flex items-center justify-center">
                                   <X size={9} className="text-white" strokeWidth={3} />
                                 </span>

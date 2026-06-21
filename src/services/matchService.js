@@ -39,6 +39,34 @@ export async function setMatchPlayers(matchId, players) {
   if (error) throw error;
 }
 
+// Add a substitute player to an existing match squad mid-match.
+// subbedOutPlayerId is the match_players.id of the player being replaced.
+export async function addSubPlayer(matchId, playerId, team, subbedOutPlayerId) {
+  const { data, error } = await supabase
+    .from('match_players')
+    .insert({
+      match_id: matchId,
+      player_id: playerId,
+      team,
+      is_substitute: true,
+      is_active: true,
+      subbed_out_player_id: subbedOutPlayerId ?? null,
+    })
+    .select('*, players(*)')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Toggle a match_players row active/inactive (used for sub swaps).
+export async function setPlayerActive(matchPlayerId, isActive) {
+  const { error } = await supabase
+    .from('match_players')
+    .update({ is_active: isActive })
+    .eq('id', matchPlayerId);
+  if (error) throw error;
+}
+
 export async function getMatchPlayers(matchId) {
   const { data, error } = await supabase
     .from('match_players')

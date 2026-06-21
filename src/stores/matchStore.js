@@ -293,6 +293,44 @@ export const useMatchStore = create((set, get) => ({
     if (get().match) await get().loadMatch(get().match.id);
   },
 
+  // Swap outgoing player (bench them) and add the incoming sub.
+  // Sequential: insert sub first so if it fails the outgoing player stays active.
+  async swapPlayer(outMatchPlayerId, inPlayerId, team) {
+    const { match } = get();
+    if (!match) return;
+    const newMp = await matchService.addSubPlayer(match.id, inPlayerId, team, outMatchPlayerId);
+    await matchService.setPlayerActive(outMatchPlayerId, false);
+    set(s => ({
+      matchPlayers: [
+        ...s.matchPlayers.map(mp =>
+          mp.id === outMatchPlayerId ? { ...mp, is_active: false } : mp
+        ),
+        newMp,
+      ],
+    }));
+    return newMp;
+  },
+
+  // Swap back: find the sub linked to this benched player, deactivate sub, re-activate original.
+  async swapBack(benchedMatchPlayerId) {
+    const { matchPlayers } = get();
+    const sub = matchPlayers.find(
+      mp => mp.subbed_out_player_id === benchedMatchPlayerId && mp.is_active !== false
+    );
+    if (!sub) throw new Error('No active sub found for this player');
+    await Promise.all([
+      matchService.setPlayerActive(sub.id, false),
+      matchService.setPlayerActive(benchedMatchPlayerId, true),
+    ]);
+    set(s => ({
+      matchPlayers: s.matchPlayers.map(mp => {
+        if (mp.id === sub.id) return { ...mp, is_active: false };
+        if (mp.id === benchedMatchPlayerId) return { ...mp, is_active: true };
+        return mp;
+      }),
+    }));
+  },
+
   reset() {
     set({
       match: null, matchPlayers: [], innings: [], currentInnings: null,

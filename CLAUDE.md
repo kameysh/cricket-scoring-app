@@ -88,6 +88,9 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 020 | `020_guest_player.sql` | **`is_guest boolean default false` added to `players` — marks players added without an app account. Shown as amber "Guest" badge on carousel. Admin can link a guest to a real account later via PlayerEdit.** |
 | 021 | `021_team_players.sql` | **`is_guest boolean default false` added to `teams`; new `team_players` join table (team_id + player_id, PK) with RLS — admins/scorers insert/delete, all authenticated select. Powers guest team default roster feature.** |
 | 022 | `022_matches_played_counter.sql` | **`matches_played int default 0` added to `player_career_stats`; RPC `increment_matches_played(match_id)` increments counter for all squad members atomically; backfills existing completed matches. Called from `matchService.incrementMatchesPlayed()` alongside `autoAssignManOfMatch` on match completion.** |
+| 023 | `023_player_sub.sql` | **`is_substitute boolean default false` added to `match_players` — marks players added mid-match via the Sub flow.** |
+| 024 | `024_match_player_active.sql` | **`is_active boolean default true` added to `match_players` — subbed-out players set to false, excluded from batting/bowling candidate lists.** |
+| 025 | `025_sub_linkage.sql` | **`subbed_out_player_id uuid references match_players(id)` added — each sub row links to the exact match_players row they replaced, enabling correct swap-back with multiple subs in one match.** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -215,6 +218,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 
 ### `src/services/teamService.js`
 - `listTeams()`: fetches `id, name, is_guest` ordered by name
+- `getAllTeamPlayers()`: returns every `team_players` row (`team_id, player_id`) — Teams page builds a `player_id → team_id` map so a player already on one team's default roster is hidden from every other team's roster picker (and excluded from the OG/Guest available counts)
 - `addTeam(name, isGuest?)`: inserts team with optional guest flag
 - `deleteTeam(id)`: deletes by id; does NOT affect existing matches (team names are plain text on matches)
 - `getTeamPlayers(teamId)`: returns `player_id[]` for a team's default roster
@@ -396,6 +400,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `Teams.jsx` + `teamService.js` | No way to rename a team or update historical match records | Added inline rename (pencil icon → input + confirm/cancel); `updateTeamName()` updates team row then backfills `team1_name`/`team2_name` on all matches |
 | `Players.jsx` | Guest filter was buried inside the filter panel — not prominent enough | Replaced with two full-width toggle buttons (OG Players / Guest Players) directly below search bar; `playerTypeFilter` state replaces `guestFilter` boolean |
 | `Teams.jsx` | Roster player list showed all players mixed; hard to find non-guest players for non-guest teams | Added OG / Guest mutually-exclusive filter pills inside each team's expanded roster panel (`rosterFilter` state per team in `expanded` map) |
+| `Teams.jsx` + `teamService.js` | A player added to one team's default roster still appeared selectable in other teams' rosters | `getAllTeamPlayers()` loads all assignments into an `assignedTo` (player_id→team_id) map on mount; players on another team shown greyed-out/disabled with "In <team>" sublabel (not hidden); map updated live on toggle; OG/Guest counts reflect only available players |
 | `MatchSetupStepper.jsx` | Wicket keeper was optional; non-guest teams with rosters weren't auto-populated | Keeper now mandatory in `step2Valid`; `applyGuestTeam` renamed to `applyTeamRoster` — fires for any team in registry (guest or not); resets captain/keeper on team change |
 | `TournamentSetup.jsx` | Series match creation had no captain or keeper selection | Added `captainIds` + `keeperIds` state; Captain/Keeper selects per team (shown when squad has players, series only); `canCreateMatches` requires both; `is_captain`/`is_keeper` flags passed to `setMatchPlayers` |
 | `MatchSetupStepper.jsx` | Joker section had misaligned subtitle (pushed right via `justify-between`) | Subtitle moved below title as a `<p>` tag |
@@ -437,7 +442,7 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**11 test files, 192 tests — all passing:**
+**14 test files, 213 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -450,12 +455,27 @@ For auto-logout on user removal to work, `app_users` must have Replication enabl
 | `src/components/shared/ConfirmDialog.test.jsx` | open/closed state, danger style, confirm/cancel callbacks, disabled, type="button" |
 | `src/components/shared/BottomSheet.test.jsx` | open/closed, overflow lock/restore, backdrop/X close, noScroll |
 | `src/services/playerService.test.js` | getPlayerMatchCounts — distinct match counting, dedup, empty/null data, multi-player isolation; getPlayerInningsCounts — batting/bowling innings from live scorecard rows, yet_to_bat excluded, 0-legal-ball rows excluded |
-| `src/services/matchService.test.js` | incrementMatchesPlayed — correct RPC name + args, throws on DB error |
+| `src/services/matchService.test.js` | incrementMatchesPlayed — correct RPC name + args, throws on DB error; addSubPlayer — inserts with is_substitute=true + is_active=true + subbed_out_player_id, null when omitted, throws on DB error; setPlayerActive — updates is_active on row, throws on error |
+| `src/stores/matchStore.test.js` | swapPlayer — sequential order (insert before deactivate), setPlayerActive not called if insert throws, correct subbedOutPlayerId passed, store state updated correctly; swapBack — finds linked sub via subbed_out_player_id not any active sub, throws if no linked active sub, store state updated correctly |
 | `src/lib/generateShareCard.test.jsx` | getInitials, calcSR, calcEcon, dismissalText — pure helper functions for Satori card generation |
+| `src/services/teamService.test.js` | getAllTeamPlayers — returns rows, empty array on null, throws on DB error |
+| `src/pages/Teams.test.jsx` | Roster player filtering: all players shown when no assignments; own-team player not disabled; cross-team player disabled + "In X" label; unassigned player enabled; clicking disabled player does not call setTeamPlayers |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 
 ---
+
+### `src/components/match/PlayerSubSheet.jsx`
+- Props: `{ open, onClose, match, matchPlayers, allPlayers, onSwap, onSwapBack }`
+- Team tabs (Super Kings / Back Street Boyz) select which team to manage
+- **Step 1:** active squad list — tap any player to mark them as "going out"
+- **Step 2:** shows outgoing player in red pill + search list of available replacements; "Sub In →" confirms swap; ← Back cancels
+- **Benched section:** inactive (subbed-out) players shown with strikethrough + "Swap Back" button to reverse the sub
+- Players lazy-loaded from `playerService.listPlayers` on first open (cached in `allPlayers` state in LiveScoring)
+- `is_substitute: true`, `is_active: true`, `subbed_out_player_id = outgoing mp.id` on incoming sub; outgoing player set to `is_active: false`
+- Sequential write in `swapPlayer`: insert sub first (throws on failure), then deactivate outgoing — prevents squad losing a player on partial failure
+- `subbed_out_player_id` (migration 025) links each sub to the exact player they replaced — `swapBack` looks up the linked active sub, not "any active sub", so multiple swaps in one match work correctly
+- "Swap Back" button only shown when a linked active sub exists for that specific benched player
 
 ## Pending / Known Issues
 - Invite emails land in spam for new recipients (Gmail account is new, no domain reputation). Long-term fix: custom domain + proper SPF/DKIM.

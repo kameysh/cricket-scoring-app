@@ -23,6 +23,9 @@ import OfflineBanner from '../components/shared/OfflineBanner';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import BottomSheet from '../components/shared/BottomSheet';
 import * as matchService from '../services/matchService';
+import * as playerService from '../services/playerService';
+import PlayerSubSheet from '../components/match/PlayerSubSheet';
+import { ArrowLeftRight } from 'lucide-react';
 
 
 // Derive a dismissal description from the wicket delivery for a given batsman
@@ -231,6 +234,8 @@ export default function LiveScoring() {
   const [winConfirmOpen, setWinConfirmOpen] = useState(false);
   const [winConfirmInfo, setWinConfirmInfo] = useState(null);
   const [oversLimitOpen, setOversLimitOpen] = useState(false);
+  const [subOpen, setSubOpen] = useState(false);
+  const [allPlayers, setAllPlayers] = useState([]);
   const endingMatchRef = useRef(false);
   const milestonesRef = useRef(new Set());
   useEffect(() => { store.loadMatch(id); return () => store.reset(); }, [id]);
@@ -272,7 +277,8 @@ export default function LiveScoring() {
 
   const jokerId = match?.joker_player_id;
   const unique = arr => [...new Map(arr.map(p => [p.id, p])).values()];
-  const teamPlayers = team => unique(matchPlayers.filter(mp => mp.team === team || mp.team === 0).map(mp => mp.players));
+  // Only include active players (is_active=false means subbed out). Treat missing/null as active for old rows.
+  const teamPlayers = team => unique(matchPlayers.filter(mp => (mp.team === team || mp.team === 0) && mp.is_active !== false).map(mp => mp.players));
 
   // Exclude joker from batting side when joker is currently bowling (and vice versa)
   const battingTeamPlayers = teamPlayers(battingTeam).filter(p =>
@@ -620,6 +626,37 @@ export default function LiveScoring() {
     setKeeperModalOpen(false);
   }
 
+  async function handleOpenSub() {
+    if (allPlayers.length === 0) {
+      try {
+        const ps = await playerService.listPlayers({ activeOnly: true });
+        setAllPlayers(ps || []);
+      } catch {
+        toast.error('Could not load player list');
+        return;
+      }
+    }
+    setSubOpen(true);
+  }
+
+  async function handleSwapPlayer(outMatchPlayerId, inPlayerId, team) {
+    try {
+      await store.swapPlayer(outMatchPlayerId, inPlayerId, team);
+      toast.success('Player swapped');
+    } catch (err) {
+      toast.error(err.message || 'Failed to swap player');
+    }
+  }
+
+  async function handleSwapBack(benchedMatchPlayerId) {
+    try {
+      await store.swapBack(benchedMatchPlayerId);
+      toast.success('Player returned to squad');
+    } catch (err) {
+      toast.error(err.message || 'Failed to swap back');
+    }
+  }
+
   async function handleAbandon() {
     await matchService.deleteMatch(id);
     navigate('/matches');
@@ -645,6 +682,9 @@ export default function LiveScoring() {
         </button>
         <button onClick={handleEndInnings} className="flex-1 text-xs font-semibold text-ink-600 dark:text-ink-200 border border-ink-200 dark:border-white/20 px-3 py-1.5 rounded-lg hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
           End Innings
+        </button>
+        <button onClick={handleOpenSub} className="flex-shrink-0 flex items-center gap-1 text-xs font-medium text-sky-600 dark:text-sky-400 px-2 py-1 rounded-lg hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors">
+          <ArrowLeftRight size={13} /> Sub
         </button>
         <button onClick={() => setAbandonOpen(true)} className="flex-shrink-0 text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
           Abandon
@@ -902,6 +942,16 @@ export default function LiveScoring() {
           </div>
         </div>
       </BottomSheet>
+
+      <PlayerSubSheet
+        open={subOpen}
+        onClose={() => setSubOpen(false)}
+        match={match}
+        matchPlayers={matchPlayers}
+        allPlayers={allPlayers}
+        onSwap={handleSwapPlayer}
+        onSwapBack={handleSwapBack}
+      />
 
       <BottomSheet open={winConfirmOpen} onClose={() => {}} title="Match Result" heightClass="h-auto">
         <div className="space-y-4 pb-2">
