@@ -941,7 +941,7 @@ export default function LiveScoring() {
 
       </div>
 
-      <div className="fixed bottom-16 left-0 right-0">
+      <div className="fixed bottom-16 left-0 right-0 bg-white dark:bg-ink-900 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] dark:shadow-[0_-2px_12px_rgba(0,0,0,0.3)]">
         <BallInputPanel
           onRuns={handleRuns}
           onExtra={handleExtra}

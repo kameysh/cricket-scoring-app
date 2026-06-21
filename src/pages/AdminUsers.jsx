@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, ChevronLeft, Shield, Trash2, RotateCcw } from 'lucide-react';
+import { UserPlus, ChevronLeft, Shield, Trash2, RotateCcw, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { masterReset } from '../services/playerService';
 import { useAuthStore } from '../stores/authStore';
@@ -58,6 +58,7 @@ export default function AdminUsers() {
   const [inviteName, setInviteName] = useState('');
   const [inviteRole, setInviteRole] = useState('viewer');
   const [inviting, setInviting] = useState(false);
+  const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [confirmResetStats, setConfirmResetStats] = useState(false);
@@ -157,6 +158,11 @@ export default function AdminUsers() {
     }
   }
 
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? users.filter(u => (u.full_name || '').toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+    : users;
+
   return (
     <div className="p-4 space-y-4 page-transition">
       <div className="flex items-center gap-3">
@@ -204,15 +210,30 @@ export default function AdminUsers() {
         </form>
       )}
 
+      {/* Search */}
+      {!loading && users.length > 0 && (
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name or email…"
+            className="field-input pl-9 text-sm"
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-2">
           {[1, 2, 3].map(i => <div key={i} className="h-14 rounded-xl bg-ink-100 dark:bg-white/5 animate-pulse" />)}
         </div>
       ) : users.length === 0 ? (
         <p className="text-center text-ink-400 py-8 text-sm">No users yet. Invite someone to get started.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-center text-ink-400 py-8 text-sm">No users match "{search}".</p>
       ) : (
         <div className="space-y-2">
-          {users.map(u => (
+          {filtered.map(u => (
             <div key={u.id} className="card p-3 flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-green to-brand-teal flex items-center justify-center text-white text-sm font-bold shrink-0 mt-0.5">
                 {(u.full_name || u.email)[0].toUpperCase()}

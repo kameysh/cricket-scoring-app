@@ -134,6 +134,19 @@ async function renderLiveScoring() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+describe('LiveScoring — scoring panel has opaque background (no bleed-through)', () => {
+  it('fixed BallInputPanel wrapper has bg-white class so content behind it cannot show through', async () => {
+    mockStoreState = buildStore({ currentInnings: INN2_TIED });
+    mockWinInfo = null;
+    const { container } = await renderLiveScoring();
+    // The outer fixed div wrapping BallInputPanel must have bg-white (opaque) so the
+    // BallLog and scrollable page content behind it never bleed through the panel.
+    const fixedPanel = container.querySelector('.fixed.bottom-16');
+    expect(fixedPanel).toBeTruthy();
+    expect(fixedPanel.className).toContain('bg-white');
+  });
+});
+
 describe('LiveScoring — dual modal prevention (tie + super over)', () => {
   it('shows Super Over sheet (not Match Result) when main innings ties with SO enabled', async () => {
     mockStoreState = buildStore({ currentInnings: INN2_TIED });

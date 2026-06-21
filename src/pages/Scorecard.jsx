@@ -11,7 +11,7 @@ import HighlightsFeed from '../components/match/HighlightsFeed';
 import OverByOverTable from '../components/match/OverByOverTable';
 import PlayerMatchCardSheet from '../components/match/PlayerMatchCardSheet';
 
-function buildStatsFromDeliveries(deliveries) {
+function buildStatsFromDeliveries(deliveries, playersMap = {}) {
   // Batting: ordered by first appearance
   const batOrder = [];
   const batMap = new Map();
@@ -20,7 +20,7 @@ function buildStatsFromDeliveries(deliveries) {
     if (!pid) continue;
     if (!batMap.has(pid)) {
       batOrder.push(pid);
-      batMap.set(pid, { name: d.batsman?.name || pid, runs: 0, balls: 0, ones: 0, twos: 0, threes: 0, fours: 0, sixes: 0, dots: 0 });
+      batMap.set(pid, { name: d.batsman?.name || playersMap[pid]?.name || pid, runs: 0, balls: 0, ones: 0, twos: 0, threes: 0, fours: 0, sixes: 0, dots: 0 });
     }
     const s = batMap.get(pid);
     if (d.extra_type !== 'wide') {
@@ -44,8 +44,8 @@ function buildStatsFromDeliveries(deliveries) {
     if (!outId || dismissalMap.has(outId)) continue;
     dismissalMap.set(outId, {
       type: d.wicket_type,
-      bowlerName: d.bowler?.name || '',
-      fielderName: d.fielder?.name || '',
+      bowlerName: d.bowler?.name || playersMap[d.bowler_id]?.name || '',
+      fielderName: d.fielder?.name || playersMap[d.fielder_id]?.name || '',
       bowlerId: d.bowler_id,
       fielderId: d.fielder_id,
     });
@@ -59,7 +59,7 @@ function buildStatsFromDeliveries(deliveries) {
     if (!pid) continue;
     if (!bowlMap.has(pid)) {
       bowlOrder.push(pid);
-      bowlMap.set(pid, { name: d.bowler?.name || pid, legal_balls: 0, runs: 0, wickets: 0, wides: 0, no_balls: 0, maiden_overs: new Set() });
+      bowlMap.set(pid, { name: d.bowler?.name || playersMap[pid]?.name || pid, legal_balls: 0, runs: 0, wickets: 0, wides: 0, no_balls: 0, maiden_overs: new Set() });
     }
     const s = bowlMap.get(pid);
     if (d.is_legal_delivery) s.legal_balls += 1;
@@ -126,7 +126,7 @@ function PlayerBadges({ pid, playerMeta }) {
 }
 
 function InningsBlock({ innings, deliveries, playerMeta, playersMap, onBatterClick, onBowlerShare, motmId }) {
-  const { batOrder, batMap, dismissalMap, bowlOrder, bowlMap, maidenMap } = buildStatsFromDeliveries(deliveries);
+  const { batOrder, batMap, dismissalMap, bowlOrder, bowlMap, maidenMap } = buildStatsFromDeliveries(deliveries, playersMap);
 
   const extras = deliveries.reduce((acc, d) => {
     if (d.extra_type === 'wide') acc.wides += d.extra_runs || 0;
@@ -357,7 +357,7 @@ export default function Scorecard() {
 
   function openPlayerCard(pid) {
     const allDeliveries = Object.values(deliveriesMap).flat();
-    const { batMap, dismissalMap, bowlMap, maidenMap } = buildStatsFromDeliveries(allDeliveries);
+    const { batMap, dismissalMap, bowlMap, maidenMap } = buildStatsFromDeliveries(allDeliveries, playersMap);
     const player = playersMap[pid] || { id: pid, name: batMap.get(pid)?.name || bowlMap.get(pid)?.name || pid };
     setCardPlayer({
       player,

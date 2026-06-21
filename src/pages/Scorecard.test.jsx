@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 
 // ── mock react-router-dom ─────────────────────────────────────────────────────
-vi.mock('react-router-dom', () => ({ useParams: () => ({ id: 'match-1' }) }));
+vi.mock('react-router-dom', () => ({
+  useParams: () => ({ id: 'match-1' }),
+  Link: ({ children, to }) => <a href={to}>{children}</a>,
+}));
 
 // ── Supabase channel mock — captures handlers so tests can fire them manually ─
 const channelHandlers = {}; // { channelName: { eventKey: handler } }
@@ -46,11 +49,13 @@ const MATCH_LIVE = { id: 'match-1', status: 'live', team1_name: 'Super Kings', t
 const INN1 = { id: 'inn-1', match_id: 'match-1', innings_number: 1, batting_team: 1, total_runs: 40, total_wickets: 2, total_legal_balls: 18 };
 const DELIVERY = { id: 'd-1', innings_id: 'inn-1', batsman_id: 'p-1', runs_off_bat: 4, extra_type: null, extra_runs: 0, is_wicket: false, over_number: 0, ball_number: 1 };
 
-function setupMocks({ match = MATCH_LIVE, innings = [INN1], deliveries = [] } = {}) {
+const PLAYER_ROW = { player_id: 'p-1', is_captain: false, team: 1, players: { id: 'p-1', name: 'Kamesh', photo_url: null, role: 'batsman' } };
+
+function setupMocks({ match = MATCH_LIVE, innings = [INN1], deliveries = [], matchPlayers = [] } = {}) {
   matchService.getMatch.mockResolvedValue(match);
   matchService.getInnings.mockResolvedValue(innings);
   matchService.getDeliveries.mockResolvedValue(deliveries);
-  matchService.getMatchPlayers.mockResolvedValue([]);
+  matchService.getMatchPlayers.mockResolvedValue(matchPlayers);
   matchService.getMatchNumber.mockResolvedValue(1);
 }
 
@@ -175,5 +180,32 @@ describe('Scorecard — realtime: channel cleanup', () => {
     const { unmount } = await renderScorecard();
     await act(async () => { unmount(); });
     expect(supabase.removeChannel).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('Scorecard — realtime delivery name resolution from playersMap', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('shows player name (not UUID) for a delivery inserted via realtime when joins are absent', async () => {
+    // matchPlayers provides the name; the realtime delivery has NO joined batsman object
+    setupMocks({ matchPlayers: [PLAYER_ROW] });
+    await renderScorecard();
+
+    const handler = channelHandlers[`scorecard:deliveries:match-1`]?.['INSERT:deliveries'];
+    expect(handler).toBeDefined();
+
+    // Realtime payload: raw row only — no d.batsman, d.bowler, d.fielder joins
+    const realtimeDelivery = {
+      id: 'd-rt', innings_id: 'inn-1',
+      batsman_id: 'p-1',      // UUID only, no joined .batsman object
+      bowler_id: 'p-1',
+      runs_off_bat: 4, extra_type: null, extra_runs: 0,
+      is_wicket: false, is_legal_delivery: true, over_number: 0, ball_number: 1,
+    };
+    await act(async () => { handler({ new: realtimeDelivery }); });
+
+    // "Kamesh" should appear; the raw UUID 'p-1' should NOT appear as a name
+    expect(screen.queryByText('p-1')).toBeNull();
+    expect(screen.getAllByText('Kamesh').length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MatchScoreCard } from './Home';
 
@@ -203,5 +203,96 @@ describe('MatchScoreCard — delete button', () => {
     const deleteBtn = screen.getByLabelText('Delete match');
     await user.click(deleteBtn);
     expect(onDelete).toHaveBeenCalledWith(MATCH);
+  });
+});
+
+// ── Home component — live hero with innings scores ────────────────────────────
+
+// Supabase channel mock (same pattern as Scorecard.test.jsx)
+const channelHandlers = {};
+function makeChannelMock(name) {
+  if (!channelHandlers[name]) channelHandlers[name] = {};
+  const handlers = channelHandlers[name];
+  const mock = {
+    on: vi.fn((type, opts, cb) => { handlers[`${opts.event}:${opts.table}`] = cb; return mock; }),
+    subscribe: vi.fn(() => mock),
+  };
+  return mock;
+}
+vi.mock('../lib/supabase', () => ({
+  supabase: { channel: vi.fn(name => makeChannelMock(name)), removeChannel: vi.fn() },
+}));
+
+const LIVE_MATCH = {
+  id: 'lm1', status: 'live',
+  team1_name: 'Super Kings', team2_name: 'Back Street Boyz',
+  result_summary: null, venues: null, tournaments: null,
+};
+const LIVE_INN1 = { id: 'li1', match_id: 'lm1', innings_number: 1, batting_team: 1,
+  total_runs: 45, total_wickets: 3, total_legal_balls: 18, is_completed: false };
+
+vi.mock('../services/matchService', () => ({
+  listMatches: vi.fn(),
+  getInnings: vi.fn(),
+  getScorecards: vi.fn().mockResolvedValue({ batting: [], bowling: [], fielding: [] }),
+  getMatchNumber: vi.fn().mockResolvedValue(1),
+  deleteMatch: vi.fn(),
+}));
+vi.mock('../services/playerService', () => ({
+  getAllCareerStats: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('../services/tournamentService', () => ({
+  listTournaments: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('../lib/cricketUtils', () => ({ formatOvers: (balls) => `${Math.floor(balls / 6)}.${balls % 6}` }));
+
+import * as matchService from '../services/matchService';
+import Home from './Home';
+
+async function renderHome() {
+  let result;
+  await act(async () => { result = render(<Home />); });
+  return result;
+}
+
+describe('Home — live hero shows innings score', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.keys(channelHandlers).forEach(k => delete channelHandlers[k]);
+    matchService.listMatches.mockResolvedValue([LIVE_MATCH]);
+    matchService.getInnings.mockResolvedValue([LIVE_INN1]);
+  });
+
+  it('shows team1 score runs/wickets in live hero', async () => {
+    await renderHome();
+    expect(screen.getByText('45/3')).toBeTruthy();
+  });
+
+  it('shows overs in live hero', async () => {
+    await renderHome();
+    expect(screen.getByText('(3.0 ov)')).toBeTruthy();
+  });
+
+  it('shows "Batting" label on the team currently batting', async () => {
+    await renderHome();
+    expect(screen.getByText('Batting')).toBeTruthy();
+  });
+
+  it('shows "Yet to bat" for team that has not started batting', async () => {
+    // Only team1 has an innings — team2 has no innings row yet
+    await renderHome();
+    expect(screen.getByText('Yet to bat')).toBeTruthy();
+  });
+
+  it('patches live score when innings UPDATE fires via realtime', async () => {
+    await renderHome();
+    // Fire realtime UPDATE on the live-innings channel
+    const handler = channelHandlers['home:live-innings']?.['UPDATE:innings'];
+    expect(handler).toBeDefined();
+    await act(async () => {
+      handler({ new: { ...LIVE_INN1, total_runs: 67, total_wickets: 4 } });
+    });
+    expect(screen.getByText('67/4')).toBeTruthy();
+    expect(screen.queryByText('45/3')).toBeNull();
   });
 });

@@ -212,6 +212,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - User row layout: avatar left, name + email + role pill stacked in middle column, trash anchored top-right
 - Role select has `ROLE_COLORS` for all five roles incl. `player` (teal); fixed `w-24` removed — pill sizes naturally
 - ConfirmDialog used for delete confirmation (no inline confirm block in the row)
+- **Search bar:** `search` state filters `users` by name or email (case-insensitive); shown only after load when users exist; no-match empty state shows the query string; clearing restores full list
 
 ### `src/pages/Teams.jsx`
 - Route: `/teams` (any logged-in user; add requires admin/scorer, delete requires admin)
@@ -459,6 +460,9 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `matchService.js` + `Matches.jsx` + `FixtureList.jsx` + `Home.jsx` + `LiveScoring.jsx` + `MatchSummary.jsx` + `Scoreboard.jsx` | No match numbers anywhere — impossible to tell which match was Match 1, 2, 3 | Added `getMatchNumber(id)` service (counts matches with `created_at ≤` this match); Matches page passes `matchNumber={i+1}` to every MatchCard; FixtureList always passes `matchNumber={i+1}` (not just series); Home MatchScoreCard shows global number; LiveScoring Scoreboard and MatchSummary header both fetch + display match number |
 | `Leaderboard.jsx` + `playerService.js` + `matchService.js` + `022_matches_played_counter.sql` | "M" column showed matches where player batted, not total matches in squad — no counter existed for squad participation | Added `matches_played` counter to `player_career_stats`; RPC `increment_matches_played` called atomically on match completion; migration backfills existing matches; leaderboard reads `row.matches_played` — single fast counter, no live query |
 | `MatchSummary.jsx` | Balls column showed 0 for all batsmen — code read `c.balls` but `batting_scorecards` DB column is `balls_faced` | Changed to `c.balls_faced` in top-batter section and MoTM batting summary |
+| `Scorecard.jsx` | Player UUIDs shown instead of names on a second device viewing live scorecard — realtime `deliveries` INSERT payload has no joined player objects (`d.batsman`, `d.bowler`, `d.fielder` are all undefined); `buildStatsFromDeliveries` fell back to raw player_id UUID | Added `playersMap` param to `buildStatsFromDeliveries`; all name lookups fall back to `playersMap[id]?.name` before using the UUID |
+| `Home.jsx` | Live match hero showed only team names + buttons — no actual score visible without navigating away | Fetch innings for all live matches on load; subscribe to `innings` UPDATE/INSERT realtime channel; hero card now shows runs/wickets/overs per team with a "Batting" indicator on the active team |
+| `LiveScoring.jsx` | BallLog content bled through the fixed scoring panel — `fixed bottom-16` wrapper had no background, `active:scale-95` tap on run buttons briefly revealed scrolled content behind | Added `bg-white dark:bg-ink-900` and top shadow to the fixed wrapper div |
 | `LiveScoring.jsx` + `useWinCondition.js` + `matchStore.js` + `matchService.js` + `Scoreboard.jsx` + `Scorecard.jsx` + `MatchSummary.jsx` + `026_super_over.sql` | Super over option did nothing — on tie the match simply ended regardless of `super_over_enabled` flag | Full super over implementation: migration adds `is_super_over` to innings; tie+SO enabled → "Start Super Over" BottomSheet; SO innings: 1 over, 2 wickets = all out; team that batted 2nd bats first in SO; innings 3→4 transition uses `createSuperOverInnings`; `useWinCondition` extended to handle innings 4 (SO); Scoreboard shows "⚡ Super Over" label + 1-over count; Scorecard + MatchSummary tab buttons show "⚡ Super Over 1/2"; `result_type='super_over'` set on match completion |
 
 ## Supabase Realtime Prerequisites
@@ -481,7 +485,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**20 test files, 312 tests — all passing:**
+**21 test files, 324 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -503,9 +507,9 @@ For realtime to work, each table must have Replication enabled:
 | `src/lib/generateShareCard.test.jsx` | getInitials, calcSR, calcEcon, dismissalText — pure helper functions for Satori card generation |
 | `src/services/teamService.test.js` | getAllTeamPlayers — returns rows, empty array on null, throws on DB error |
 | `src/pages/Teams.test.jsx` | Roster player filtering: all players shown when no assignments; own-team player not disabled; cross-team player disabled + "In X" label; unassigned player enabled; clicking disabled player does not call setTeamPlayers |
-| `src/pages/Home.test.jsx` | MatchScoreCard — scores from correct innings (batting_team field), team assignment when team2 bats first, top 2 batters per team sorted by runs, top bowler per team, bowling figures display, null-safe rendering with missing stats, navigation callback, delete button visibility |
+| `src/pages/Home.test.jsx` | MatchScoreCard — scores from correct innings (batting_team field), team assignment when team2 bats first, top 2 batters per team sorted by runs, top bowler per team, bowling figures display, null-safe rendering with missing stats, navigation callback, delete button visibility; **live hero** — runs/wickets/overs shown, Batting label on active team, Yet to bat for uninitiated team, realtime innings UPDATE patches score in-place |
 | `src/pages/LiveScoring.test.jsx` | Dual modal prevention (tie→SO, win→Match Result, null→nothing); all-out even innings no winConfirm; SO odd innings triggers endInnings; BallInputPanel disabled for ALL modals (winConfirmOpen, superOverOpen, oversLimitOpen); SO over-limit shows "Super Over Complete"; regular innings shows "N Overs Complete"; successive SO — tied SO shows Super Over sheet again, SO winner shows Match Result; SO disabled shows Match Result on tie; End Match calls setMatchStatus; manual End Innings on final innings calls setMatchStatus |
-| `src/pages/Scorecard.test.jsx` | Realtime subscriptions — LIVE indicator shown/hidden on match UPDATE, innings UPDATE patches score in-place without reload, innings INSERT triggers reloadInnings, deliveries INSERT appends to deliveriesMap for known innings, ignores foreign innings_id, all 3 channels removed on unmount |
+| `src/pages/Scorecard.test.jsx` | Realtime subscriptions — LIVE indicator shown/hidden on match UPDATE, innings UPDATE patches score in-place without reload, innings INSERT triggers reloadInnings, deliveries INSERT appends to deliveriesMap for known innings, ignores foreign innings_id, all 3 channels removed on unmount; **realtime delivery name resolution** — player name shown (not UUID) when realtime delivery has no joined player objects, resolved via playersMap |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 

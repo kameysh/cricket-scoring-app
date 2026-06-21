@@ -26,6 +26,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [toDelete, setToDelete] = useState(null);
   const [matchStats, setMatchStats] = useState({});
+  const [liveInnings, setLiveInnings] = useState({});
 
   const reloadMatches = useCallback(() => {
     matchService.listMatches().then(setMatches).catch(() => {});
@@ -55,6 +56,50 @@ export default function Home() {
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [reloadMatches]);
+
+  // Load innings for live matches and subscribe to score updates
+  useEffect(() => {
+    const live = matches.filter(m => m.status === 'live' || m.status === 'paused');
+    if (live.length === 0) { setLiveInnings({}); return; }
+
+    Promise.allSettled(live.map(async m => {
+      const innings = await matchService.getInnings(m.id);
+      return [m.id, innings];
+    })).then(results => {
+      const map = {};
+      results.forEach(r => {
+        if (r.status === 'fulfilled') { const [mid, inn] = r.value; map[mid] = inn; }
+      });
+      setLiveInnings(map);
+    });
+
+    // Subscribe to innings score changes so live totals refresh without page reload
+    const channel = supabase
+      .channel('home:live-innings')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'innings' },
+        payload => {
+          const matchId = payload.new.match_id;
+          setLiveInnings(prev => {
+            if (!prev[matchId]) return prev;
+            return {
+              ...prev,
+              [matchId]: prev[matchId].map(inn => inn.id === payload.new.id ? { ...inn, ...payload.new } : inn),
+            };
+          });
+        }
+      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'innings' },
+        payload => {
+          const matchId = payload.new.match_id;
+          setLiveInnings(prev => {
+            if (!prev[matchId]) return prev;
+            return { ...prev, [matchId]: [...prev[matchId], payload.new] };
+          });
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [matches]);
 
   // Load innings + scorecards for recent completed matches
   useEffect(() => {
@@ -147,11 +192,42 @@ export default function Home() {
                   </div>
 
                   <div className="text-center">
-                    <p className="text-lg font-bold text-ink-900 dark:text-white leading-tight">
-                      {m.team1_name} <span className="text-ink-400 font-normal text-base">vs</span> {m.team2_name}
+                    <p className="text-sm font-semibold text-ink-500 dark:text-ink-400 tracking-wide uppercase mb-2">
+                      {m.team1_name} <span className="text-ink-300 font-normal">vs</span> {m.team2_name}
                     </p>
+                    {/* Live scores */}
+                    {(() => {
+                      const innings = liveInnings[m.id] || [];
+                      const t1 = innings.find(i => i.batting_team === 1);
+                      const t2 = innings.find(i => i.batting_team === 2);
+                      const cur = innings.filter(i => !i.is_completed).slice(-1)[0];
+                      if (!t1 && !t2) return (
+                        <p className="text-xs text-ink-400 mt-0.5">Loading score…</p>
+                      );
+                      return (
+                        <div className="flex items-center justify-center gap-4 mt-1">
+                          {[{ name: m.team1_name, inn: t1, isBatting: cur?.batting_team === 1 },
+                            { name: m.team2_name, inn: t2, isBatting: cur?.batting_team === 2 }].map(({ name, inn, isBatting }) => (
+                            <div key={name} className={`flex flex-col items-center ${isBatting ? '' : 'opacity-60'}`}>
+                              <span className="text-xs font-medium text-ink-500 dark:text-ink-400 truncate max-w-[110px]">{name}</span>
+                              {inn ? (
+                                <>
+                                  <span className="text-2xl font-extrabold text-ink-900 dark:text-white leading-tight">
+                                    {inn.total_runs}/{inn.total_wickets}
+                                  </span>
+                                  <span className="text-xs text-ink-400">({formatOvers(inn.total_legal_balls)} ov)</span>
+                                </>
+                              ) : (
+                                <span className="text-2xl font-extrabold text-ink-400">Yet to bat</span>
+                              )}
+                              {isBatting && <span className="mt-0.5 text-[10px] font-bold text-brand-green uppercase tracking-wide">Batting</span>}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                     {m.venues?.name && (
-                      <p className="text-xs text-ink-400 mt-0.5">{m.venues.name}</p>
+                      <p className="text-xs text-ink-400 mt-1">{m.venues.name}</p>
                     )}
                   </div>
 
