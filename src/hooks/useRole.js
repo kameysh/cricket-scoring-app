@@ -8,7 +8,7 @@ export function useRole() {
     userId: user?.id || null,
     isAdmin: role === 'admin',
     isPlayer: role === 'player',
-    canScore: ['admin', 'scorer'].includes(role),
+    canScore: ['admin', 'scorer', 'captain', 'player'].includes(role),
     canManagePlayers: role === 'admin',
     canCreatePlayer: ['admin', 'scorer', 'captain', 'player'].includes(role),
     canManageOwnProfile: ['admin', 'scorer', 'captain', 'player'].includes(role),

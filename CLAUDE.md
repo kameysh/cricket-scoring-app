@@ -58,7 +58,7 @@ Role check hook: `src/hooks/useRole.js` → `{ isAdmin, isPlayer, canScore, canM
 | `canManagePlayers` | admin only — edit **any** player profile |
 | `canCreatePlayer` | admin, scorer, captain, player — create new player / edit own profile |
 | `canManageOwnProfile` | admin, scorer, captain, player |
-| `canScore` | admin, scorer |
+| `canScore` | admin, scorer, captain, player |
 | `canManageVenues` / `canManageTournaments` | admin only |
 
 App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
@@ -443,6 +443,7 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 | `MatchSetupStepper.jsx` | Free-text team name inputs bypassed Teams registry — same team stored under different spellings, breaking HeadToHead + rename backfill | When `globalTeams.length > 0`, show registry dropdown + "Other / New team…" option; new names typed via Other are auto-registered via `teamService.addTeam()` on match creation |
 | `matchService.js` + `Home.jsx` | Matches listed newest-first — first played match appeared at bottom | Changed `listMatches()` to `ascending: true`; Home "Recent Matches" uses `slice(-3)` to show the 3 most recent in chronological order |
 | `Home.jsx` | Recent Matches cards showed only team names + result text — no scores, no player stats | Replaced `MatchCard` with `MatchScoreCard` (named export); `listMatchesWithScores()` joins innings + scorecards; card shows both team scores side-by-side + top 2 batters + top bowler per team, Google cricket widget style |
+| `useRole.js` + `App.jsx` | Captain and player roles could not access the scoring view (`/matches/:id`) | `canScore` expanded to include captain and player; `/matches/:id` route moved to its own `ProtectedRoute` with `['admin','scorer','captain','player']`; `/matches/new` remains admin+scorer only |
 | `Scorecard.jsx` + `Home.jsx` | Score updates only visible after manual refresh — no realtime | Added 3 Supabase realtime channels to Scorecard: `matches` UPDATE (status changes), `innings` UPDATE/INSERT (score totals per ball), `deliveries` INSERT (ball-by-ball feed filtered client-side by innings id). Added `matches` UPDATE channel to Home so live hero and recent cards refresh automatically. Live indicator (pulsing green dot + "LIVE") shown in Scorecard header when match is active. **Requires `matches`, `innings`, `deliveries` replication enabled in Supabase Dashboard.** |
 | `PlayerSubSheet.jsx` | Sheet always opened at `h-[85vh]` regardless of squad size — huge whitespace below short player lists | Changed to `max-h-[80vh]`; removed hardcoded `maxHeight: 260px / 300px` pixel caps on player list divs; sheet now sizes to content and scrolls only when needed |
 | `matchService.js` + `Matches.jsx` + `FixtureList.jsx` + `Home.jsx` + `LiveScoring.jsx` + `MatchSummary.jsx` + `Scoreboard.jsx` | No match numbers anywhere — impossible to tell which match was Match 1, 2, 3 | Added `getMatchNumber(id)` service (counts matches with `created_at ≤` this match); Matches page passes `matchNumber={i+1}` to every MatchCard; FixtureList always passes `matchNumber={i+1}` (not just series); Home MatchScoreCard shows global number; LiveScoring Scoreboard and MatchSummary header both fetch + display match number |

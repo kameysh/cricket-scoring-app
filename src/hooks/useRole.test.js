@@ -38,21 +38,21 @@ describe('useRole', () => {
     expect(result.current.canManageOwnProfile).toBe(true);
   });
 
-  it('captain can create players but cannot score or manage players', () => {
+  it('captain can score and create players but cannot manage players', () => {
     mockAuth('captain');
     const { result } = renderHook(() => useRole());
-    expect(result.current.canScore).toBe(false);
+    expect(result.current.canScore).toBe(true);
     expect(result.current.canCreatePlayer).toBe(true);
     expect(result.current.canManagePlayers).toBe(false);
     expect(result.current.canManageOwnProfile).toBe(true);
   });
 
-  it('player can manage own profile but cannot score or manage players', () => {
+  it('player can score and manage own profile but cannot manage players', () => {
     mockAuth('player');
     const { result } = renderHook(() => useRole());
     expect(result.current.isPlayer).toBe(true);
     expect(result.current.canManageOwnProfile).toBe(true);
-    expect(result.current.canScore).toBe(false);
+    expect(result.current.canScore).toBe(true);
     expect(result.current.canManagePlayers).toBe(false);
     expect(result.current.canCreatePlayer).toBe(true);
   });

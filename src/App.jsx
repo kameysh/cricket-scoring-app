@@ -77,9 +77,13 @@ export default function App() {
             <Route path="/h2h" element={<HeadToHead />} />
           </Route>
 
-          {/* Admin + Scorer */}
+          {/* Admin + Scorer only — create match */}
           <Route element={<ProtectedRoute allowedRoles={['admin', 'scorer']} />}>
             <Route path="/matches/new" element={<MatchSetup />} />
+          </Route>
+
+          {/* Admin + Scorer + Captain + Player — score a match */}
+          <Route element={<ProtectedRoute allowedRoles={['admin', 'scorer', 'captain', 'player']} />}>
             <Route path="/matches/:id" element={<LiveScoring />} />
           </Route>
 
