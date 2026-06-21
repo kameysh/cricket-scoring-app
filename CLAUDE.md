@@ -509,7 +509,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**24 test files, 346 tests — all passing:**
+**25 test files, 380 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
