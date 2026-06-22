@@ -431,6 +431,154 @@ function buildCardElement({ player, match, inningsList, batStats, dismissal, bow
   );
 }
 
+// ── Auction sold card ─────────────────────────────────────────────────────────
+function buildAuctionSoldElement({ player, teamName, basePrice, soldPrice, auctionName, photoDataUrl }) {
+  const initials = getInitials(player?.name);
+  const HAMMER = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ffffff"><path d="M9.5 8L5 3.5 3.5 5l4.5 4.5-1.5 1.5L2 6.5 1 7.5 5.5 12H7l1-1 7 7 .5.5a2 2 0 002.83 0l1.17-1.17a2 2 0 000-2.83L10 8H9.5z"/><path d="M19 3l-8 8 1.5 1.5 8-8L22 3z"/></svg>`
+  );
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', width: 1080, height: 1080,
+      background: 'linear-gradient(145deg, #0f172a 0%, #1e293b 60%, #0f2d1f 100%)',
+      fontFamily: 'Inter', position: 'relative', overflow: 'hidden',
+    }}>
+      {/* Background accent circle */}
+      <div style={{
+        position: 'absolute', top: -200, right: -200,
+        width: 700, height: 700, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(22,163,74,0.2) 0%, transparent 70%)',
+        display: 'flex',
+      }} />
+
+      {/* Top bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '48px 64px 0',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', fontSize: 22, color: 'rgba(255,255,255,0.4)', fontWeight: 400, letterSpacing: 3 }}>
+            AUCTION
+          </div>
+          <div style={{ display: 'flex', fontSize: 28, color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>
+            {auctionName || 'Player Auction'}
+          </div>
+        </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          background: GREEN, borderRadius: 40, padding: '12px 28px',
+        }}>
+          <img src={HAMMER} width={28} height={28} style={{ display: 'flex' }} />
+          <div style={{ display: 'flex', fontSize: 24, fontWeight: 700, color: '#fff' }}>SOLD</div>
+        </div>
+      </div>
+
+      {/* Player section */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 56, padding: '56px 64px 0' }}>
+        {/* Photo / initials */}
+        <div style={{
+          display: 'flex', width: 220, height: 260, borderRadius: 24, overflow: 'hidden',
+          background: 'linear-gradient(135deg, #16a34a, #0d9488)',
+          flexShrink: 0, position: 'relative',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        }}>
+          {photoDataUrl ? (
+            <img src={photoDataUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'flex' }} />
+          ) : (
+            <div style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', fontSize: 80, fontWeight: 800, color: '#fff' }}>
+              {initials}
+            </div>
+          )}
+        </div>
+
+        {/* Name + role */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div style={{ display: 'flex', fontSize: 72, fontWeight: 800, color: '#fff', lineHeight: 1.05, letterSpacing: -1 }}>
+            {player?.name ?? '—'}
+          </div>
+          {player?.role && (
+            <div style={{
+              display: 'flex', marginTop: 16,
+              background: 'rgba(255,255,255,0.1)', borderRadius: 40,
+              padding: '8px 24px', alignSelf: 'flex-start',
+            }}>
+              <div style={{ display: 'flex', fontSize: 26, color: 'rgba(255,255,255,0.6)', fontWeight: 600, textTransform: 'capitalize' }}>
+                {player.role.replace(/-/g, ' ')}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div style={{ display: 'flex', height: 2, background: 'rgba(255,255,255,0.08)', margin: '48px 64px 0' }} />
+
+      {/* Price details */}
+      <div style={{ display: 'flex', gap: 0, padding: '48px 64px 0' }}>
+        {/* Sold to */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div style={{ display: 'flex', fontSize: 22, color: 'rgba(255,255,255,0.4)', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>
+            Sold to
+          </div>
+          <div style={{ display: 'flex', fontSize: 52, fontWeight: 800, color: GREEN_MID, marginTop: 8 }}>
+            {teamName ?? '—'}
+          </div>
+        </div>
+
+        {/* Vertical divider */}
+        <div style={{ display: 'flex', width: 2, background: 'rgba(255,255,255,0.08)', margin: '0 48px' }} />
+
+        {/* Base price */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div style={{ display: 'flex', fontSize: 22, color: 'rgba(255,255,255,0.4)', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>
+            Base Price
+          </div>
+          <div style={{ display: 'flex', fontSize: 52, fontWeight: 800, color: 'rgba(255,255,255,0.55)', marginTop: 8 }}>
+            Rs.{basePrice?.toLocaleString() ?? '—'}
+          </div>
+        </div>
+      </div>
+
+      {/* Bought for — hero number */}
+      <div style={{
+        display: 'flex', flexDirection: 'column',
+        margin: '40px 64px 0',
+        background: 'rgba(22,163,74,0.15)',
+        border: '2px solid rgba(22,163,74,0.4)',
+        borderRadius: 24, padding: '32px 48px',
+      }}>
+        <div style={{ display: 'flex', fontSize: 24, color: 'rgba(255,255,255,0.45)', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>
+          Bought For
+        </div>
+        <div style={{ display: 'flex', fontSize: 100, fontWeight: 800, color: GREEN_MID, lineHeight: 1, marginTop: 8, letterSpacing: -2 }}>
+          Rs.{soldPrice?.toLocaleString() ?? '—'}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        marginTop: 'auto', padding: '32px 64px 48px',
+      }}>
+        <div style={{ display: 'flex', fontSize: 22, color: 'rgba(255,255,255,0.2)', fontWeight: 600 }}>
+          SIR Cricket Scorer
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export async function generateAuctionSoldCard({ player, teamName, basePrice, soldPrice, auctionName }) {
+  const [fonts, photoDataUrl] = await Promise.all([
+    loadFonts(),
+    fetchPhotoAsDataUrl(player?.photo_url),
+  ]);
+  const element = buildAuctionSoldElement({ player, teamName, basePrice, soldPrice, auctionName, photoDataUrl });
+  const svg = await satori(element, { width: 1080, height: 1080, fonts });
+  return svgToPng(svg, 1080, 1080);
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 export async function generatePlayerCard({ player, match, inningsList, batStats, dismissal, bowlStats }) {
   const [fonts, photoDataUrl] = await Promise.all([

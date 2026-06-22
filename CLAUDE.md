@@ -533,7 +533,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**35 test files, 448 tests — all passing:**
+**38 test files, 491 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -571,6 +571,7 @@ For realtime to work, each table must have Replication enabled:
 | `src/pages/Leaderboard.test.jsx` | Renders Batting tab by default; switches to Partnerships tab without crash; switches to MVP tab without crash |
 | `src/services/auctionService.test.js` | createAuction status=draft; addAuctionTeam sets budget_remaining; placeBid throws on over-budget; placeBid resets pass flags; dealPlayer calls RPC; dealPlayer throws on error; signalPass updates correct column; signalPass throws on invalid column; holdPlayer sets held_at; drawNextPlayer completes auction when queues empty |
 | `src/pages/AuctionRoom.test.jsx` | Admin sees AuctioneerControls only; captain sees CaptainControls only; viewer sees neither; BudgetBars render per team; budget bar width reflects proportion; PassIndicator hidden/shown; Hold button animates when both passing; bid button disabled over budget; bid button enabled within budget; Pass button shows Passing state; waiting message when no active player; admin sees delete button; non-admin does not; sold count chip visible |
+| `src/components/auction/PlayerDrawAnimation.test.jsx` | Shows "Drawing…" on render; pool count displayed; transitions to "Player Selected!" after full animation (step-wise fake timer advances); "Opening bidding…" shown post-reveal; winner base price shown; onComplete called after 1s post-reveal; single-player pool works; onComplete not called prematurely when winner is null |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 

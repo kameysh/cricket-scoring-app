@@ -25,7 +25,7 @@ vi.mock('../lib/supabase', () => ({
 
 import {
   createAuction, addAuctionTeam, getAuction,
-  placeBid, dealPlayer, signalPass, holdPlayer,
+  placeBid, dealPlayer, signalPass, holdPlayer, returnToPool,
   drawNextPlayer, updateAuctionStatus, undoLastBid,
 } from './auctionService';
 import { supabase } from '../lib/supabase';
@@ -134,6 +134,24 @@ describe('holdPlayer', () => {
     await holdPlayer('ap1');
     expect(updatedFields.status).toBe('held');
     expect(updatedFields.held_at).toBeTruthy();
+  });
+});
+
+describe('returnToPool', () => {
+  it('sets status to pool and clears held_at', async () => {
+    let updatedFields = null;
+    chain.update.mockImplementation((fields) => { updatedFields = fields; return chain; });
+    mockData = { id: 'ap1', status: 'pool', held_at: null };
+
+    const result = await returnToPool('ap1');
+    expect(updatedFields.status).toBe('pool');
+    expect(updatedFields.held_at).toBeNull();
+    expect(result.status).toBe('pool');
+  });
+
+  it('throws when DB returns an error', async () => {
+    mockError = { message: 'DB error' };
+    await expect(returnToPool('ap1')).rejects.toMatchObject({ message: 'DB error' });
   });
 });
 

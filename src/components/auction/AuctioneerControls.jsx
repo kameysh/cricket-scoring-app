@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+const haptic = (ms = 12) => navigator.vibrate?.(ms);
+
 export default function AuctioneerControls({
   auctionId,
   activePlayer,
@@ -13,19 +15,57 @@ export default function AuctioneerControls({
   onPause,
   onResume,
   auctionStatus,
-  bidIncrements = [50, 100, 200, 500, 1000],
+  bidIncrements = [1000, 2000, 3000, 5000, 10000],
   teams = [],
   loading = false,
 }) {
   const isLive = auctionStatus === 'live';
   const hasBid = activePlayer?.current_bid != null;
 
-  // Which team the auctioneer is raising the bid for
   const [raiseTeamId, setRaiseTeamId] = useState('');
   const effectiveRaiseTeamId = raiseTeamId || activePlayer?.leading_team_id || teams[0]?.id || '';
   const raiseTeam = teams.find(t => t.id === effectiveRaiseTeamId);
 
+  // Multi-tap state: { [inc]: count }
+  const [chipCounts, setChipCounts] = useState({});
+
   const currentBid = activePlayer?.current_bid ?? activePlayer?.base_price ?? 0;
+  const totalIncrement = Object.entries(chipCounts).reduce((sum, [inc, cnt]) => sum + Number(inc) * cnt, 0);
+  const nextBid = currentBid + totalIncrement;
+  const overBudget = raiseTeam != null && totalIncrement > 0 && nextBid > raiseTeam.budget_remaining;
+
+  function incrementChip(inc) {
+    haptic();
+    setChipCounts(prev => ({ ...prev, [inc]: (prev[inc] ?? 0) + 1 }));
+  }
+
+  function decrementChip(inc) {
+    haptic(6);
+    setChipCounts(prev => {
+      const next = { ...prev, [inc]: Math.max(0, (prev[inc] ?? 0) - 1) };
+      if (next[inc] === 0) delete next[inc];
+      return next;
+    });
+  }
+
+  function resetChips() {
+    haptic(20);
+    setChipCounts({});
+  }
+
+  function handleRaise() {
+    if (totalIncrement === 0) return;
+    onRaise(nextBid, effectiveRaiseTeamId);
+    // Auto-advance to next team
+    const idx = teams.findIndex(t => t.id === effectiveRaiseTeamId);
+    const next = teams[(idx + 1) % teams.length];
+    if (next) setRaiseTeamId(next.id);
+    resetChips();
+  }
+
+  function chipLabel(inc) {
+    return inc >= 1000 ? `+₹${inc / 1000}K` : `+₹${inc}`;
+  }
 
   return (
     <div data-testid="auctioneer-controls" className="card px-4 py-2.5 space-y-2.5">
@@ -54,7 +94,7 @@ export default function AuctioneerControls({
       {/* Raise bid section — only when a player is active */}
       {activePlayer && (
         <div className="space-y-2">
-          {/* Team selector for raise bid */}
+          {/* Team selector */}
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-[11px] text-ink-400 shrink-0">Raise bid for:</p>
             <div className="flex gap-1.5 flex-wrap">
@@ -74,7 +114,7 @@ export default function AuctioneerControls({
             </div>
           </div>
 
-          {/* Budget remaining for selected team */}
+          {/* Purse remaining */}
           {raiseTeam && (
             <p className="text-[11px] text-ink-400">
               {raiseTeam.name} purse left:{' '}
@@ -84,29 +124,64 @@ export default function AuctioneerControls({
             </p>
           )}
 
-          {/* Raise increment buttons */}
-          <p className="text-[11px] text-ink-400">Raise bid to:</p>
-          <div className="flex flex-wrap gap-1.5">
+          {/* Multi-tap chips */}
+          <p className="text-[11px] text-ink-400">Tap to add · tap count to remove:</p>
+          <div className="grid grid-cols-5 gap-1.5">
             {bidIncrements.map(inc => {
-              const nextBid = currentBid + inc;
-              const overBudget = raiseTeam != null && nextBid > raiseTeam.budget_remaining;
+              const count = chipCounts[inc] ?? 0;
               return (
-                <button
-                  key={inc}
-                  onClick={() => onRaise(nextBid, effectiveRaiseTeamId)}
-                  disabled={loading || overBudget}
-                  title={overBudget ? `Exceeds ${raiseTeam?.name} purse` : undefined}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    overBudget
-                      ? 'bg-red-50 text-red-400 dark:bg-red-900/20'
-                      : 'bg-ink-100 dark:bg-white/10 text-ink-700 dark:text-ink-200 hover:bg-ink-200 dark:hover:bg-white/20'
-                  }`}
-                >
-                  +{inc} → ₹{nextBid.toLocaleString()}
-                </button>
+                <div key={inc} className="relative">
+                  <button
+                    data-testid={`chip-${inc}`}
+                    onClick={() => incrementChip(inc)}
+                    disabled={loading}
+                    className={`w-full py-2.5 rounded-lg text-xs font-bold text-center transition-colors disabled:opacity-40 ${
+                      count > 0
+                        ? 'bg-brand-green text-white'
+                        : 'bg-ink-100 dark:bg-white/10 text-ink-700 dark:text-ink-200 hover:bg-ink-200 dark:hover:bg-white/20'
+                    }`}
+                  >
+                    {chipLabel(inc)}
+                  </button>
+                  {count > 0 && (
+                    <button
+                      data-testid={`chip-count-${inc}`}
+                      onClick={() => decrementChip(inc)}
+                      className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-ink-900 dark:bg-white text-white dark:text-ink-900 text-[10px] font-extrabold flex items-center justify-center leading-none"
+                    >
+                      ×{count}
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
+
+          {/* Confirm raise button — appears when chips selected */}
+          {totalIncrement > 0 && (
+            <div className="flex gap-2 items-center">
+              <button
+                data-testid="confirm-raise-btn"
+                onClick={handleRaise}
+                disabled={loading || overBudget}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-40 ${
+                  overBudget
+                    ? 'bg-red-100 text-red-500 dark:bg-red-900/20'
+                    : 'bg-brand-green text-white hover:opacity-90'
+                }`}
+              >
+                {overBudget ? 'Over budget' : `Raise → ₹${nextBid.toLocaleString()}`}
+              </button>
+              <button
+                onClick={resetChips}
+                disabled={loading}
+                className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-ink-100 dark:bg-white/10 text-ink-500 dark:text-ink-300 hover:bg-ink-200 dark:hover:bg-white/20"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
           {/* Undo last bid */}
           {hasBid && (
             <button

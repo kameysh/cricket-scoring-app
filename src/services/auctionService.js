@@ -212,6 +212,17 @@ export async function holdPlayer(auctionPlayerRowId) {
   return data;
 }
 
+export async function returnToPool(auctionPlayerRowId) {
+  const { data, error } = await supabase
+    .from('auction_players')
+    .update({ status: 'pool', held_at: null })
+    .eq('id', auctionPlayerRowId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function markUnsold(auctionPlayerRowId) {
   const { data, error } = await supabase
     .from('auction_players')

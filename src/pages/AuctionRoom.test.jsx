@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -7,14 +7,19 @@ vi.mock('../hooks/useAuctionRoom', () => ({ useAuctionRoom: vi.fn() }));
 vi.mock('../hooks/useRole', () => ({ useRole: vi.fn() }));
 vi.mock('../stores/auctionStore', () => ({ useAuctionStore: vi.fn() }));
 vi.mock('../services/auctionService');
+vi.mock('../lib/generateShareCard', () => ({
+  generateAuctionSoldCard: vi.fn(() => Promise.resolve(new Blob(['png'], { type: 'image/png' }))),
+  generatePlayerCard: vi.fn(),
+}));
 
 import { useRole } from '../hooks/useRole';
 import { useAuctionStore } from '../stores/auctionStore';
+import { generateAuctionSoldCard } from '../lib/generateShareCard';
 import AuctionRoom from './AuctionRoom';
 
 const BASE_AUCTION = {
   id: 'a1', name: 'Test Auction', status: 'live', budget_per_team: 1000,
-  bid_increments: [50, 100],
+  bid_increments: [1000, 2000],
 };
 
 const TEAM1 = { id: 'at1', name: 'Super Kings', captain_id: 'captain-uid', budget_remaining: 800, players_bought: 1 };
@@ -122,18 +127,18 @@ describe('AuctionRoom — Hold button highlight', () => {
 });
 
 describe('AuctionRoom — Captain bid validation', () => {
-  it('bid button disabled when amount exceeds budgetRemaining', () => {
-    // team1 budget_remaining = 100, increment 100 → bid=200 overBudget
-    const lowBudgetTeam = { ...TEAM1, budget_remaining: 100 };
+  it('bid button disabled when adding it would exceed budgetRemaining', () => {
+    // current_bid=200, budget=500, tapping +1000 would take total to 1200 > 500
+    const lowBudgetTeam = { ...TEAM1, budget_remaining: 500 };
     renderRoom({ teams: [lowBudgetTeam, TEAM2] }, { isAdmin: false, userId: 'captain-uid' });
-    const btn = screen.getByTestId('bid-btn-100');
+    const btn = screen.getByTestId('bid-btn-1000');
     expect(btn).toBeDisabled();
   });
 
   it('bid button enabled when amount within budget', () => {
-    // team1 budget_remaining=1000, currentBid=200, inc=50 → 250 ≤ 1000
-    renderRoom({}, { isAdmin: false, userId: 'captain-uid' });
-    const btn = screen.getByTestId('bid-btn-50');
+    const richTeam = { ...TEAM1, budget_remaining: 50000 };
+    renderRoom({ teams: [richTeam, TEAM2] }, { isAdmin: false, userId: 'captain-uid' });
+    const btn = screen.getByTestId('bid-btn-1000');
     expect(btn).not.toBeDisabled();
   });
 });
@@ -184,8 +189,123 @@ describe('AuctionRoom — sold sheet grouping', () => {
       player: { id: 'p2', name: 'Siva', role: 'bowler' },
     };
     renderRoom({ players: [soldPlayer] }, { isAdmin: false, userId: 'viewer-uid' });
-    // The "Sold" counter chip should show 1
     expect(screen.getByText('1')).toBeInTheDocument();
     expect(screen.getByText('Sold')).toBeInTheDocument();
+  });
+});
+
+describe('AuctionRoom — return held player to pool', () => {
+  it('calls returnToPool service when admin clicks ↩ Pool on a held player', async () => {
+    const { returnToPool } = await import('../services/auctionService');
+    vi.mocked(returnToPool).mockResolvedValue({ id: 'ap-held', status: 'pool', held_at: null });
+
+    const heldPlayer = {
+      id: 'ap-held', player_id: 'p3', status: 'held', base_price: 150,
+      current_bid: null, leading_team_id: null, pass_team1: false, pass_team2: false,
+      player: { id: 'p3', name: 'Dhoni', role: 'keeper' },
+    };
+    renderRoom({ players: [heldPlayer], bids: [] }, { isAdmin: true, userId: 'admin-uid' });
+
+    // Open the Held sheet
+    fireEvent.click(screen.getByText('Held'));
+
+    // Click return-to-pool for the held player
+    await waitFor(() => expect(screen.getByTestId('return-to-pool-ap-held')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('return-to-pool-ap-held'));
+
+    await waitFor(() => expect(returnToPool).toHaveBeenCalledWith('ap-held'));
+  });
+
+  it('↩ Pool button is not shown to non-admin viewers in the held sheet', async () => {
+    const heldPlayer = {
+      id: 'ap-held', player_id: 'p3', status: 'held', base_price: 150,
+      current_bid: null, leading_team_id: null, pass_team1: false, pass_team2: false,
+      player: { id: 'p3', name: 'Dhoni', role: 'keeper' },
+    };
+    renderRoom({ players: [heldPlayer], bids: [] }, { isAdmin: false, userId: 'viewer-uid' });
+
+    fireEvent.click(screen.getByText('Held'));
+    await waitFor(() => expect(screen.getByText('Dhoni')).toBeInTheDocument());
+
+    expect(screen.queryByText('↩ Pool')).not.toBeInTheDocument();
+  });
+});
+
+describe('AuctionRoom — BidLogStrip always renders', () => {
+  it('shows "No bids yet" when bids is empty (prevents layout jump)', () => {
+    renderRoom({ bids: [] }, { isAdmin: true, userId: 'admin-uid' });
+    expect(screen.getByText('No bids yet')).toBeInTheDocument();
+  });
+
+  it('shows Bid History label regardless of bids', () => {
+    renderRoom({ bids: [] }, { isAdmin: true, userId: 'admin-uid' });
+    // CSS text-transform:uppercase is visual only — actual text content is 'Bid History'
+    expect(screen.getByText('Bid History')).toBeInTheDocument();
+  });
+
+  it('renders bid chips when bids exist', () => {
+    const bids = [
+      { id: 'b1', amount: 300, auction_team_id: 'at1', auction_team: { name: 'Super Kings' } },
+    ];
+    renderRoom({ bids }, { isAdmin: true, userId: 'admin-uid' });
+    expect(screen.getByText('₹300')).toBeInTheDocument();
+    // 'Super Kings' also appears in team selector — just confirm at least one instance
+    expect(screen.getAllByText('Super Kings').length).toBeGreaterThan(0);
+  });
+});
+
+describe('AuctionRoom — SoldCardSheet', () => {
+  it('sold card sheet is not shown before any deal', () => {
+    renderRoom({}, { isAdmin: true, userId: 'admin-uid' });
+    expect(screen.queryByText('Player Sold!')).not.toBeInTheDocument();
+  });
+
+  it('opens sold card sheet with correct data after Deal is clicked', async () => {
+    const { dealPlayer } = await import('../services/auctionService');
+    vi.mocked(generateAuctionSoldCard).mockClear();
+    vi.mocked(dealPlayer).mockResolvedValue({});
+
+    renderRoom({}, { isAdmin: true, userId: 'admin-uid' });
+    fireEvent.click(screen.getByTestId('deal-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Player Sold!')).toBeInTheDocument();
+    });
+
+    // Player name and team appear in the sold sheet (may also appear elsewhere)
+    expect(screen.getAllByText('Ravi Kumar').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Super Kings').length).toBeGreaterThan(0);
+    // Price tiles show base and sold price
+    expect(screen.getAllByText('₹100').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('₹200').length).toBeGreaterThan(0);
+  });
+
+  it('tapping a sold player in the list calls generateAuctionSoldCard with correct data', async () => {
+    vi.mocked(generateAuctionSoldCard).mockClear();
+
+    const soldPlayer = {
+      id: 'ap2', player_id: 'p2', status: 'sold', base_price: 150, current_bid: 500,
+      sold_price: 500, sold_to_team_id: 'at2', leading_team_id: 'at2',
+      pass_team1: false, pass_team2: false,
+      player: { id: 'p2', name: 'Karthik', role: 'keeper' },
+    };
+    renderRoom(
+      { players: [soldPlayer], bids: [] },
+      { isAdmin: false, userId: 'viewer-uid' },
+    );
+
+    // Open the Sold counter sheet
+    fireEvent.click(screen.getByText('Sold'));
+
+    // Wait for player list to render, then tap the player name
+    await waitFor(() => expect(screen.getByText('Karthik')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Karthik'));
+
+    // generateAuctionSoldCard should be called with the right data
+    await waitFor(() => {
+      expect(generateAuctionSoldCard).toHaveBeenCalledWith(
+        expect.objectContaining({ teamName: 'Back Street', basePrice: 150, soldPrice: 500 })
+      );
+    });
   });
 });

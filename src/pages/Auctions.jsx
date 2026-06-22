@@ -17,10 +17,10 @@ export default function Auctions() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="page-container pt-safe"><p className="text-center py-12 text-ink-400">Loading…</p></div>;
+  if (loading) return <div className="p-4"><p className="text-center py-12 text-ink-400">Loading…</p></div>;
 
   return (
-    <div className="page-container pt-safe pb-24 space-y-4">
+    <div className="p-4 space-y-4 page-transition">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-ink-900 dark:text-white">Auctions</h1>
         {isAdmin && (

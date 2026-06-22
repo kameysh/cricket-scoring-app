@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import * as auctionService from '../services/auctionService';
 import PlayerPoolManager from '../components/auction/PlayerPoolManager';
 
-const DEFAULT_INCREMENTS = [50, 100, 200, 500, 1000];
+const DEFAULT_INCREMENTS = [1000, 2000, 3000, 5000, 10000];
 
 export default function AuctionSetup() {
   const { id } = useParams();
@@ -128,7 +128,7 @@ export default function AuctionSetup() {
   }
 
   return (
-    <div className="page-container pt-safe pb-24 space-y-4">
+    <div className="p-4 pb-24 space-y-4 page-transition">
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/auctions')} className="p-2 rounded-xl bg-ink-100 dark:bg-white/10">

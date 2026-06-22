@@ -1,13 +1,19 @@
+import { useState } from 'react';
+
+const haptic = (ms = 12) => navigator.vibrate?.(ms);
+
 export default function CaptainControls({
   auctionTeamId,
   activePlayer,
-  bidIncrements = [50, 100, 200, 500, 1000],
+  bidIncrements = [1000, 2000, 3000, 5000, 10000],
   budgetRemaining = 0,
   hasPassed = false,
   onBid,
   onPass,
   loading = false,
 }) {
+  const [chipCounts, setChipCounts] = useState({});
+
   if (!activePlayer) {
     return (
       <div data-testid="captain-controls" className="card px-4 py-3 text-center text-sm text-ink-400">
@@ -17,29 +23,99 @@ export default function CaptainControls({
   }
 
   const currentBid = activePlayer.current_bid ?? activePlayer.base_price ?? 0;
+  const totalIncrement = Object.entries(chipCounts).reduce((sum, [inc, cnt]) => sum + Number(inc) * cnt, 0);
+  const nextBid = currentBid + totalIncrement;
+  const overBudget = totalIncrement > 0 && nextBid > budgetRemaining;
+
+  function incrementChip(inc) {
+    haptic();
+    setChipCounts(prev => ({ ...prev, [inc]: (prev[inc] ?? 0) + 1 }));
+  }
+
+  function decrementChip(inc) {
+    haptic(6);
+    setChipCounts(prev => {
+      const next = { ...prev, [inc]: Math.max(0, (prev[inc] ?? 0) - 1) };
+      if (next[inc] === 0) delete next[inc];
+      return next;
+    });
+  }
+
+  function handleBid() {
+    if (totalIncrement === 0) return;
+    haptic(20);
+    onBid(nextBid);
+    setChipCounts({});
+  }
+
+  function chipLabel(inc) {
+    return inc >= 1000 ? `+₹${inc / 1000}K` : `+₹${inc}`;
+  }
 
   return (
     <div data-testid="captain-controls" className="card px-4 py-3 space-y-3">
       <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">Your Bid</p>
-      <div className="flex flex-wrap gap-2">
+
+      {/* Multi-tap chips */}
+      <div className="grid grid-cols-5 gap-1.5">
         {bidIncrements.map(inc => {
-          const bid = currentBid + inc;
-          const overBudget = bid > budgetRemaining;
+          const count = chipCounts[inc] ?? 0;
+          const wouldExceed = (currentBid + totalIncrement + inc) > budgetRemaining;
           return (
-            <button
-              key={inc}
-              onClick={() => onBid(bid)}
-              disabled={loading || overBudget || hasPassed}
-              data-testid={`bid-btn-${inc}`}
-              className={`flex-1 min-w-[70px] py-3 rounded-xl text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed
-                ${overBudget ? 'bg-red-50 text-red-300 dark:bg-red-900/20' : 'bg-brand-green text-white hover:opacity-90'}`}
-            >
-              +{inc}
-              <span className="block text-[10px] font-normal opacity-80">₹{bid.toLocaleString()}</span>
-            </button>
+            <div key={inc} className="relative">
+              <button
+                data-testid={`bid-btn-${inc}`}
+                onClick={() => incrementChip(inc)}
+                disabled={loading || hasPassed || wouldExceed}
+                title={`+₹${(inc).toLocaleString()}`}
+                className={`w-full py-2.5 rounded-lg text-xs font-bold text-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  count > 0
+                    ? 'bg-brand-green text-white'
+                    : wouldExceed
+                      ? 'bg-red-50 text-red-300 dark:bg-red-900/20'
+                      : 'bg-ink-100 dark:bg-white/10 text-ink-700 dark:text-ink-200 hover:bg-ink-200 dark:hover:bg-white/20'
+                }`}
+              >
+                {chipLabel(inc)}
+              </button>
+              {count > 0 && (
+                <button
+                  onClick={() => decrementChip(inc)}
+                  className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-ink-900 dark:bg-white text-white dark:text-ink-900 text-[10px] font-extrabold flex items-center justify-center leading-none"
+                >
+                  ×{count}
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
+
+      {/* Confirm bid button */}
+      {totalIncrement > 0 && (
+        <div className="flex gap-2">
+          <button
+            data-testid="confirm-bid-btn"
+            onClick={handleBid}
+            disabled={loading || overBudget || hasPassed}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-40 ${
+              overBudget
+                ? 'bg-red-100 text-red-500 dark:bg-red-900/20'
+                : 'bg-brand-green text-white hover:opacity-90'
+            }`}
+          >
+            {overBudget ? 'Over budget' : `Bid ₹${nextBid.toLocaleString()}`}
+          </button>
+          <button
+            onClick={() => setChipCounts({})}
+            disabled={loading}
+            className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-ink-100 dark:bg-white/10 text-ink-500 dark:text-ink-300"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <button
         onClick={onPass}
         disabled={loading || hasPassed}
