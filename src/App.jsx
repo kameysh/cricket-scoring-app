@@ -31,6 +31,9 @@ import Series from './pages/Series';
 import SeriesDetail from './pages/SeriesDetail';
 import Leaderboard from './pages/Leaderboard';
 import HeadToHead from './pages/HeadToHead';
+import Auctions from './pages/Auctions';
+import AuctionSetup from './pages/AuctionSetup';
+import AuctionRoom from './pages/AuctionRoom';
 import AcceptInvite from './pages/AcceptInvite';
 import ResetPassword from './pages/ResetPassword';
 
@@ -122,6 +125,17 @@ export default function App() {
           {/* Series detail — all authenticated users can view */}
           <Route element={<ProtectedRoute />}>
             <Route path="/series/:id" element={<SeriesDetail />} />
+          </Route>
+
+          {/* Auctions setup — admin only; MUST be declared before /auctions/:id */}
+          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+            <Route path="/auctions/new" element={<AuctionSetup />} />
+            <Route path="/auctions/new/:id" element={<AuctionSetup />} />
+          </Route>
+          {/* Auctions list + room — all authenticated users */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/auctions" element={<Auctions />} />
+            <Route path="/auctions/:id" element={<AuctionRoom />} />
           </Route>
         </Routes>
       </main>

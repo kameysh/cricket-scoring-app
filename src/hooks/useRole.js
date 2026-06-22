@@ -14,5 +14,6 @@ export function useRole() {
     canManageOwnProfile: ['admin', 'scorer', 'captain', 'player'].includes(role),
     canManageVenues: role === 'admin',
     canManageTournaments: role === 'admin',
+    canManageAuctions: role === 'admin',
   };
 }

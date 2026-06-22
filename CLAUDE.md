@@ -95,6 +95,8 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 026 | `026_super_over.sql` | **`is_super_over boolean default false` added to `innings` — marks super over innings (3 and 4); used by LiveScoring, Scorecard, MatchSummary to label and handle SO innings correctly.** |
 | 027 | `027_innings_number_check.sql` | **Replaced `innings_number IN (1,2,3)` check constraint with `innings_number >= 1` — allows SO innings (4+) and successive SO rounds (5,6…).** |
 | 028 | `028_tournament_series.sql` | **`tournament_series` registry table (id, name UNIQUE, created_at) with RLS — admin insert/delete, all authenticated select; `series_id uuid REFERENCES tournament_series(id) ON DELETE SET NULL` added to `tournaments` — links each tournament to a recurring series.** |
+| 029 | `029_push_subscriptions.sql` | **`push_subscriptions` table (user_id, endpoint, p256dh, auth) — users own their rows; admin can read all. Powers Web Push notifications.** |
+| 030 | `030_auctions.sql` | **Four tables: `auctions`, `auction_teams`, `auction_players`, `auction_bids` + `deal_player` RPC. Full RLS. Powers the live player auction feature.** Replication must be enabled for all 4 tables. |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -500,6 +502,10 @@ For realtime to work, each table must have Replication enabled:
 | `matches` | `Home.jsx` | Live hero + recent matches refresh when match status changes |
 | `innings` | `Scorecard.jsx` | Score updates (total_runs/wickets) on every ball |
 | `deliveries` | `Scorecard.jsx` | Ball-by-ball feed for live viewers |
+| `auctions` | `AuctionRoom.jsx` (via `useAuctionRoom`) | Auction status changes broadcast to all viewers |
+| `auction_players` | `AuctionRoom.jsx` | Player status, current bid, pass flags — all live |
+| `auction_bids` | `AuctionRoom.jsx` | Bid log feed — new bids appear instantly |
+| `auction_teams` | `AuctionRoom.jsx` | Budget remaining updates after deal |
 
 ---
 
@@ -509,7 +515,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**32 test files, 411 tests — all passing:**
+**34 test files, 436 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -545,6 +551,8 @@ For realtime to work, each table must have Replication enabled:
 | `src/pages/PrevOverSummary.test.jsx` | PrevOverSummary: hidden in over 1, hidden when no deliveries for prev over, shows label/runs/score snapshot, wicket count, correct 1-based over label |
 | `src/components/shared/BottomNav.test.jsx` (extended) | Tab order verified; Appearance row shown with 3 theme buttons; setTheme called on click |
 | `src/pages/Leaderboard.test.jsx` | Renders Batting tab by default; switches to Partnerships tab without crash; switches to MVP tab without crash |
+| `src/services/auctionService.test.js` | createAuction status=draft; addAuctionTeam sets budget_remaining; placeBid throws on over-budget; placeBid resets pass flags; dealPlayer calls RPC; dealPlayer throws on error; signalPass updates correct column; signalPass throws on invalid column; holdPlayer sets held_at; drawNextPlayer completes auction when queues empty |
+| `src/pages/AuctionRoom.test.jsx` | Admin sees AuctioneerControls only; captain sees CaptainControls only; viewer sees neither; BudgetBars render per team; budget bar width reflects proportion; PassIndicator hidden/shown; Hold button animates when both passing; bid button disabled over budget; bid button enabled within budget; Pass button shows Passing state; waiting message when no active player |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 
@@ -591,6 +599,21 @@ For realtime to work, each table must have Replication enabled:
 - `src/pages/LiveScoring.jsx` — `useEffect([newBatsmanOpen])` sends "You're next to bat" push to batting-team players with `user_id` who haven't batted yet
 - `src/components/shared/BottomNav.jsx` — toggle switch in account sheet; checks `getPushStatus()` on open; calls subscribe/unsubscribe; shows "Blocked in browser settings" when `denied`
 - **Setup required:** generate VAPID keys (`npx web-push generate-vapid-keys`), set `VITE_VAPID_PUBLIC_KEY` in `.env`, set `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` as Supabase edge function secrets; run migration 029; deploy `send-push` edge function
+
+### Auction Feature
+
+- **`src/pages/Auctions.jsx`** — List page with status badges (draft/ready/live/paused/completed); admin "New" button; any authenticated user can tap to enter a live room.
+- **`src/pages/AuctionSetup.jsx`** — Admin-only 3-tab form (Basics / Teams / Pool): configure name, budget, bid increments, assign teams + captains (from `auction_teams`), manage player pool with inline base-price editing. "Start Auction" button fixed at bottom.
+- **`src/pages/AuctionRoom.jsx`** — Live room for all authenticated users. Mounts `useAuctionRoom(id)` for realtime. Role-gated: admin sees `AuctioneerControls`, captains see `CaptainControls`, viewers see read-only. Shows `BudgetBars`, `ActivePlayerSpotlight`, `PassIndicator`, `BidLog`, and Pool/Held/Sold counter chips that open BottomSheets.
+- **`src/stores/auctionStore.js`** — Zustand store: `auction`, `teams`, `players`, `bids` state; `loadAuction(id)` parallel fetches; `_patchPlayer`, `_appendBid`, `_patchTeam` handlers for realtime events.
+- **`src/hooks/useAuctionRoom.js`** — Mounts 4 Supabase Realtime channels (`auctions`, `auction_players`, `auction_bids`, `auction_teams`), pipes events into store, cleans up on unmount.
+- **`src/services/auctionService.js`** — Full CRUD: `createAuction`, `addAuctionTeam`, `addPlayerToPool`, `drawNextPlayer` (random pool → FIFO held → complete), `dealPlayer` (RPC), `holdPlayer`, `markUnsold`, `raiseAuctioneerBid`, `placeBid` (budget guard + pass reset), `signalPass`, `getBidsForPlayer`.
+- **`src/components/auction/`** — `AuctionCard`, `ActivePlayerSpotlight`, `BudgetBars`, `BidLog`, `AuctioneerControls`, `CaptainControls`, `PassIndicator`, `HeldQueue`, `PlayerPoolManager`.
+- **Role:** `canManageAuctions: role === 'admin'` added to `useRole.js`.
+- **BottomNav:** "Auctions" link (Gavel icon) added to admin sheet.
+- **Routes:** `/auctions` + `/auctions/:id` (all authenticated), `/auctions/new` + `/auctions/new/:id` (admin only).
+- **Replication required:** enable for `auctions`, `auction_players`, `auction_bids`, `auction_teams` in Supabase Dashboard → Database → Replication.
+- **Setup:** Run migration `030_auctions.sql` in Supabase SQL Editor before using the feature.
 
 ## Pending / Known Issues
 - Invite emails land in spam for new recipients (Gmail account is new, no domain reputation). Long-term fix: custom domain + proper SPF/DKIM.
