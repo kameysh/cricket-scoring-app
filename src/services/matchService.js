@@ -93,7 +93,24 @@ export async function startMatch(matchId) {
   if (match.tournament_id) {
     await supabase.from('tournaments').update({ status: 'ongoing' }).eq('id', match.tournament_id).eq('status', 'upcoming');
   }
-  return updateMatch(matchId, { status: 'live' });
+  const result = await updateMatch(matchId, { status: 'live' });
+  // Fire-and-forget push notification — never blocks or throws
+  sendPushNotification({
+    title: '🏏 Match is Live!',
+    body: `${match.team1_name} vs ${match.team2_name} has started. Tap to watch.`,
+    url: `/matches/${matchId}`,
+    tag: `match-live-${matchId}`,
+  }).catch(() => {});
+  return result;
+}
+
+/** Send a push notification via the edge function (fire-and-forget safe) */
+export async function sendPushNotification({ userIds, title, body, url, tag }) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+  await supabase.functions.invoke('send-push', {
+    body: { userIds, title, body, url, tag },
+  });
 }
 
 export async function createInnings(matchId, inningsNumber, battingTeam, target = null) {

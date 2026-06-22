@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, ChevronUp, ChevronDown, Activity, X, Sparkles, Repeat2 } from 'lucide-react';
+import { Trophy, ChevronUp, ChevronDown, Activity, X, Sparkles, Repeat2, Link2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import * as playerService from '../services/playerService';
 import * as seriesService from '../services/seriesService';
+import { getTopPartnerships } from '../services/partnershipService';
 import PlayerAvatar from '../components/player/PlayerAvatar';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
@@ -178,6 +179,8 @@ export default function Leaderboard() {
   const [selectedSeries, setSelectedSeries] = useState('');
   const [seriesName, setSeriesName] = useState('');
   const [seriesLoading, setSeriesLoading] = useState(false);
+  const [partnerships, setPartnerships] = useState([]);
+  const [partnershipsLoaded, setPartnershipsLoaded] = useState(false);
 
   useEffect(() => {
     // Initial load — single query, all counters from player_career_stats
@@ -220,6 +223,14 @@ export default function Leaderboard() {
       .finally(() => setSeriesLoading(false));
   }, [selectedSeries, careerStats]);
 
+  // Lazy-load partnerships when tab is first opened
+  useEffect(() => {
+    if (tab !== 'partnerships' || partnershipsLoaded) return;
+    getTopPartnerships(20)
+      .then(data => { setPartnerships(data); setPartnershipsLoaded(true); })
+      .catch(() => setPartnershipsLoaded(true));
+  }, [tab, partnershipsLoaded]);
+
   function handleSort(key) {
     if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
     else { setSortKey(key); setSortDir('desc'); }
@@ -231,6 +242,7 @@ export default function Leaderboard() {
   // ── Derive rows per tab ───────────────────────────────────────────────────
   const sorter = key => {
     const fns = SORTS[tab];
+    if (!fns) return () => 0;
     const fn  = (key && fns[key]) ? fns[key] : fns.default;
     return sortDir === 'asc' ? (a,b) => fn(b,a) : fn;
   };
@@ -296,11 +308,12 @@ export default function Leaderboard() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {[
           { key: 'batting', label: 'Batting' },
           { key: 'bowling', label: 'Bowling' },
           { key: 'mvp', label: '🏆 MVP' },
+          { key: 'partnerships', label: '🤝 Partnerships' },
         ].map(t => (
           <button
             key={t.key}
@@ -357,7 +370,35 @@ export default function Leaderboard() {
 
       {mvpFormulaOpen && <MvpFormulaModal onClose={() => setMvpFormulaOpen(false)} />}
 
-      {(loading || seriesLoading) ? (
+      {tab === 'partnerships' ? (
+        (loading || !partnershipsLoaded) ? (
+          <LoadingSkeleton rows={6} />
+        ) : partnerships.length === 0 ? (
+          <EmptyState icon={Link2} title="No partnerships yet" message="Partnership records appear once matches are played." />
+        ) : (
+          <div className="space-y-2">
+            {partnerships.map((p, i) => (
+              <div key={i} className="card p-3 flex items-center gap-3">
+                <RankBadge rank={i + 1} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{p.player1?.name || '—'}</span>
+                    <Link2 size={12} className="text-ink-300 shrink-0" />
+                    <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{p.player2?.name || 'Unrecorded'}</span>
+                  </div>
+                  <p className="text-xs text-ink-400 mt-0.5 truncate">
+                    {p.team1} vs {p.team2} · {p.broken ? 'Broken' : 'Unbroken'}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-lg font-bold text-ink-900 dark:text-white tabular-nums">{p.runs}</p>
+                  <p className="text-xs text-ink-400 tabular-nums">{p.balls}b</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (loading || seriesLoading) ? (
         <LoadingSkeleton rows={6} />
       ) : rows.length === 0 ? (
         <EmptyState icon={Activity} title="No stats yet" message="Stats appear here once matches are played and innings are completed." />

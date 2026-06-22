@@ -28,6 +28,62 @@ import PlayerSubSheet from '../components/match/PlayerSubSheet';
 import { ArrowLeftRight } from 'lucide-react';
 
 
+// Previous over summary — inline card shown above BallLog
+export function PrevOverSummary({ overNumber, deliveries }) {
+  if (overNumber <= 0) return null;
+  const prevOverNum = overNumber - 1; // 0-based index of the just-completed over
+  const prevDels = deliveries.filter(d => d.over_number === prevOverNum);
+  if (!prevDels.length) return null;
+
+  const runs = prevDels.reduce((s, d) => s + (d.total_runs_on_delivery ?? 0), 0);
+  const wickets = prevDels.filter(d => d.is_wicket).length;
+  const scoreAfter = deliveries
+    .filter(d => d.over_number <= prevOverNum)
+    .reduce((s, d) => s + (d.total_runs_on_delivery ?? 0), 0);
+  const wktsAfter = deliveries.filter(d => d.over_number <= prevOverNum && d.is_wicket).length;
+
+  return (
+    <div data-testid="prev-over-summary" className="rounded-xl bg-ink-50 dark:bg-white/5 px-3 py-2.5 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">
+          Over {prevOverNum + 1}
+        </span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="font-bold text-ink-900 dark:text-white tabular-nums">
+            {runs} runs{wickets > 0 ? `, ${wickets} wkt${wickets > 1 ? 's' : ''}` : ''}
+          </span>
+          <span className="text-ink-400 tabular-nums">{scoreAfter}/{wktsAfter}</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {prevDels.map((d, i) => {
+          const isWkt = d.is_wicket;
+          const is4 = d.runs_off_bat === 4;
+          const is6 = d.runs_off_bat === 6;
+          const isExtra = d.extra_type && d.extra_type !== 'none';
+          const label = isWkt ? 'W'
+            : d.extra_type === 'wide' ? `wd${d.total_runs_on_delivery > 1 ? '+' + (d.total_runs_on_delivery - 1) : ''}`
+            : d.extra_type === 'no_ball' ? `nb${d.runs_off_bat ? '+' + d.runs_off_bat : ''}`
+            : d.extra_type === 'bye' ? `${d.extra_runs}b`
+            : d.extra_type === 'leg_bye' ? `${d.extra_runs}lb`
+            : d.runs_off_bat === 0 ? '•'
+            : String(d.runs_off_bat);
+          const color = isWkt ? 'bg-red-500 text-white'
+            : is6 ? 'bg-cricket-gold text-white'
+            : is4 ? 'bg-cricket-green text-white'
+            : isExtra ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+            : 'bg-white dark:bg-white/10 text-ink-700 dark:text-ink-200 border border-ink-200 dark:border-white/10';
+          return (
+            <span key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold ${color}`}>
+              {label}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Derive a dismissal description from the wicket delivery for a given batsman
 function wicketDismissalText(deliveries, batsmanId) {
   const wkt = deliveries.find(d => d.is_wicket && (d.batsman_out_id === batsmanId || (!d.batsman_out_id && d.batsman_id === batsmanId)));
@@ -261,6 +317,25 @@ export default function LiveScoring() {
     milestonesRef.current = new Set();
     winHandledRef.current = false;
   }, [currentInnings?.id]);
+
+  // Push notification: "You're next to bat" — fire when new batsman modal opens
+  useEffect(() => {
+    if (!newBatsmanOpen || !match) return;
+    // Find batting team players who haven't batted yet and have a linked user_id
+    const battingTeam = currentInnings?.batting_team;
+    const battingPlayers = matchPlayers.filter(mp => mp.team === battingTeam && mp.is_active !== false);
+    const battedIds = new Set(deliveries.map(d => d.batsman_id).filter(Boolean));
+    const nextBatters = battingPlayers.filter(mp => !battedIds.has(mp.player_id) && mp.players?.user_id);
+    if (!nextBatters.length) return;
+    const userIds = nextBatters.map(mp => mp.players.user_id);
+    matchService.sendPushNotification({
+      userIds,
+      title: '🏏 You\'re next to bat!',
+      body: `${match.team1_name} vs ${match.team2_name} — a wicket has fallen. Get ready.`,
+      url: `/matches/${match.id}`,
+      tag: `next-bat-${match.id}`,
+    }).catch(() => {});
+  }, [newBatsmanOpen]);
 
   // Load first innings scorecards when viewing second innings
   useEffect(() => {
@@ -936,6 +1011,9 @@ export default function LiveScoring() {
           currentInnings={currentInnings}
           deliveries={deliveries}
         />
+
+        {/* Previous over summary — shown once at least one over has been completed */}
+        <PrevOverSummary overNumber={currentOverNumber} deliveries={deliveries} />
 
         <BallLog deliveries={deliveries} matchPlayers={matchPlayers} />
 

@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Users, Users2, Swords, Trophy, BarChart2, LogIn, LogOut, Shield, MapPin, ChevronRight, Repeat2 } from 'lucide-react';
+import { Home, Users, Users2, Swords, Trophy, BarChart2, LogIn, LogOut, Shield, MapPin, ChevronRight, Repeat2, Sun, Moon, Monitor } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { useThemeStore, applyTheme } from '../../stores/themeStore';
+import { isPushSupported, subscribeToPush, unsubscribeFromPush, getPushStatus } from '../../services/pushService';
 
 const ROLE_LABELS = {
   admin: 'Admin',
@@ -12,16 +14,52 @@ const ROLE_LABELS = {
 
 const navItems = [
   { to: '/', label: 'Home', icon: Home },
-  { to: '/players', label: 'Players', icon: Users },
   { to: '/matches', label: 'Matches', icon: Swords },
-  { to: '/tournaments', label: 'Tourneys', icon: Trophy },
+  { to: '/players', label: 'Players', icon: Users },
   { to: '/leaderboard', label: 'Rankings', icon: BarChart2 },
+  { to: '/tournaments', label: 'Tourneys', icon: Trophy },
+];
+
+const THEME_OPTIONS = [
+  { value: 'light', icon: Sun, label: 'Light' },
+  { value: 'system', icon: Monitor, label: 'System' },
+  { value: 'dark', icon: Moon, label: 'Dark' },
 ];
 
 export default function BottomNav() {
   const navigate = useNavigate();
   const { user, role, signOut } = useAuthStore();
+  const { theme, setTheme } = useThemeStore();
   const [showSheet, setShowSheet] = useState(false);
+  const [pushStatus, setPushStatus] = useState('unsupported'); // 'unsupported'|'not_subscribed'|'subscribed'|'denied'
+  const [pushLoading, setPushLoading] = useState(false);
+
+  useEffect(() => {
+    if (!showSheet) return;
+    getPushStatus().then(setPushStatus).catch(() => {});
+  }, [showSheet]);
+
+  async function handlePushToggle() {
+    setPushLoading(true);
+    try {
+      if (pushStatus === 'subscribed') {
+        await unsubscribeFromPush();
+        setPushStatus('not_subscribed');
+      } else {
+        const result = await subscribeToPush();
+        setPushStatus(result === 'granted' ? 'subscribed' : result);
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      setPushLoading(false);
+    }
+  }
+
+  function handleTheme(t) {
+    setTheme(t);
+    applyTheme(t);
+  }
 
   async function handleSignOut() {
     setShowSheet(false);
@@ -80,6 +118,48 @@ export default function BottomNav() {
                   <ChevronRight size={16} className="text-ink-400" />
                 </button>
               </>
+            )}
+
+            {/* Theme toggle — visible to all logged-in users */}
+            <div className="w-full flex items-center justify-between py-3 px-1 border-t border-ink-100 dark:border-white/10">
+              <span className="text-sm font-medium text-ink-700 dark:text-ink-200">Appearance</span>
+              <div className="flex gap-1 bg-ink-100 dark:bg-white/10 rounded-lg p-0.5">
+                {THEME_OPTIONS.map(({ value, icon: Icon, label }) => (
+                  <button
+                    key={value}
+                    aria-label={label}
+                    onClick={() => handleTheme(value)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      theme === value
+                        ? 'bg-white dark:bg-ink-700 text-ink-900 dark:text-white shadow-sm'
+                        : 'text-ink-400 dark:text-ink-400'
+                    }`}
+                  >
+                    <Icon size={13} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Push notifications toggle */}
+            {pushStatus !== 'unsupported' && (
+              <div className="w-full flex items-center justify-between py-3 px-1 border-t border-ink-100 dark:border-white/10">
+                <div>
+                  <span className="text-sm font-medium text-ink-700 dark:text-ink-200">Notifications</span>
+                  {pushStatus === 'denied' && <p className="text-[11px] text-red-400 mt-0.5">Blocked in browser settings</p>}
+                </div>
+                {pushStatus !== 'denied' && (
+                  <button
+                    onClick={handlePushToggle}
+                    disabled={pushLoading}
+                    aria-label={pushStatus === 'subscribed' ? 'Disable notifications' : 'Enable notifications'}
+                    className={`relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-50 ${pushStatus === 'subscribed' ? 'bg-brand-green' : 'bg-ink-200 dark:bg-white/20'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${pushStatus === 'subscribed' ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                )}
+              </div>
             )}
 
             <button

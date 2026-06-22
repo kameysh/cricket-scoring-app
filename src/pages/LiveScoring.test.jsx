@@ -474,3 +474,4 @@ describe('LiveScoring — End Innings button completes match on final innings', 
     expect(mockSetMatchStatus).toHaveBeenCalledWith('completed', expect.any(Object));
   });
 });
+

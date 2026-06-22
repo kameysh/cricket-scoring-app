@@ -509,7 +509,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**26 test files, 387 tests — all passing:**
+**32 test files, 411 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -539,6 +539,12 @@ For realtime to work, each table must have Replication enabled:
 | `src/pages/Series.test.jsx` | Empty state when no series; renders series cards; shows add form on New click; creates series on submit (calls addSeries); prompts ConfirmDialog on delete |
 | `src/pages/SeriesDetail.test.jsx` | Shows series name; shows season list with count; shows empty stats message when no data; passes aggregated stats array to TournamentLeaderboard; shows not-found when series is null |
 | `src/components/tournament/FixtureList.test.jsx` | Empty state when no matches (with and without seriesTotal); tombstones only shown when real matches exist alongside gaps; no tombstones when all slots filled; no tombstones without seriesTotal |
+| `src/stores/themeStore.test.js` | applyTheme: adds dark class, removes dark class, respects system light/dark preference |
+| `src/services/partnershipService.test.js` | computePartnerships: empty input, single unbroken partnership, wide not counted as ball, broken partnership on wicket, sort by runs desc, multiple wickets |
+| `src/services/pushService.test.js` | isPushSupported: returns false when serviceWorker absent, returns false when VAPID key not set |
+| `src/pages/PrevOverSummary.test.jsx` | PrevOverSummary: hidden in over 1, hidden when no deliveries for prev over, shows label/runs/score snapshot, wicket count, correct 1-based over label |
+| `src/components/shared/BottomNav.test.jsx` (extended) | Tab order verified; Appearance row shown with 3 theme buttons; setTheme called on click |
+| `src/pages/Leaderboard.test.jsx` | Renders Batting tab by default; switches to Partnerships tab without crash; switches to MVP tab without crash |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 
@@ -559,5 +565,33 @@ For realtime to work, each table must have Replication enabled:
 
 | `TournamentNew.jsx` + `seriesService.js` + `tournamentService.js` + `App.jsx` + `BottomNav.jsx` + `028_tournament_series.sql` | No way to group recurring tournaments under a series name — admins typed the same tournament name differently each season | Added `tournament_series` registry table; Series management page at `/series` (admin); SeriesDetail at `/series/:id` (all authenticated); TournamentNew has series picker dropdown + inline "Create new series" flow; TournamentDetail shows series breadcrumb link; tournamentService joins `series:series_id(id,name)` in listTournaments + getTournament; BottomNav admin sheet has "Tournament Series" link |
 
+## New Features (June 2026)
+
+### Dark Mode Toggle
+- `src/stores/themeStore.js` — Zustand + `persist` store with `theme: 'system'|'light'|'dark'`; `applyTheme(t)` sets/removes `dark` class on `<html>`
+- `src/main.jsx` — reads saved theme from localStorage before first render to avoid flash
+- `src/App.jsx` — `useEffect` on theme value: calls `applyTheme` + listens to `prefers-color-scheme` changes when in `system` mode
+- `src/components/shared/BottomNav.jsx` — "Appearance" row with 3-button pill (Light / System / Dark) shown to all logged-in users in the account sheet
+
+### Over Summary Sheet
+- `src/pages/LiveScoring.jsx` — `overSummary` state + `lastSummarizedOver` ref; `useEffect` on `total_legal_balls` fires when legalBalls > 0, divisible by 6, and NOT at the innings overs limit (oversLimitOpen handles that)
+- Sheet shows: over number, runs scored, wickets fallen, team score, ball-by-ball chip strip; "Continue" dismisses it
+- Resets `lastSummarizedOver` on innings change to avoid stale firings
+
+### Partnership Records
+- `src/services/partnershipService.js` — `computePartnerships(deliveries)` pure function computes all partnerships per innings from delivery data (no new table); `getTopPartnerships(limit)` fetches all completed match deliveries and returns top N sorted by runs
+- `src/pages/Leaderboard.jsx` — new "🤝 Partnerships" tab; lazy-loads on first visit; cards show rank, both batsmen names, match context, runs + balls; `partnershipsLoaded` flag prevents re-fetching
+
+### Push Notifications
+- `supabase/migrations/029_push_subscriptions.sql` — `push_subscriptions` table (user_id, endpoint, p256dh, auth); users own their rows; admin can read all
+- `public/sw.js` — service worker handling `push` + `notificationclick` events
+- `src/services/pushService.js` — `isPushSupported()`, `subscribeToPush()`, `unsubscribeFromPush()`, `getPushStatus()`
+- `supabase/functions/send-push/index.ts` — edge function; VAPID JWT signing via WebCrypto; accepts `userIds[]` to target specific users or broadcasts to all; only admin/scorer can call it
+- `src/services/matchService.js` — `sendPushNotification()` helper; `startMatch()` fires "Match is Live" push (fire-and-forget)
+- `src/pages/LiveScoring.jsx` — `useEffect([newBatsmanOpen])` sends "You're next to bat" push to batting-team players with `user_id` who haven't batted yet
+- `src/components/shared/BottomNav.jsx` — toggle switch in account sheet; checks `getPushStatus()` on open; calls subscribe/unsubscribe; shows "Blocked in browser settings" when `denied`
+- **Setup required:** generate VAPID keys (`npx web-push generate-vapid-keys`), set `VITE_VAPID_PUBLIC_KEY` in `.env`, set `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` as Supabase edge function secrets; run migration 029; deploy `send-push` edge function
+
 ## Pending / Known Issues
 - Invite emails land in spam for new recipients (Gmail account is new, no domain reputation). Long-term fix: custom domain + proper SPF/DKIM.
+- Push notifications require VAPID key setup before they work (see setup steps above).

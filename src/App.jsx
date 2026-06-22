@@ -3,6 +3,7 @@ import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import BottomNav from './components/shared/BottomNav';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 import { useAuthStore } from './stores/authStore';
+import { useThemeStore, applyTheme } from './stores/themeStore';
 
 import Login from './pages/Login';
 import Home from './pages/Home';
@@ -36,10 +37,21 @@ import ResetPassword from './pages/ResetPassword';
 export default function App() {
   const location = useLocation();
   const init = useAuthStore(s => s.init);
+  const themeValue = useThemeStore(s => s.theme);
 
   const navigate = useNavigate();
 
   useEffect(() => { init(); }, []);
+
+  // Re-apply theme when system preference changes and user is on 'system' mode
+  useEffect(() => {
+    applyTheme(themeValue);
+    if (themeValue !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => applyTheme('system');
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [themeValue]);
 
   useEffect(() => {
     const hash = window.location.hash;
