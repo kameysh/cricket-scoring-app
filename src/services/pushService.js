@@ -31,8 +31,9 @@ export async function subscribeToPush() {
   });
 
   const { endpoint, keys } = subscription.toJSON();
+  const { data: { session } } = await supabase.auth.getSession();
   const { error } = await supabase.from('push_subscriptions').upsert(
-    { endpoint, p256dh: keys.p256dh, auth: keys.auth },
+    { user_id: session.user.id, endpoint, p256dh: keys.p256dh, auth: keys.auth },
     { onConflict: 'endpoint' }
   );
   if (error) throw error;
