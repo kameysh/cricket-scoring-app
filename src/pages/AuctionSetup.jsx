@@ -4,14 +4,12 @@ import { ArrowLeft, Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import * as auctionService from '../services/auctionService';
-import * as teamService from '../services/teamService';
-import * as playerService from '../services/playerService';
 import PlayerPoolManager from '../components/auction/PlayerPoolManager';
 
 const DEFAULT_INCREMENTS = [50, 100, 200, 500, 1000];
 
 export default function AuctionSetup() {
-  const { id } = useParams(); // defined when editing existing auction
+  const { id } = useParams();
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
@@ -19,23 +17,23 @@ export default function AuctionSetup() {
   const [increments, setIncrements] = useState(DEFAULT_INCREMENTS);
   const [newIncrement, setNewIncrement] = useState('');
 
-  const [teams, setTeams] = useState([]);          // global teams registry
-  const [appUsers, setAppUsers] = useState([]);    // app_users for captain assignment
+  const [appUsers, setAppUsers] = useState([]);
   const [auctionTeams, setAuctionTeams] = useState([]); // saved auction_teams rows
-  const [poolPlayers, setPoolPlayers] = useState([]); // saved auction_players rows
+  const [poolPlayers, setPoolPlayers] = useState([]);
   const [auctionId, setAuctionId] = useState(id ?? null);
 
+  // Each slot: { name: string, captainId: string }
   const [teamSelections, setTeamSelections] = useState([
-    { teamId: '', captainId: '' },
-    { teamId: '', captainId: '' },
+    { name: '', captainId: '' },
+    { name: '', captainId: '' },
   ]);
 
   const [saving, setSaving] = useState(false);
+  const [savingTeams, setSavingTeams] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [tab, setTab] = useState('basics'); // 'basics' | 'teams' | 'pool'
+  const [tab, setTab] = useState('basics');
 
   useEffect(() => {
-    teamService.listTeams().then(setTeams).catch(() => {});
     supabase.from('app_users').select('id, full_name, email, role').then(({ data }) => {
       setAppUsers(data ?? []);
     });
@@ -50,7 +48,10 @@ export default function AuctionSetup() {
         setIncrements(auction.bid_increments ?? DEFAULT_INCREMENTS);
         setAuctionTeams(at);
         setPoolPlayers(ap);
-        setTeamSelections(at.map(t => ({ teamId: t.team_id, captainId: t.captain_id ?? '' })));
+        // Populate team name inputs from saved rows
+        if (at.length > 0) {
+          setTeamSelections(at.map(t => ({ name: t.name ?? '', captainId: t.captain_id ?? '' })));
+        }
       });
     }
   }, [id]);
@@ -74,50 +75,34 @@ export default function AuctionSetup() {
 
   async function saveTeams() {
     if (!auctionId) { toast.error('Save basics first'); return; }
-    const added = [];
-    for (const sel of teamSelections) {
-      if (!sel.teamId) continue;
-      const existing = auctionTeams.find(t => t.team_id === sel.teamId);
-      if (!existing) {
-        try {
-          const t = await auctionService.addAuctionTeam(auctionId, sel.teamId, sel.captainId || null);
-          added.push(t);
-        } catch (e) {
-          toast.error(e.message);
-        }
-      }
-    }
-    if (added.length) {
-      setAuctionTeams(prev => [...prev, ...added]);
+    const validSlots = teamSelections.filter(s => s.name.trim());
+    if (validSlots.length < 2) { toast.error('Enter at least 2 team names'); return; }
 
-      // Auto-populate player pool from each newly added team's roster
-      const allNewPlayers = [];
-      for (const sel of teamSelections) {
-        if (!sel.teamId) continue;
-        if (auctionTeams.find(t => t.team_id === sel.teamId)) continue; // already existed
-        try {
-          const playerIds = await teamService.getTeamPlayers(sel.teamId);
-          for (const pid of playerIds) {
-            // Skip if already in pool
-            const alreadyInPool = poolPlayers.some(p => p.player_id === pid);
-            if (alreadyInPool) continue;
-            try {
-              const row = await auctionService.addPlayerToPool(auctionId, pid, 100);
-              allNewPlayers.push(row);
-            } catch {
-              // ignore duplicate constraint if player added twice (two teams share a player edge case)
-            }
-          }
-        } catch (e) {
-          // non-fatal — roster may be empty
+    // Check for duplicate names
+    const names = validSlots.map(s => s.name.trim().toLowerCase());
+    if (new Set(names).size !== names.length) { toast.error('Team names must be unique'); return; }
+
+    setSavingTeams(true);
+    try {
+      const added = [];
+      for (const sel of validSlots) {
+        // Skip teams that are already saved (match by name)
+        const existing = auctionTeams.find(t => t.name?.toLowerCase() === sel.name.trim().toLowerCase());
+        if (!existing) {
+          const t = await auctionService.addAuctionTeam(auctionId, sel.name.trim(), sel.captainId || null);
+          added.push(t);
         }
       }
-      if (allNewPlayers.length > 0) {
-        setPoolPlayers(prev => [...prev, ...allNewPlayers]);
-        toast.success(`Teams saved · ${allNewPlayers.length} players added to pool`);
+      if (added.length) {
+        setAuctionTeams(prev => [...prev, ...added]);
+        toast.success(`${added.length} team${added.length > 1 ? 's' : ''} saved`);
       } else {
-        toast.success('Teams saved');
+        toast.success('Teams up to date');
       }
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSavingTeams(false);
     }
   }
 
@@ -125,6 +110,10 @@ export default function AuctionSetup() {
     if (!auctionId) return;
     if (poolPlayers.filter(p => p.status === 'pool').length === 0) {
       toast.error('Add at least one player to the pool');
+      return;
+    }
+    if (auctionTeams.length < 2) {
+      toast.error('Save at least 2 teams first');
       return;
     }
     setStarting(true);
@@ -160,6 +149,7 @@ export default function AuctionSetup() {
         ))}
       </div>
 
+      {/* ── Basics ── */}
       {tab === 'basics' && (
         <div className="card px-4 py-4 space-y-4">
           <div className="space-y-1.5">
@@ -209,21 +199,33 @@ export default function AuctionSetup() {
         </div>
       )}
 
+      {/* ── Teams — just enter team names, no registry required ── */}
       {tab === 'teams' && (
         <div className="card px-4 py-4 space-y-4">
+          <p className="text-xs text-ink-400">
+            Enter the names of the bidding teams. These are standalone auction teams — players are not pre-assigned to any team.
+          </p>
+
           {teamSelections.map((sel, i) => (
             <div key={i} className="space-y-2">
-              <p className="text-xs font-semibold text-ink-500 uppercase tracking-wider">Team {i + 1}</p>
-              <select
-                value={sel.teamId}
-                onChange={e => setTeamSelections(prev => prev.map((s, j) => j === i ? { ...s, teamId: e.target.value } : s))}
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-ink-500 uppercase tracking-wider">Team {i + 1}</p>
+                {teamSelections.length > 2 && (
+                  <button
+                    onClick={() => setTeamSelections(prev => prev.filter((_, j) => j !== i))}
+                    className="text-ink-300 hover:text-red-400 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              <input
+                value={sel.name}
+                onChange={e => setTeamSelections(prev => prev.map((s, j) => j === i ? { ...s, name: e.target.value } : s))}
+                placeholder={`Team name (e.g. ${i === 0 ? 'Super Kings' : 'Back Street Boyz'})`}
                 className="w-full rounded-xl border border-ink-200 dark:border-white/10 bg-white dark:bg-ink-800 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-green/30"
-              >
-                <option value="">Select team…</option>
-                {teams
-                  .filter(t => !teamSelections.some((s, j) => j !== i && s.teamId === t.id))
-                  .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              />
+              {/* Captain — optional app user who can bid for this team */}
               <select
                 value={sel.captainId}
                 onChange={e => setTeamSelections(prev => prev.map((s, j) => j === i ? { ...s, captainId: e.target.value } : s))}
@@ -236,14 +238,34 @@ export default function AuctionSetup() {
               </select>
             </div>
           ))}
-          <button onClick={() => setTeamSelections(prev => [...prev, { teamId: '', captainId: '' }])}
-            className="flex items-center gap-1.5 text-brand-green text-sm font-semibold">
+
+          <button
+            onClick={() => setTeamSelections(prev => [...prev, { name: '', captainId: '' }])}
+            className="flex items-center gap-1.5 text-brand-green text-sm font-semibold"
+          >
             <Plus size={14} /> Add Team
           </button>
-          <button onClick={saveTeams} className="w-full btn-primary py-3">Save Teams</button>
+
+          {/* Show already-saved teams */}
+          {auctionTeams.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-ink-400 uppercase tracking-wider font-semibold">Saved Teams</p>
+              {auctionTeams.map(t => (
+                <div key={t.id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 dark:bg-green-500/10">
+                  <span className="text-sm font-semibold text-ink-900 dark:text-white flex-1">{t.name}</span>
+                  <span className="text-xs text-ink-400 tabular-nums">₹{t.budget_remaining?.toLocaleString()} purse</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button onClick={saveTeams} disabled={savingTeams} className="w-full btn-primary py-3 disabled:opacity-60">
+            {savingTeams ? 'Saving…' : 'Save Teams'}
+          </button>
         </div>
       )}
 
+      {/* ── Player Pool ── */}
       {tab === 'pool' && (
         <div className="card px-4 py-4">
           {auctionId ? (

@@ -53,17 +53,19 @@ export async function deleteAuction(id) {
 
 // ── Teams ─────────────────────────────────────────────────────────────────────
 
-export async function addAuctionTeam(auctionId, teamId, captainUserId) {
+// teamName is a plain string — auction teams are standalone bidding entities,
+// not tied to the global teams registry.
+export async function addAuctionTeam(auctionId, teamName, captainUserId) {
   const auction = await getAuction(auctionId);
   const { data, error } = await supabase
     .from('auction_teams')
     .insert({
       auction_id: auctionId,
-      team_id: teamId,
+      name: teamName,
       captain_id: captainUserId || null,
       budget_remaining: auction.budget_per_team,
     })
-    .select('*, team:team_id(name)')
+    .select()
     .single();
   if (error) throw error;
   return data;
@@ -72,11 +74,12 @@ export async function addAuctionTeam(auctionId, teamId, captainUserId) {
 export async function listAuctionTeams(auctionId) {
   const { data, error } = await supabase
     .from('auction_teams')
-    .select('*, team:team_id(id, name)')
+    .select('*')
     .eq('auction_id', auctionId)
     .order('id', { ascending: true });
   if (error) throw error;
-  return data ?? [];
+  // Normalise: if name missing (legacy row), fall back to team_id string so UI never shows blank
+  return (data ?? []).map(t => ({ ...t, name: t.name || t.team_id || 'Team' }));
 }
 
 export async function updateAuctionTeamCaptain(auctionTeamId, captainUserId) {
@@ -305,12 +308,50 @@ export async function signalPass(auctionPlayerRowId, passColumn) {
   return data;
 }
 
+// Undo the last bid for the active player.
+// Deletes the most recent auction_bids row and rolls auction_players back to
+// the previous bid (or base_price / null if it was the only bid).
+export async function undoLastBid(auctionPlayerRowId) {
+  // Fetch all bids newest-first
+  const { data: bids, error: fetchErr } = await supabase
+    .from('auction_bids')
+    .select('id, amount, auction_team_id')
+    .eq('auction_player_id', auctionPlayerRowId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (fetchErr) throw fetchErr;
+  if (!bids || bids.length === 0) throw new Error('No bids to undo');
+
+  const [latest, prev] = bids;
+
+  // Delete the last bid
+  const { error: delErr } = await supabase
+    .from('auction_bids')
+    .delete()
+    .eq('id', latest.id);
+  if (delErr) throw delErr;
+
+  // Roll the player row back: if there was a previous bid use it, else clear
+  const update = prev
+    ? { current_bid: prev.amount, leading_team_id: prev.auction_team_id }
+    : { current_bid: null, leading_team_id: null };
+
+  const { data, error } = await supabase
+    .from('auction_players')
+    .update(update)
+    .eq('id', auctionPlayerRowId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ── Bid Log ───────────────────────────────────────────────────────────────────
 
 export async function getBidsForPlayer(auctionPlayerRowId, limit = 20) {
   const { data, error } = await supabase
     .from('auction_bids')
-    .select('*, auction_team:auction_team_id(id, team:team_id(name))')
+    .select('*, auction_team:auction_team_id(id, name)')
     .eq('auction_player_id', auctionPlayerRowId)
     .order('created_at', { ascending: false })
     .limit(limit);

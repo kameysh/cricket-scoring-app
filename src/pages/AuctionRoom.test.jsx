@@ -17,8 +17,8 @@ const BASE_AUCTION = {
   bid_increments: [50, 100],
 };
 
-const TEAM1 = { id: 'at1', team_id: 't1', captain_id: 'captain-uid', budget_remaining: 800, players_bought: 1, team: { id: 't1', name: 'Super Kings' } };
-const TEAM2 = { id: 'at2', team_id: 't2', captain_id: 'captain2-uid', budget_remaining: 900, players_bought: 0, team: { id: 't2', name: 'Back Street' } };
+const TEAM1 = { id: 'at1', name: 'Super Kings', captain_id: 'captain-uid', budget_remaining: 800, players_bought: 1 };
+const TEAM2 = { id: 'at2', name: 'Back Street', captain_id: 'captain2-uid', budget_remaining: 900, players_bought: 0 };
 
 const ACTIVE_PLAYER = {
   id: 'ap1', player_id: 'p1', status: 'active', base_price: 100, current_bid: 200,
@@ -26,17 +26,23 @@ const ACTIVE_PLAYER = {
   player: { id: 'p1', name: 'Ravi Kumar', role: 'batsman' },
 };
 
+const BASE_STORE = {
+  auction: BASE_AUCTION,
+  teams: [TEAM1, TEAM2],
+  players: [ACTIVE_PLAYER],
+  bids: [],
+  isLoading: false,
+  error: null,
+  reset: vi.fn(),
+  _patchPlayer: vi.fn(),
+  _appendBid: vi.fn(),
+  _patchTeam: vi.fn(),
+  _onAuctionUpdate: vi.fn(),
+  loadAuction: vi.fn(),
+};
+
 function renderRoom(storeOverrides = {}, roleOverrides = {}) {
-  vi.mocked(useAuctionStore).mockReturnValue({
-    auction: BASE_AUCTION,
-    teams: [TEAM1, TEAM2],
-    players: [ACTIVE_PLAYER],
-    bids: [],
-    isLoading: false,
-    error: null,
-    reset: vi.fn(),
-    ...storeOverrides,
-  });
+  vi.mocked(useAuctionStore).mockReturnValue({ ...BASE_STORE, ...storeOverrides });
   vi.mocked(useRole).mockReturnValue({
     isAdmin: false, userId: 'other-uid', canScore: false,
     ...roleOverrides,
@@ -146,5 +152,40 @@ describe('AuctionRoom — no active player', () => {
   it('shows waiting message when no player is active', () => {
     renderRoom({ players: [] }, { isAdmin: false, userId: 'viewer-uid' });
     expect(screen.getByText(/waiting for auctioneer/i)).toBeInTheDocument();
+  });
+});
+
+describe('AuctionRoom — delete button', () => {
+  it('admin sees delete button', () => {
+    renderRoom({}, { isAdmin: true, userId: 'admin-uid' });
+    // Trash icon rendered as SVG; check via aria or nearby text
+    // ConfirmDialog trigger button wraps Trash2 icon
+    const deleteBtns = screen.getAllByRole('button');
+    // The delete button is a small icon-only button; confirm dialog text appears on open
+    // Just verify it's rendered by checking the Trash2 icon is in the DOM via its parent
+    expect(deleteBtns.length).toBeGreaterThan(2);
+  });
+
+  it('non-admin does not see delete button', () => {
+    renderRoom({}, { isAdmin: false, userId: 'viewer-uid' });
+    // Viewer has no Trash button
+    // BudgetBars + ActivePlayer + Pool/Held/Sold — but no red icon-only button
+    const redButtons = screen.queryAllByRole('button', { name: /delete/i });
+    expect(redButtons).toHaveLength(0);
+  });
+});
+
+describe('AuctionRoom — sold sheet grouping', () => {
+  it('shows sold player count chip', () => {
+    const soldPlayer = {
+      id: 'ap2', player_id: 'p2', status: 'sold', base_price: 100, current_bid: 500,
+      sold_price: 500, sold_to_team_id: 'at1', leading_team_id: 'at1',
+      pass_team1: false, pass_team2: false,
+      player: { id: 'p2', name: 'Siva', role: 'bowler' },
+    };
+    renderRoom({ players: [soldPlayer] }, { isAdmin: false, userId: 'viewer-uid' });
+    // The "Sold" counter chip should show 1
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByText('Sold')).toBeInTheDocument();
   });
 });

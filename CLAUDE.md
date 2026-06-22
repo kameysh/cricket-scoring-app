@@ -97,6 +97,7 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 028 | `028_tournament_series.sql` | **`tournament_series` registry table (id, name UNIQUE, created_at) with RLS — admin insert/delete, all authenticated select; `series_id uuid REFERENCES tournament_series(id) ON DELETE SET NULL` added to `tournaments` — links each tournament to a recurring series.** |
 | 029 | `029_push_subscriptions.sql` | **`push_subscriptions` table (user_id, endpoint, p256dh, auth) — users own their rows; admin can read all. Powers Web Push notifications.** |
 | 030 | `030_auctions.sql` | **Four tables: `auctions`, `auction_teams`, `auction_players`, `auction_bids` + `deal_player` RPC. Full RLS. Powers the live player auction feature.** Replication must be enabled for all 4 tables. |
+| 032 | `032_auction_teams_name.sql` | **`name text` added to `auction_teams`; `team_id` made nullable. Auction teams are now standalone bidding entities — admin just types a team name, no global registry required. Backfills `name` from existing `team_id` join for legacy rows.** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -509,13 +510,30 @@ For realtime to work, each table must have Replication enabled:
 
 ---
 
+## Auction Bug Fixes (June 2026)
+
+| File(s) | Bug | Fix |
+|---------|-----|-----|
+| `AuctionRoom.jsx` | No way to delete an auction from the UI | Added trash icon button in header (admin only) + `ConfirmDialog` — calls `deleteAuction(id)` then navigates to `/auctions` |
+| `ActivePlayerSpotlight.jsx` | Player card appeared with no animation — sudden content swap | Rewrote with slide-in CSS keyframe (`spotlight-slide-in`), keyed on `player.id` so animation re-fires per new player; added full-bleed photo header when player has a photo |
+| `AuctioneerControls.jsx` | No way for auctioneer to see or choose which team a raise bid is for | Added pill-group team selector above raise buttons (`raiseTeamId` state); defaults to `leading_team_id ?? teams[0]`; selected team's purse shown below; team passed as 2nd arg to `onRaise` |
+| `AuctionRoom.jsx` + `AuctioneerControls.jsx` | Raise bid buttons gave no feedback when team would exceed budget | Added `overBudget` check in `AuctioneerControls` — buttons turn red and become disabled; `handleRaise` in room also guards with toast before calling service |
+| `AuctionRoom.jsx` + `auctionService.js` | Bid log never updated after a raise/bid — showed "No bids yet" | `handleRaise` and `handleBid` now call `refreshBids(activePlayer.id)` after each write → `useAuctionStore.setState({ bids: fresh })` replaces the list immediately; store is also cleared on next player draw and hold |
+| `AuctionRoom.jsx` | Sold sheet was a flat list with no team grouping | Rewrote sold BottomSheet: players grouped by `sold_to_team_id`; each team section shows player count + total spent; player rows include avatar, role, and sold price |
+| `AuctionSetup.jsx` + `auctionService.js` + `032_auction_teams_name.sql` | Auction setup required selecting from the global Teams registry — but auction players are free agents not belonging to any cricket team before the auction. Admin couldn't just type "Super Kings" as a bidding team without pre-creating it in the registry | Full re-architecture: migration 032 adds `name text` to `auction_teams` and makes `team_id` nullable; `addAuctionTeam` now takes a team name string; Teams tab replaced registry dropdowns with plain text inputs; all components (`BudgetBars`, `AuctioneerControls`, `BidLog`, `ActivePlayerSpotlight`, `AuctionRoom`) updated to use `t.name` directly |
+| `AuctionSetup.jsx` | "Save Teams" button gave no feedback while saving — looked frozen during slow writes | Added `savingTeams` state; button shows "Saving…" + `disabled` while in progress |
+| `AuctioneerControls.jsx` + `AuctionRoom.jsx` + `auctionService.js` | No way to undo a wrong bid — auctioneer had to deal or hold even if the wrong team was credited | Added `undoLastBid(auctionPlayerRowId)`: fetches bid log, deletes latest entry, rolls `current_bid` + `leading_team_id` back to previous bid (or null if it was the only bid). "↩ Undo Last Bid" button shown in AuctioneerControls when `hasBid=true`; refreshes bid log after undo. |
+| `ActivePlayerSpotlight.jsx` + `AuctionRoom.jsx` | Player card only showed photo/name — no career stats, no way to navigate to full profile | `AuctionRoom` fetches `getCareerStats(player_id)` on every new active player; passes `careerStats` + `onViewProfile` to spotlight; card now shows RUNS/WKTS/MATCHES strip + "View Profile →" button matching the Players carousel card exactly |
+
+---
+
 ## Test Suite
 
 **Stack:** Vitest + jsdom + @testing-library/react + @testing-library/user-event + @testing-library/jest-dom  
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**34 test files, 436 tests — all passing:**
+**35 test files, 448 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -552,7 +570,7 @@ For realtime to work, each table must have Replication enabled:
 | `src/components/shared/BottomNav.test.jsx` (extended) | Tab order verified; Appearance row shown with 3 theme buttons; setTheme called on click |
 | `src/pages/Leaderboard.test.jsx` | Renders Batting tab by default; switches to Partnerships tab without crash; switches to MVP tab without crash |
 | `src/services/auctionService.test.js` | createAuction status=draft; addAuctionTeam sets budget_remaining; placeBid throws on over-budget; placeBid resets pass flags; dealPlayer calls RPC; dealPlayer throws on error; signalPass updates correct column; signalPass throws on invalid column; holdPlayer sets held_at; drawNextPlayer completes auction when queues empty |
-| `src/pages/AuctionRoom.test.jsx` | Admin sees AuctioneerControls only; captain sees CaptainControls only; viewer sees neither; BudgetBars render per team; budget bar width reflects proportion; PassIndicator hidden/shown; Hold button animates when both passing; bid button disabled over budget; bid button enabled within budget; Pass button shows Passing state; waiting message when no active player |
+| `src/pages/AuctionRoom.test.jsx` | Admin sees AuctioneerControls only; captain sees CaptainControls only; viewer sees neither; BudgetBars render per team; budget bar width reflects proportion; PassIndicator hidden/shown; Hold button animates when both passing; bid button disabled over budget; bid button enabled within budget; Pass button shows Passing state; waiting message when no active player; admin sees delete button; non-admin does not; sold count chip visible |
 
 **Bug fix policy:** If tests catch a source logic error, fix the source — never weaken the test assertion.
 

@@ -8,7 +8,7 @@ export default function BudgetBars({ teams, budgetPerTeam }) {
         return (
           <div key={t.id}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold text-ink-700 dark:text-ink-200">{t.team?.name ?? '—'}</span>
+              <span className="text-xs font-semibold text-ink-700 dark:text-ink-200">{t.name ?? '—'}</span>
               <span className="text-xs tabular-nums text-ink-500 dark:text-ink-400">
                 ₹{t.budget_remaining.toLocaleString()} left · {t.players_bought} bought
               </span>

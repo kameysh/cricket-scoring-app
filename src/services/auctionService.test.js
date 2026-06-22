@@ -26,7 +26,7 @@ vi.mock('../lib/supabase', () => ({
 import {
   createAuction, addAuctionTeam, getAuction,
   placeBid, dealPlayer, signalPass, holdPlayer,
-  drawNextPlayer, updateAuctionStatus,
+  drawNextPlayer, updateAuctionStatus, undoLastBid,
 } from './auctionService';
 import { supabase } from '../lib/supabase';
 
@@ -162,5 +162,61 @@ describe('drawNextPlayer', () => {
     await drawNextPlayer('a1');
     // updateAuctionStatus calls update on auctions table
     expect(supabase.from).toHaveBeenCalledWith('auctions');
+  });
+});
+
+describe('undoLastBid', () => {
+  it('throws when there are no bids to undo', async () => {
+    chain.then = (resolve) => Promise.resolve({ data: [], error: null }).then(resolve);
+    await expect(undoLastBid('ap1')).rejects.toThrow('No bids to undo');
+  });
+
+  it('clears current_bid and leading_team_id when undoing the only bid', async () => {
+    // First call (fetch bids) returns one bid; subsequent calls (delete + update) use chain
+    let callCount = 0;
+    chain.then = (resolve) => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve({
+          data: [{ id: 'bid1', amount: 200, auction_team_id: 'at1' }],
+          error: null,
+        }).then(resolve);
+      }
+      return Promise.resolve({ data: null, error: null }).then(resolve);
+    };
+    chain.single.mockResolvedValue({
+      data: { id: 'ap1', current_bid: null, leading_team_id: null },
+      error: null,
+    });
+
+    const result = await undoLastBid('ap1');
+    expect(result.current_bid).toBeNull();
+    expect(result.leading_team_id).toBeNull();
+  });
+
+  it('restores previous bid when undoing the latest of multiple bids', async () => {
+    let callCount = 0;
+    chain.then = (resolve) => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve({
+          data: [
+            { id: 'bid2', amount: 300, auction_team_id: 'at2' },
+            { id: 'bid1', amount: 200, auction_team_id: 'at1' },
+          ],
+          error: null,
+        }).then(resolve);
+      }
+      return Promise.resolve({ data: null, error: null }).then(resolve);
+    };
+    chain.single.mockResolvedValue({
+      data: { id: 'ap1', current_bid: 200, leading_team_id: 'at1' },
+      error: null,
+    });
+
+    const result = await undoLastBid('ap1');
+    // Should restore to the previous bid (amount=200, team=at1)
+    expect(result.current_bid).toBe(200);
+    expect(result.leading_team_id).toBe('at1');
   });
 });
