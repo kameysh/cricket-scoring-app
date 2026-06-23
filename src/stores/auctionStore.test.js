@@ -182,3 +182,61 @@ describe('auctionStore — reset', () => {
     expect(state.viewerCount).toBe(0);
   });
 });
+
+// ── loadAuction + _refreshBids (require mocking the service) ─────────────────
+vi.mock('../services/auctionService', () => ({
+  getAuction: vi.fn(),
+  listAuctionTeams: vi.fn(),
+  listAuctionPlayers: vi.fn(),
+  getBidsForPlayer: vi.fn(),
+}));
+
+import * as auctionService from '../services/auctionService';
+
+const MOCK_AUCTION = { id: 'a1', name: 'Test', status: 'live' };
+const MOCK_TEAMS = [{ id: 't1', name: 'RCB', budget_remaining: 1000 }];
+const MOCK_PLAYERS = [{ id: 'ap1', status: 'pool' }];
+
+describe('auctionStore — loadAuction silent mode', () => {
+  beforeEach(() => {
+    vi.mocked(auctionService.getAuction).mockResolvedValue(MOCK_AUCTION);
+    vi.mocked(auctionService.listAuctionTeams).mockResolvedValue(MOCK_TEAMS);
+    vi.mocked(auctionService.listAuctionPlayers).mockResolvedValue(MOCK_PLAYERS);
+    vi.mocked(auctionService.getBidsForPlayer).mockResolvedValue([]);
+  });
+
+  it('sets isLoading true then false on normal load', async () => {
+    const loading = [];
+    const unsub = useAuctionStore.subscribe(s => loading.push(s.isLoading));
+    await useAuctionStore.getState().loadAuction('a1');
+    unsub();
+    expect(loading).toContain(true);
+    expect(useAuctionStore.getState().isLoading).toBe(false);
+  });
+
+  it('never sets isLoading when silent=true', async () => {
+    const loading = [];
+    const unsub = useAuctionStore.subscribe(s => loading.push(s.isLoading));
+    await useAuctionStore.getState().loadAuction('a1', true);
+    unsub();
+    expect(loading).not.toContain(true);
+    expect(useAuctionStore.getState().isLoading).toBe(false);
+  });
+});
+
+describe('auctionStore — _refreshBids', () => {
+  it('replaces bids list with fresh data from service', async () => {
+    const freshBids = [{ id: 'b1', amount: 500 }, { id: 'b2', amount: 300 }];
+    vi.mocked(auctionService.getBidsForPlayer).mockResolvedValue(freshBids);
+    useAuctionStore.setState({ bids: [{ id: 'old' }] });
+    await useAuctionStore.getState()._refreshBids('ap1');
+    expect(useAuctionStore.getState().bids).toEqual(freshBids);
+  });
+
+  it('does not throw or mutate bids when service throws', async () => {
+    vi.mocked(auctionService.getBidsForPlayer).mockRejectedValue(new Error('network error'));
+    useAuctionStore.setState({ bids: [{ id: 'keep' }] });
+    await expect(useAuctionStore.getState()._refreshBids('ap1')).resolves.toBeUndefined();
+    expect(useAuctionStore.getState().bids).toEqual([{ id: 'keep' }]);
+  });
+});
