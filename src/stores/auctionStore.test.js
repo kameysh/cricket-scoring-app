@@ -112,6 +112,34 @@ describe('auctionStore — _startViewerDraw / _clearViewerDraw / _clearSoldFlash
   });
 });
 
+describe('auctionStore — _appendBid', () => {
+  beforeEach(() => useAuctionStore.setState({ bids: [], teams: [{ id: 't1', name: 'Super Kings' }] }));
+
+  it('prepends a new bid to the list', () => {
+    useAuctionStore.getState()._appendBid({ id: 'b1', amount: 1000, auction_team_id: 't1' });
+    expect(useAuctionStore.getState().bids[0].id).toBe('b1');
+  });
+
+  it('enriches bid with team data from store', () => {
+    useAuctionStore.getState()._appendBid({ id: 'b1', amount: 1000, auction_team_id: 't1', auction_team: null });
+    expect(useAuctionStore.getState().bids[0].auction_team?.name).toBe('Super Kings');
+  });
+
+  it('does not duplicate if same id already in list', () => {
+    useAuctionStore.setState({ bids: [{ id: 'b1', amount: 1000 }], teams: [] });
+    useAuctionStore.getState()._appendBid({ id: 'b1', amount: 1000 });
+    expect(useAuctionStore.getState().bids).toHaveLength(1);
+  });
+
+  it('keeps list capped at 20', () => {
+    const existing = Array.from({ length: 20 }, (_, i) => ({ id: `b${i}` }));
+    useAuctionStore.setState({ bids: existing, teams: [] });
+    useAuctionStore.getState()._appendBid({ id: 'b99' });
+    expect(useAuctionStore.getState().bids).toHaveLength(20);
+    expect(useAuctionStore.getState().bids[0].id).toBe('b99');
+  });
+});
+
 describe('auctionStore — _removeBid', () => {
   it('removes the bid with the matching id', () => {
     useAuctionStore.setState({ bids: [{ id: 'b1' }, { id: 'b2' }, { id: 'b3' }] });

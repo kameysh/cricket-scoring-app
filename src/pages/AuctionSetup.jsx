@@ -85,17 +85,30 @@ export default function AuctionSetup() {
     setSavingTeams(true);
     try {
       const added = [];
+      const updated = [];
       for (const sel of validSlots) {
-        // Skip teams that are already saved (match by name)
         const existing = auctionTeams.find(t => t.name?.toLowerCase() === sel.name.trim().toLowerCase());
         if (!existing) {
           const t = await auctionService.addAuctionTeam(auctionId, sel.name.trim(), sel.captainId || null);
           added.push(t);
+        } else if ((sel.captainId || null) !== (existing.captain_id || null)) {
+          // Captain changed for an existing team — update in DB
+          const t = await auctionService.updateAuctionTeamCaptain(existing.id, sel.captainId || null);
+          updated.push(t);
         }
       }
-      if (added.length) {
-        setAuctionTeams(prev => [...prev, ...added]);
-        toast.success(`${added.length} team${added.length > 1 ? 's' : ''} saved`);
+      if (added.length || updated.length) {
+        setAuctionTeams(prev => {
+          const withNew = [...prev, ...added];
+          return withNew.map(t => {
+            const upd = updated.find(u => u.id === t.id);
+            return upd ? { ...t, ...upd } : t;
+          });
+        });
+        const parts = [];
+        if (added.length) parts.push(`${added.length} team${added.length > 1 ? 's' : ''} saved`);
+        if (updated.length) parts.push(`${updated.length} captain${updated.length > 1 ? 's' : ''} updated`);
+        toast.success(parts.join(', '));
       } else {
         toast.success('Teams up to date');
       }

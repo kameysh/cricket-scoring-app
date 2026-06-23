@@ -39,18 +39,19 @@ export const useAuctionStore = create((set, get) => ({
       const existing = state.players.find(p => p.id === updatedRow.id);
       // Preserve joined player data — realtime payloads don't carry joins
       const merged = { ...(existing ?? {}), ...updatedRow };
+      const wasAlreadyActive = existing?.status === 'active';
 
       // pool/held → active: trigger draw animation for all viewers
       // Only set if not already set (auctioneer may have called _startViewerDraw first)
       let viewerDraw = state.viewerDraw;
-      if (updatedRow.status === 'active' && existing?.status !== 'active' && !state.viewerDraw) {
+      if (updatedRow.status === 'active' && !wasAlreadyActive && !state.viewerDraw) {
         const pool = state.players.filter(p => p.status === 'pool');
         viewerDraw = { pool: pool.length > 0 ? pool : [merged], winner: merged };
       }
 
       // active → sold: trigger SOLD! overlay for all viewers
       let soldFlash = state.soldFlash;
-      if (updatedRow.status === 'sold' && existing?.status === 'active') {
+      if (updatedRow.status === 'sold' && wasAlreadyActive) {
         const soldTeam = state.teams.find(t => t.id === updatedRow.sold_to_team_id);
         soldFlash = {
           player: merged.player ?? null,
@@ -63,9 +64,13 @@ export const useAuctionStore = create((set, get) => ({
         ? state.players.map(p => p.id === updatedRow.id ? merged : p)
         : [...state.players, merged];
 
-      return { players, viewerDraw, soldFlash };
+      // Clear bids only when a NEW player becomes active (pool/held → active).
+      // Keep bids intact when the already-active player row is updated (bid raised, etc.)
+      // so the bid history stays visible after each raise.
+      const bids = (updatedRow.status === 'active' && !wasAlreadyActive) ? [] : state.bids;
+
+      return { players, viewerDraw, soldFlash, bids };
     });
-    if (updatedRow.status === 'active') set({ bids: [] });
   },
 
   // Called by auctioneer before the DB round-trip completes so animation starts immediately
@@ -78,7 +83,14 @@ export const useAuctionStore = create((set, get) => ({
   _setViewerCount(count) { set({ viewerCount: count }); },
 
   _appendBid(bid) {
-    set(state => ({ bids: [bid, ...state.bids].slice(0, 20) }));
+    set(state => {
+      // Deduplicate: realtime INSERT and refreshBids can both add the same bid
+      if (state.bids.some(b => b.id === bid.id)) return {};
+      // Enrich raw realtime payload with team data already in the store
+      const team = state.teams.find(t => t.id === bid.auction_team_id);
+      const enriched = { ...bid, auction_team: bid.auction_team ?? (team ? { id: team.id, name: team.name } : null) };
+      return { bids: [enriched, ...state.bids].slice(0, 20) };
+    });
   },
 
   _removeBid(bidId) {

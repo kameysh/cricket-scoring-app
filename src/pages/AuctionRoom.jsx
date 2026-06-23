@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Trash2, ChevronLeft, ChevronRight, Share2, Download } from 'lucide-react';
+import { ArrowLeft, Trash2, Share2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuctionStore } from '../stores/auctionStore';
 import { useAuctionRoom } from '../hooks/useAuctionRoom';
@@ -110,7 +110,6 @@ function SoldCardSheet({ data, cardUrl, generating, onClose }) {
 
 function BidLogStrip({ bids, teams }) {
   const scrollRef = useRef(null);
-
   const scroll = (dir) => {
     if (scrollRef.current) scrollRef.current.scrollBy({ left: dir * 120, behavior: 'smooth' });
   };
@@ -132,17 +131,20 @@ function BidLogStrip({ bids, teams }) {
       </div>
       <div
         ref={scrollRef}
-        className="flex gap-2 min-h-[44px] items-center"
+        className="flex gap-2 min-h-[52px] items-center"
         style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {bids?.length > 0 ? bids.map((bid, i) => {
           const teamName = bid.auction_team?.name
             ?? teams?.find(t => t.id === bid.auction_team_id)?.name
             ?? '—';
+          const isLatest = i === 0;
           return (
-            <div key={bid.id ?? i} className="shrink-0 flex flex-col items-center bg-ink-50 dark:bg-white/5 rounded-xl px-3 py-1.5 gap-0.5">
-              <span className="text-[11px] font-bold text-brand-green tabular-nums">₹{bid.amount?.toLocaleString()}</span>
-              <span className="text-[10px] text-ink-400 whitespace-nowrap">{teamName}</span>
+            <div key={bid.id ?? i} className={`shrink-0 flex flex-col items-center rounded-xl px-3 py-2 gap-0.5 min-w-[80px] ${isLatest ? 'bg-brand-green/10 ring-1 ring-brand-green/30' : 'bg-ink-50 dark:bg-white/5'}`}>
+              <span className={`text-xs font-extrabold tabular-nums ${isLatest ? 'text-brand-green' : 'text-ink-600 dark:text-ink-300'}`}>
+                ₹{bid.amount?.toLocaleString()}
+              </span>
+              <span className="text-[11px] font-semibold text-ink-600 dark:text-ink-300 whitespace-nowrap truncate max-w-[90px]">{teamName}</span>
             </div>
           );
         }) : (
