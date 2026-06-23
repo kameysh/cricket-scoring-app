@@ -129,8 +129,7 @@ export default function App() {
 
           {/* Auctions setup — admin only; MUST be declared before /auctions/:id */}
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-            <Route path="/auctions/new" element={<AuctionSetup />} />
-            <Route path="/auctions/new/:id" element={<AuctionSetup />} />
+            <Route path="/auctions/new/:id?" element={<AuctionSetup />} />
           </Route>
           {/* Auctions list + room — all authenticated users */}
           <Route element={<ProtectedRoute />}>

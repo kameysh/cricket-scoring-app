@@ -15,10 +15,15 @@ export default function PlayerDrawAnimation({ poolPlayers, winner, onComplete })
   const [phase, setPhase] = useState('spinning'); // 'spinning' | 'slowing' | 'done'
   const [revealed, setRevealed] = useState(false);
 
+  const vibrate = (pattern) => { try { navigator.vibrate?.(pattern); } catch {} };
+
   // Fast spin
   useEffect(() => {
     if (phase !== 'spinning') return;
-    const iv = setInterval(() => setIdx(i => (i + 1) % list.current.length), FAST_MS);
+    const iv = setInterval(() => {
+      setIdx(i => (i + 1) % list.current.length);
+      vibrate(18);
+    }, FAST_MS);
     return () => clearInterval(iv);
   }, [phase]);
 
@@ -31,12 +36,14 @@ export default function PlayerDrawAnimation({ poolPlayers, winner, onComplete })
     setTimeout(() => setPhase('slowing'), wait);
   }, [winner, phase]);
 
-  // Slow-down ticks then reveal
+  // Slow-down ticks then reveal — haptic pulses get heavier as it decelerates
   useEffect(() => {
     if (phase !== 'slowing') return;
+    const hapticPulses = [25, 35, 50, 70, 90];
     let step = 0;
     function tick() {
       setIdx(i => (i + 1) % list.current.length);
+      vibrate(hapticPulses[step] ?? 90);
       step++;
       if (step < SLOW_STEPS.length) {
         setTimeout(tick, SLOW_STEPS[step]);
@@ -47,10 +54,11 @@ export default function PlayerDrawAnimation({ poolPlayers, winner, onComplete })
     setTimeout(tick, SLOW_STEPS[0]);
   }, [phase]);
 
-  // Reveal winner
+  // Reveal winner — strong double-buzz on selection
   useEffect(() => {
     if (phase !== 'done' || !winner) return;
     const t1 = setTimeout(() => {
+      vibrate([100, 60, 180]);
       setRevealed(true);
       const t2 = setTimeout(onComplete, 1000);
       return () => clearTimeout(t2);

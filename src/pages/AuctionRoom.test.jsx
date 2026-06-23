@@ -238,6 +238,48 @@ describe('AuctionRoom — return held player to pool', () => {
   });
 });
 
+describe('AuctionRoom — status tags on pool/held/sold rows', () => {
+  const poolPlayer = {
+    id: 'ap-pool', player_id: 'p1', status: 'pool', base_price: 100,
+    current_bid: null, leading_team_id: null, pass_team1: false, pass_team2: false,
+    player: { id: 'p1', name: 'Ravi Kumar', role: 'batsman' },
+  };
+  const heldPlayer = {
+    id: 'ap-held', player_id: 'p2', status: 'held', base_price: 150,
+    current_bid: null, leading_team_id: null, pass_team1: false, pass_team2: false,
+    player: { id: 'p2', name: 'Dhoni', role: 'keeper' },
+  };
+  const soldPlayer = {
+    id: 'ap-sold', player_id: 'p3', status: 'sold', base_price: 100,
+    current_bid: 400, sold_price: 400, sold_to_team_id: 'at1', leading_team_id: 'at1',
+    pass_team1: false, pass_team2: false,
+    player: { id: 'p3', name: 'Siva Raj', role: 'bowler' },
+  };
+
+  it('shows "Available" tag on players in the pool sheet', async () => {
+    renderRoom({ players: [poolPlayer] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getByText('Pool'));
+    await waitFor(() => expect(screen.getByText('Ravi Kumar')).toBeInTheDocument());
+    expect(screen.getByText('Available')).toBeInTheDocument();
+  });
+
+  it('shows "Held" tag on players in the held queue sheet', async () => {
+    renderRoom({ players: [heldPlayer], bids: [] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getAllByText('Held')[0]);
+    await waitFor(() => expect(screen.getByText('Dhoni')).toBeInTheDocument());
+    // "Held" appears as both the counter chip and the status tag inside the sheet
+    expect(screen.getAllByText('Held').length).toBeGreaterThan(1);
+  });
+
+  it('shows "Sold" tag on players in the sold sheet', async () => {
+    renderRoom({ players: [soldPlayer] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getAllByText('Sold')[0]);
+    await waitFor(() => expect(screen.getByText('Siva Raj')).toBeInTheDocument());
+    // "Sold" appears both as chip label and as status tag inside the sheet
+    expect(screen.getAllByText('Sold').length).toBeGreaterThan(1);
+  });
+});
+
 describe('AuctionRoom — BidLogStrip always renders', () => {
   it('shows "No bids yet" when bids is empty (prevents layout jump)', () => {
     renderRoom({ bids: [] }, { isAdmin: true, userId: 'admin-uid' });

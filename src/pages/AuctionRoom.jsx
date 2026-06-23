@@ -460,19 +460,27 @@ export default function AuctionRoom() {
   }
 
   if (error || !auction) {
+    const isMigrationMissing = error?.includes('relation') || error?.includes('does not exist');
+    const isNotFound = !auction || error?.includes('rows returned') || error?.includes('PGRST116') || error?.includes('no rows');
+    const headline = isMigrationMissing
+      ? 'Setup required'
+      : isNotFound
+        ? 'Auction not found'
+        : 'Unable to load auction';
+    const detail = isMigrationMissing
+      ? 'Run migration 030_auctions.sql in Supabase SQL Editor first.'
+      : isNotFound
+        ? 'This auction may have been deleted or moved.'
+        : "Check your connection and try again.";
     return (
       <div className="p-4 space-y-4 page-transition">
         <button onClick={() => navigate('/auctions')} className="flex items-center gap-2 text-sm text-ink-500">
           <ArrowLeft size={16} /> Back to Auctions
         </button>
         <div className="card p-6 text-center space-y-2">
-          <p className="text-2xl">⚠️</p>
-          <p className="font-semibold text-ink-700 dark:text-ink-200">{error ?? 'Auction not found'}</p>
-          <p className="text-xs text-ink-400">
-            {error?.includes('relation') || error?.includes('does not exist')
-              ? 'Run migration 030_auctions.sql in Supabase SQL Editor first.'
-              : "The auction may have been deleted or you don't have access."}
-          </p>
+          <p className="text-2xl">{isMigrationMissing ? '🛠️' : isNotFound ? '🗑️' : '⚠️'}</p>
+          <p className="font-semibold text-ink-700 dark:text-ink-200">{headline}</p>
+          <p className="text-xs text-ink-400">{detail}</p>
         </div>
       </div>
     );
@@ -489,7 +497,6 @@ export default function AuctionRoom() {
         <p className="font-bold text-ink-900 dark:text-white truncate text-sm">{auction.name}</p>
       </div>
       <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${auction.status === 'live' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300' : 'bg-ink-100 text-ink-400'}`}>
-        {auction.status === 'live' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1 animate-pulse" />}
         {auction.status.toUpperCase()}
       </span>
       {viewerCount > 1 && (
@@ -638,7 +645,7 @@ export default function AuctionRoom() {
                     <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{ap.player?.name}</p>
                     <p className="text-[11px] text-ink-400">{ap.player?.role}</p>
                   </div>
-                  <span className="text-xs tabular-nums text-ink-500">₹{ap.base_price?.toLocaleString()}</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">Available</span>
                 </div>
               ))
             }
@@ -667,7 +674,10 @@ export default function AuctionRoom() {
                               <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{ap.player?.name}</p>
                               <p className="text-[11px] text-ink-400">{ap.player?.role}</p>
                             </div>
-                            <span className="text-sm font-bold text-brand-green tabular-nums">₹{ap.sold_price?.toLocaleString()}</span>
+                            <div className="flex flex-col items-end gap-0.5 shrink-0">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-green/10 text-brand-green">Sold</span>
+                              <span className="text-xs font-bold text-brand-green tabular-nums">₹{ap.sold_price?.toLocaleString()}</span>
+                            </div>
                           </button>
                         ))
                       }
@@ -741,7 +751,6 @@ export default function AuctionRoom() {
           <p className="font-bold text-ink-900 dark:text-white truncate">{auction.name}</p>
         </div>
         <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${auction.status === 'live' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300' : 'bg-ink-100 text-ink-400'}`}>
-          {auction.status === 'live' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1 animate-pulse" />}
           {auction.status.toUpperCase()}
         </span>
         {viewerCount > 1 && (
@@ -788,8 +797,8 @@ export default function AuctionRoom() {
         />
       )}
 
-      {/* Bid log */}
-      <BidLog bids={bids} teams={teams} />
+      {/* Bid log — same horizontal strip as auctioneer view */}
+      <BidLogStrip bids={bids} teams={teams} />
 
       {/* Pool / Held / Sold counters */}
       <div className="flex gap-2">
@@ -823,7 +832,7 @@ export default function AuctionRoom() {
                   <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{ap.player?.name}</p>
                   <p className="text-[11px] text-ink-400">{ap.player?.role}</p>
                 </div>
-                <span className="text-xs tabular-nums text-ink-500">₹{ap.base_price?.toLocaleString()}</span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">Available</span>
               </div>
             ))
           }
@@ -854,7 +863,10 @@ export default function AuctionRoom() {
                             <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{ap.player?.name}</p>
                             <p className="text-[11px] text-ink-400">{ap.player?.role}</p>
                           </div>
-                          <span className="text-sm font-bold text-brand-green tabular-nums">₹{ap.sold_price?.toLocaleString()}</span>
+                          <div className="flex flex-col items-end gap-0.5 shrink-0">
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-green/10 text-brand-green">Sold</span>
+                            <span className="text-xs font-bold text-brand-green tabular-nums">₹{ap.sold_price?.toLocaleString()}</span>
+                          </div>
                         </button>
                       ))
                     }

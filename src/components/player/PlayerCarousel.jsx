@@ -384,10 +384,10 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                     )}
 
                     <p className="text-[15px] font-bold text-ink-900 dark:text-white text-center leading-tight truncate">
-                      {displayName(player)}
+                      {player.name}
                     </p>
-                    {player.nickname && (
-                      <p className="text-[11px] text-ink-400 dark:text-ink-500 text-center truncate mt-0.5">{player.name}</p>
+                    {player.nickname?.trim() && (
+                      <p className="text-[11px] text-ink-400 dark:text-ink-500 text-center truncate mt-0.5">"{player.nickname.trim()}"</p>
                     )}
                     <div className="flex items-center justify-center mt-2">
                       {player.role && (
@@ -456,7 +456,10 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                   ) : (
                     <>
                       <div className="px-5 pt-5 pb-3 border-b border-white/10">
-                        <p className="text-white font-bold text-sm text-center truncate">{displayName(player)}</p>
+                        <p className="text-white font-bold text-sm text-center truncate">{player.name}</p>
+                        {player.nickname?.trim() && (
+                          <p className="text-white/60 text-[11px] text-center truncate">"{player.nickname.trim()}"</p>
+                        )}
                         {player.role && (
                           <p className="text-white/40 text-[11px] text-center mt-0.5">
                             {ROLE_LABELS[player.role] || player.role}

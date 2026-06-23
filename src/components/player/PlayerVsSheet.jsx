@@ -4,6 +4,7 @@ import BottomSheet from '../shared/BottomSheet';
 import PlayerAvatar from './PlayerAvatar';
 import { getPlayerVsPlayer } from '../../services/playerService';
 import { displayName } from '../../lib/cricketUtils';
+import PlayerName from '../shared/PlayerName';
 
 function StatRow({ label, p1Val, p2Val, lowerIsBetter = false }) {
   const p1Num = parseFloat(p1Val);
@@ -78,8 +79,8 @@ export default function PlayerVsSheet({ p1, p2, p1Stats, p2Stats, onClose }) {
     return balls ? ((runs || 0) / balls * 6).toFixed(1) : '—';
   }
 
-  const p1First = displayName(p1).split(' ')[0];
-  const p2First = displayName(p2).split(' ')[0];
+  const p1First = (p1.nickname?.trim() || p1.name || '').split(' ')[0];
+  const p2First = (p2.nickname?.trim() || p2.name || '').split(' ')[0];
 
   return (
     <BottomSheet open onClose={onClose} title="Head to Head" heightClass="h-auto" noScroll>
@@ -89,7 +90,7 @@ export default function PlayerVsSheet({ p1, p2, p1Stats, p2Stats, onClose }) {
         <div className="flex-1 flex items-center gap-2 min-w-0">
           <PlayerAvatar name={p1.name} photoUrl={p1.photo_url} size={36} />
           <div className="min-w-0">
-            <p className="font-bold text-ink-900 dark:text-white text-sm truncate leading-tight">{displayName(p1)}</p>
+            <PlayerName player={p1} nameClass="text-sm font-bold text-ink-900 dark:text-white" />
             <p className="text-[10px] text-ink-400 capitalize">{(p1.role || '').replace('_', ' ')}</p>
           </div>
         </div>
@@ -98,7 +99,7 @@ export default function PlayerVsSheet({ p1, p2, p1Stats, p2Stats, onClose }) {
         </div>
         <div className="flex-1 flex items-center gap-2 justify-end min-w-0">
           <div className="min-w-0 text-right">
-            <p className="font-bold text-ink-900 dark:text-white text-sm truncate leading-tight">{displayName(p2)}</p>
+            <PlayerName player={p2} nameClass="text-sm font-bold text-ink-900 dark:text-white" className="items-end" />
             <p className="text-[10px] text-ink-400 capitalize">{(p2.role || '').replace('_', ' ')}</p>
           </div>
           <PlayerAvatar name={p2.name} photoUrl={p2.photo_url} size={36} />

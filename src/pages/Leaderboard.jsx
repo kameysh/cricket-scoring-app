@@ -10,6 +10,7 @@ import PlayerAvatar from '../components/player/PlayerAvatar';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import { displayName } from '../lib/cricketUtils';
 import EmptyState from '../components/shared/EmptyState';
+import PlayerName from '../components/shared/PlayerName';
 
 // ── MVP score formula ─────────────────────────────────────────────────────────
 function calcMvpScore(s) {
@@ -287,9 +288,7 @@ export default function Leaderboard() {
         className="flex items-center gap-2 text-left"
       >
         <PlayerAvatar name={row.players?.name} photoUrl={row.players?.photo_url} size={28} />
-        <span className="text-xs font-semibold text-ink-900 dark:text-white truncate" style={{ maxWidth: '80px' }}>
-          {displayName(row.players) || '—'}
-        </span>
+        <PlayerName player={row.players} nameClass="text-xs text-ink-900 dark:text-white" className="max-w-[80px]" />
       </button>
     </td>
   );

@@ -213,15 +213,28 @@ export async function autosellCaptains(auctionId) {
       .maybeSingle();
     if (!player) continue;
 
-    // Find their auction_player row (must be in pool)
-    const { data: ap } = await supabase
+    // Find their auction_player row — any status (may already be held/sold from a retry)
+    let { data: ap } = await supabase
       .from('auction_players')
-      .select('id, base_price, player:player_id(name)')
+      .select('id, base_price, status, player:player_id(name)')
       .eq('auction_id', auctionId)
       .eq('player_id', player.id)
-      .eq('status', 'pool')
       .maybeSingle();
-    if (!ap) continue;
+
+    // Captain wasn't added to the pool yet — add them automatically at base_price 100
+    if (!ap) {
+      const pool_order = Math.floor(Math.random() * 1_000_000);
+      const { data: inserted, error: insertErr } = await supabase
+        .from('auction_players')
+        .insert({ auction_id: auctionId, player_id: player.id, base_price: 100, pool_order })
+        .select('id, base_price, status, player:player_id(name)')
+        .single();
+      if (insertErr) throw insertErr;
+      ap = inserted;
+    }
+
+    // Already sold (e.g. autosell called twice) — skip gracefully
+    if (ap.status === 'sold') continue;
 
     const price = ap.base_price ?? 100;
 

@@ -10,8 +10,14 @@ const POOL = [
 
 const WINNER = POOL[0];
 
-beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); });
+beforeEach(() => {
+  vi.useFakeTimers();
+  navigator.vibrate = vi.fn();
+});
+afterEach(() => {
+  vi.useRealTimers();
+  delete navigator.vibrate;
+});
 
 describe('PlayerDrawAnimation', () => {
   it('shows "Drawing..." immediately on render', () => {
@@ -72,5 +78,40 @@ describe('PlayerDrawAnimation', () => {
     render(<PlayerDrawAnimation poolPlayers={POOL} winner={null} onComplete={onComplete} />);
     await act(async () => { vi.advanceTimersByTime(5000); });
     expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('vibrates during fast spin phase', async () => {
+    render(<PlayerDrawAnimation poolPlayers={POOL} winner={null} onComplete={vi.fn()} />);
+    await act(async () => { vi.advanceTimersByTime(200); });
+    // 2 spin ticks at 80ms each → vibrate called at least twice with short pulse
+    expect(navigator.vibrate).toHaveBeenCalledWith(18);
+    expect(navigator.vibrate.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('vibrates with escalating pulses during slowdown', async () => {
+    render(<PlayerDrawAnimation poolPlayers={POOL} winner={WINNER} onComplete={vi.fn()} />);
+    // Get past spin into slowing phase
+    await act(async () => { vi.advanceTimersByTime(1700); });
+    const callsBefore = navigator.vibrate.mock.calls.length;
+    // Run slow steps
+    await act(async () => { vi.advanceTimersByTime(2100); });
+    const slowCalls = navigator.vibrate.mock.calls.slice(callsBefore);
+    // 5 slow-step pulses, each heavier than 18ms
+    expect(slowCalls.length).toBeGreaterThanOrEqual(5);
+    expect(slowCalls.some(([v]) => v > 18)).toBe(true);
+  });
+
+  it('fires double-buzz pattern on reveal', async () => {
+    render(<PlayerDrawAnimation poolPlayers={POOL} winner={WINNER} onComplete={vi.fn()} />);
+    await runFullAnimation();
+    // Reveal vibration is an array pattern [100, 60, 180]
+    expect(navigator.vibrate).toHaveBeenCalledWith([100, 60, 180]);
+  });
+
+  it('does not throw when navigator.vibrate is absent', async () => {
+    delete navigator.vibrate;
+    expect(() =>
+      render(<PlayerDrawAnimation poolPlayers={POOL} winner={null} onComplete={vi.fn()} />)
+    ).not.toThrow();
   });
 });

@@ -275,7 +275,7 @@ describe('autosellCaptains', () => {
     expect(result).toEqual([]);
   });
 
-  it('skips gracefully when captain player is not in the auction pool', async () => {
+  it('auto-adds captain to pool then sells them when not yet in pool', async () => {
     chain.then = (resolve) => Promise.resolve({
       data: [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }],
       error: null,
@@ -283,7 +283,41 @@ describe('autosellCaptains', () => {
 
     chain.maybeSingle
       .mockResolvedValueOnce({ data: { id: 'p1' }, error: null })  // players lookup succeeds
-      .mockResolvedValueOnce({ data: null, error: null });           // auction_players not in pool
+      .mockResolvedValueOnce({ data: null, error: null });           // auction_players not found
+
+    // insert (auto-add to pool) returns the new row
+    chain.single.mockResolvedValueOnce({
+      data: { id: 'ap-new', base_price: 100, status: 'pool', player: { name: 'Ravi' } },
+      error: null,
+    });
+
+    let soldUpdate = null;
+    chain.update.mockImplementation((fields) => {
+      if (fields.status === 'sold') soldUpdate = fields;
+      return chain;
+    });
+    chain.insert.mockReturnValue(chain);
+
+    const result = await autosellCaptains('a1');
+    expect(result).toHaveLength(1);
+    expect(result[0].teamName).toBe('Super Kings');
+    expect(result[0].price).toBe(100);
+    expect(soldUpdate?.status).toBe('sold');
+    expect(soldUpdate?.sold_to_team_id).toBe('t1');
+  });
+
+  it('skips captain already sold (idempotent on retry)', async () => {
+    chain.then = (resolve) => Promise.resolve({
+      data: [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }],
+      error: null,
+    }).then(resolve);
+
+    chain.maybeSingle
+      .mockResolvedValueOnce({ data: { id: 'p1' }, error: null })
+      .mockResolvedValueOnce({
+        data: { id: 'ap1', base_price: 500, status: 'sold', player: { name: 'Ravi' } },
+        error: null,
+      });
 
     const result = await autosellCaptains('a1');
     expect(result).toEqual([]);
@@ -298,7 +332,7 @@ describe('autosellCaptains', () => {
     chain.maybeSingle
       .mockResolvedValueOnce({ data: { id: 'p1' }, error: null })   // players lookup
       .mockResolvedValueOnce({
-        data: { id: 'ap1', base_price: 500, player: { name: 'Ravi' } },
+        data: { id: 'ap1', base_price: 500, status: 'pool', player: { name: 'Ravi' } },
         error: null,
       }); // auction_players
 
