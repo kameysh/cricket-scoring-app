@@ -34,6 +34,7 @@ import HeadToHead from './pages/HeadToHead';
 import Auctions from './pages/Auctions';
 import AuctionSetup from './pages/AuctionSetup';
 import AuctionRoom from './pages/AuctionRoom';
+import AuctionSummary from './pages/AuctionSummary';
 import AcceptInvite from './pages/AcceptInvite';
 import ResetPassword from './pages/ResetPassword';
 
@@ -131,9 +132,10 @@ export default function App() {
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="/auctions/new/:id?" element={<AuctionSetup />} />
           </Route>
-          {/* Auctions list + room — all authenticated users */}
+          {/* Auctions list + room + summary — all authenticated users */}
           <Route element={<ProtectedRoute />}>
             <Route path="/auctions" element={<Auctions />} />
+            <Route path="/auctions/:id/summary" element={<AuctionSummary />} />
             <Route path="/auctions/:id" element={<AuctionRoom />} />
           </Route>
         </Routes>

@@ -43,7 +43,11 @@ export default function Auctions() {
       ) : (
         <div className="space-y-2">
           {auctions.map(a => (
-            <AuctionCard key={a.id} auction={a} onClick={() => navigate(`/auctions/${a.id}`)} />
+            <AuctionCard
+              key={a.id}
+              auction={a}
+              onClick={() => navigate(a.status === 'completed' ? `/auctions/${a.id}/summary` : `/auctions/${a.id}`)}
+            />
           ))}
         </div>
       )}

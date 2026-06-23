@@ -585,3 +585,39 @@ describe('AuctionRoom — viewer count', () => {
     expect(screen.queryByText(/👁/)).not.toBeInTheDocument();
   });
 });
+
+describe('AuctionRoom — Complete Auction', () => {
+  it('shows Complete Auction button to admin when pool, held and active are all empty', () => {
+    renderRoom(
+      { players: [], bids: [] },
+      { isAdmin: true, userId: 'admin-uid' }
+    );
+    expect(screen.getByText('🏁 Complete Auction')).toBeInTheDocument();
+  });
+
+  it('does not show Complete Auction button when pool still has players', () => {
+    const poolPlayer = {
+      id: 'ap1', player_id: 'p1', status: 'pool', base_price: 100,
+      current_bid: null, leading_team_id: null, pass_team1: false, pass_team2: false,
+      player: { id: 'p1', name: 'Ravi', role: 'batsman' },
+    };
+    renderRoom({ players: [poolPlayer], bids: [] }, { isAdmin: true, userId: 'admin-uid' });
+    expect(screen.queryByText('🏁 Complete Auction')).not.toBeInTheDocument();
+  });
+
+  it('does not show Complete Auction button to non-admin', () => {
+    renderRoom({ players: [], bids: [] }, { isAdmin: false, userId: 'viewer-uid' });
+    expect(screen.queryByText('🏁 Complete Auction')).not.toBeInTheDocument();
+  });
+
+  it('calls updateAuctionStatus with completed when confirmed', async () => {
+    const { updateAuctionStatus } = await import('../services/auctionService');
+    vi.mocked(updateAuctionStatus).mockResolvedValue({ ...BASE_AUCTION, status: 'completed' });
+
+    renderRoom({ players: [], bids: [] }, { isAdmin: true, userId: 'admin-uid' });
+    fireEvent.click(screen.getByText('🏁 Complete Auction'));
+    await waitFor(() => expect(screen.getByText('Complete Auction')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Complete' }));
+    await waitFor(() => expect(updateAuctionStatus).toHaveBeenCalledWith('a1', 'completed'));
+  });
+});

@@ -165,7 +165,9 @@ export default function AuctionRoom() {
   const [soldSheetOpen, setSoldSheetOpen] = useState(false);
   const [topDealsSheetOpen, setTopDealsSheetOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [activeCareerStats, setActiveCareerStats] = useState(null);
   const [playerSheetOpen, setPlayerSheetOpen] = useState(false);
   const [soldCardData, setSoldCardData] = useState(null);   // { player, teamName, basePrice, soldPrice }
@@ -418,6 +420,18 @@ export default function AuctionRoom() {
     }
   }
 
+  async function handleComplete() {
+    setCompleting(true);
+    try {
+      const updated = await auctionService.updateAuctionStatus(id, 'completed');
+      useAuctionStore.getState()._onAuctionUpdate(updated);
+      navigate(`/auctions/${id}/summary`, { replace: true });
+    } catch (e) {
+      toast.error(e.message);
+      setCompleting(false);
+    }
+  }
+
   // ── Captain handlers ───────────────────────────────────────────────────────
 
   async function handleBid(amount) {
@@ -487,6 +501,12 @@ export default function AuctionRoom() {
     );
   }
 
+  // Completed auctions are read-only — redirect to summary page
+  if (auction.status === 'completed') {
+    navigate(`/auctions/${id}/summary`, { replace: true });
+    return null;
+  }
+
   // ── Shared pieces ──────────────────────────────────────────────────────────
 
   const header = (
@@ -515,6 +535,13 @@ export default function AuctionRoom() {
       )}
     </div>
   );
+
+  // Complete Auction button — shown to admin when nothing left to sell
+  const canComplete = isAdmin
+    && auction.status === 'live'
+    && poolPlayers.length === 0
+    && heldPlayers.length === 0
+    && !activePlayer;
 
   // captain_id on auction_teams is a user_id — match against player.user_id to identify captains
   const captainUserIds = new Set(teams.map(t => t.captain_id).filter(Boolean));
@@ -704,6 +731,17 @@ export default function AuctionRoom() {
         {/* Counter row */}
         {counterRow}
 
+        {/* Complete Auction — shown when nothing left to sell */}
+        {canComplete && (
+          <button
+            onClick={() => setCompleteConfirmOpen(true)}
+            className="mx-4 w-[calc(100%-2rem)] py-3 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2"
+            style={{ background: 'linear-gradient(135deg, #065f46, #047857)' }}
+          >
+            🏁 Complete Auction
+          </button>
+        )}
+
         {/* Player full card sheet */}
         <BottomSheet open={playerSheetOpen} onClose={() => setPlayerSheetOpen(false)} title={p?.name ?? 'Player'}>
           <ActivePlayerSpotlight
@@ -776,6 +814,15 @@ export default function AuctionRoom() {
           }
         </BottomSheet>
         {topDealsSheet}
+        <ConfirmDialog
+          open={completeConfirmOpen}
+          title="Complete Auction"
+          message="Mark this auction as completed? This will lock the results and everyone will be taken to the summary view."
+          confirmLabel="Complete"
+          disabled={completing}
+          onConfirm={handleComplete}
+          onCancel={() => setCompleteConfirmOpen(false)}
+        />
         <ConfirmDialog
           open={deleteConfirmOpen}
           title="Delete Auction"
@@ -957,6 +1004,27 @@ export default function AuctionRoom() {
         }
       </BottomSheet>
       {topDealsSheet}
+
+      {/* Complete Auction button — admin only, nothing left to sell */}
+      {canComplete && (
+        <button
+          onClick={() => setCompleteConfirmOpen(true)}
+          className="w-full py-3 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2"
+          style={{ background: 'linear-gradient(135deg, #065f46, #047857)' }}
+        >
+          🏁 Complete Auction
+        </button>
+      )}
+
+      <ConfirmDialog
+        open={completeConfirmOpen}
+        title="Complete Auction"
+        message="Mark this auction as completed? This will lock the results and everyone will be taken to the summary view."
+        confirmLabel="Complete"
+        disabled={completing}
+        onConfirm={handleComplete}
+        onCancel={() => setCompleteConfirmOpen(false)}
+      />
 
       {/* Delete confirm */}
       <ConfirmDialog
