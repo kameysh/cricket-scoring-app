@@ -5,6 +5,8 @@ import { UserPlus, X, CheckCircle2, ArrowLeftRight, Trash2 } from 'lucide-react'
 import * as tournamentService from '../services/tournamentService';
 import * as matchService from '../services/matchService';
 import * as venueService from '../services/venueService';
+import { listTeams, getAllTeamPlayers } from '../services/teamService';
+import { listAuctionTeams } from '../services/auctionService';
 import { usePlayerStore } from '../stores/playerStore';
 import { useRole } from '../hooks/useRole';
 import BottomSheet from '../components/shared/BottomSheet';
@@ -28,6 +30,10 @@ export default function TournamentSetup() {
   const [venueId, setVenueId] = useState('');
   const [venues, setVenues] = useState([]);
   const [loading, setLoading] = useState(false);
+  // globalRosterByName: { [lowerCaseName]: Set<playerId> } — from the teams registry
+  const [globalRosterByName, setGlobalRosterByName] = useState({});
+  // captainUserIdByName: { [lowerCaseName]: userId } — from auction_teams captain
+  const [captainUserIdByName, setCaptainUserIdByName] = useState({});
 
   // Squad picker (add/remove mode)
   // captainIds / keeperIds: { [teamId]: playerId | null }
@@ -53,14 +59,63 @@ export default function TournamentSetup() {
       tournamentService.getTournamentTeams(id),
       tournamentService.getTournamentMatches(id),
       tournamentService.getTeamPlayersForTournament(id),
-    ]).then(([t, ts, matches, playerMap]) => {
+      listTeams(),
+      getAllTeamPlayers(),
+    ]).then(([t, ts, matches, playerMap, globalTeams, allTp]) => {
       setTournament(t);
       setTeams(ts);
       setMatchesExist(matches.length > 0);
       setTeamPlayers(playerMap);
       if (t.venue_id) setVenueId(t.venue_id);
+      // Build name → playerIds map for teams that have a registry roster
+      const rosterMap = {};
+      for (const gt of globalTeams ?? []) {
+        const ids = (allTp ?? []).filter(r => r.team_id === gt.id).map(r => r.player_id);
+        if (ids.length > 0) rosterMap[gt.name.toLowerCase()] = new Set(ids);
+      }
+      setGlobalRosterByName(rosterMap);
+      // Auto-select players for tournament teams that have no assignments yet
+      setTeamPlayers(prev => {
+        const next = { ...prev };
+        for (const tt of ts) {
+          if ((next[tt.id] || []).length === 0) {
+            const roster = rosterMap[tt.name.toLowerCase()];
+            if (roster && roster.size > 0) next[tt.id] = [...roster];
+          }
+        }
+        return next;
+      });
+      // Load auction captain user_ids for teams that came from an auction
+      const auctionIds = [...new Set((globalTeams ?? []).map(gt => gt.source_auction_id).filter(Boolean))];
+      if (auctionIds.length > 0) {
+        Promise.all(auctionIds.map(aid => listAuctionTeams(aid))).then(results => {
+          const capMap = {};
+          for (const auctionTeams of results) {
+            for (const at of auctionTeams) {
+              if (at.captain_id) capMap[at.name.toLowerCase()] = at.captain_id;
+            }
+          }
+          setCaptainUserIdByName(capMap);
+        });
+      }
     });
   }, [id]);
+
+  // Auto-populate captainIds once players + auction captain data are both loaded
+  useEffect(() => {
+    if (!teams.length || !players.length || !Object.keys(captainUserIdByName).length) return;
+    setCaptainIds(prev => {
+      const next = { ...prev };
+      for (const tt of teams) {
+        if (next[tt.id]) continue; // already set
+        const captainUserId = captainUserIdByName[tt.name.toLowerCase()];
+        if (!captainUserId) continue;
+        const captainPlayer = players.find(p => p.user_id === captainUserId);
+        if (captainPlayer) next[tt.id] = captainPlayer.id;
+      }
+      return next;
+    });
+  }, [teams, players, captainUserIdByName]);
 
   // Players assigned to teams other than the current picker/replace team
   const allAssigned = useMemo(() => {
@@ -369,21 +424,32 @@ export default function TournamentSetup() {
       )}
 
       {/* ── Squad picker (add/edit) ── */}
-      <BottomSheet
-        open={!!pickerTeamId}
-        onClose={() => setPickerTeamId(null)}
-        title={`Edit Squad — ${teams.find(t => t.id === pickerTeamId)?.name || ''}`}
-        heightClass="h-[88vh]"
-      >
-        <PlayerSearch
-          players={players}
-          selectedIds={pickerTeamId ? (teamPlayers[pickerTeamId] || []) : []}
-          disabledIds={allAssigned}
-          onToggle={togglePlayer}
-          onQuickAdd={handleQuickAdd}
-          maxSelectable={isSeries ? teamSize : undefined}
-        />
-      </BottomSheet>
+      {(() => {
+        const pickerTeam = teams.find(t => t.id === pickerTeamId);
+        const registryRoster = pickerTeam
+          ? globalRosterByName[pickerTeam.name.toLowerCase()]
+          : null;
+        const pickerPlayers = registryRoster
+          ? players.filter(p => registryRoster.has(p.id))
+          : players;
+        return (
+          <BottomSheet
+            open={!!pickerTeamId}
+            onClose={() => setPickerTeamId(null)}
+            title={`Edit Squad — ${pickerTeam?.name || ''}`}
+            heightClass="h-[88vh]"
+          >
+            <PlayerSearch
+              players={pickerPlayers}
+              selectedIds={pickerTeamId ? (teamPlayers[pickerTeamId] || []) : []}
+              disabledIds={allAssigned}
+              onToggle={togglePlayer}
+              onQuickAdd={registryRoster ? undefined : handleQuickAdd}
+              maxSelectable={isSeries ? teamSize : undefined}
+            />
+          </BottomSheet>
+        );
+      })()}
 
       {/* ── Player action sheet ── */}
       <BottomSheet

@@ -3,16 +3,18 @@ import { supabase } from '../lib/supabase';
 export async function listTeams() {
   const { data, error } = await supabase
     .from('teams')
-    .select('id, name, is_guest')
+    .select('id, name, is_guest, source_auction_id, source_auction:source_auction_id(name)')
     .order('name');
   if (error) throw error;
   return data || [];
 }
 
-export async function addTeam(name, isGuest = false) {
+export async function addTeam(name, isGuest = false, sourceAuctionId = null) {
+  const row = { name: name.trim(), is_guest: isGuest };
+  if (sourceAuctionId) row.source_auction_id = sourceAuctionId;
   const { data, error } = await supabase
     .from('teams')
-    .insert({ name: name.trim(), is_guest: isGuest })
+    .insert(row)
     .select()
     .single();
   if (error) throw error;

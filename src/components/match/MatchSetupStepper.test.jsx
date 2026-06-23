@@ -55,6 +55,7 @@ vi.mock('lucide-react', () => ({
   Users2: () => null, Settings2: () => null, ClipboardCheck: () => null, Star: () => null, X: () => null,
 }));
 
+import * as teamService from '../../services/teamService';
 import MatchSetupStepper from './MatchSetupStepper';
 
 async function renderAndGoToTeams() {
@@ -122,6 +123,22 @@ describe('MatchSetupStepper — keeper is optional', () => {
 
     expect(screen.queryByText(/keeper.*required/i)).toBeNull();
     expect(screen.queryByText(/select keeper \*/i)).toBeNull();
+  });
+});
+
+describe('MatchSetupStepper — auction teams excluded from team dropdown', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('does not show auction-sourced teams in the dropdowns', async () => {
+    vi.mocked(teamService.listTeams).mockResolvedValue([
+      { id: 'r1', name: 'Back Street Boyz', source_auction_id: null },
+      { id: 'a1', name: 'CSK', source_auction_id: 'auc-1' },
+    ]);
+    await act(async () => { render(<MatchSetupStepper />); });
+    // Back Street Boyz (regular team) should appear as an option in at least one dropdown
+    expect(screen.queryAllByRole('option', { name: 'Back Street Boyz' }).length).toBeGreaterThan(0);
+    // CSK (auction-sourced) must NOT appear in any dropdown
+    expect(screen.queryAllByRole('option', { name: 'CSK' })).toHaveLength(0);
   });
 });
 

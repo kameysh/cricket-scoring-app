@@ -231,6 +231,11 @@ export default function Teams() {
                           Guest
                         </span>
                       )}
+                      {t.source_auction?.name && (
+                        <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-teal/10 text-brand-teal">
+                          🏷️ {t.source_auction.name}
+                        </span>
+                      )}
                       {isOpen ? <ChevronUp size={15} className="shrink-0 text-ink-400 ml-auto" /> : <ChevronDown size={15} className="shrink-0 text-ink-400 ml-auto" />}
                     </button>
                   )}
@@ -258,102 +263,111 @@ export default function Teams() {
                 </div>
 
                 {/* Expanded player roster */}
-                {isOpen && (
-                  <div className="border-t border-ink-100 dark:border-white/10 px-3 pb-3 pt-2 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide flex items-center gap-1.5">
-                        <UserPlus size={12} /> Default Roster {exp.saving && <span className="text-brand-green">Saving…</span>}
-                      </p>
-                      {(() => {
-                        // Only count players available to this team (not on another team's roster)
-                        const available = allPlayers.filter(p => !assignedTo[p.id] || assignedTo[p.id] === t.id);
-                        const ogCount = available.filter(p => !p.is_guest).length;
-                        const guestCount = available.filter(p => p.is_guest).length;
-                        const rosterFilter = exp.rosterFilter || '';
-                        const toggle = (val) => { setExpanded(prev => ({ ...prev, [t.id]: { ...prev[t.id], rosterFilter: prev[t.id]?.rosterFilter === val ? '' : val } })); };
-                        return (
-                          <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-                            <button type="button" onClick={() => toggle('og')}
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${
-                                rosterFilter === 'og'
-                                  ? 'bg-ink-800 dark:bg-white text-white dark:text-ink-900'
-                                  : 'bg-ink-100 dark:bg-white/10 text-ink-500 dark:text-ink-400'
-                              }`}>
-                              OG ({ogCount})
-                            </button>
-                            <button type="button" onClick={() => toggle('guest')}
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${
-                                rosterFilter === 'guest'
-                                  ? 'bg-amber-500 text-white'
-                                  : 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400'
-                              }`}>
-                              Guest ({guestCount})
-                            </button>
-                          </div>
-                        );
-                      })()}
-                    </div>
+                {isOpen && (() => {
+                  const rosterPlayers = allPlayers.filter(p => exp.playerIds.includes(p.id));
+                  const isAuctionTeam = !!t.source_auction_id;
+                  const addingOpen = !!exp.addingOpen;
 
-                    {/* Search */}
-                    <input
-                      value={exp.search || ''}
-                      onChange={e => setExpanded(prev => ({ ...prev, [t.id]: { ...prev[t.id], search: e.target.value } }))}
-                      placeholder="Search players…"
-                      className="field-input !py-1.5 !text-sm"
-                    />
+                  return (
+                    <div className="border-t border-ink-100 dark:border-white/10 px-3 pb-3 pt-2 space-y-2">
+                      {/* Current roster */}
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide flex items-center gap-1.5">
+                          <UserPlus size={12} /> Roster
+                          {exp.saving && <span className="text-brand-green ml-1">Saving…</span>}
+                        </p>
+                        <span className="text-[11px] text-ink-400 tabular-nums">
+                          {rosterPlayers.length} player{rosterPlayers.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
 
-                    {/* Player list */}
-                    <div className="space-y-1 max-h-56 overflow-y-auto">
-                      {allPlayers
-                        .filter(p => !exp.rosterFilter || (exp.rosterFilter === 'guest' ? p.is_guest : !p.is_guest))
-                        .filter(p => !exp.search || p.name.toLowerCase().includes(exp.search.toLowerCase()))
-                        .map(p => {
-                          const selected = exp.playerIds.includes(p.id);
-                          const otherTeamId = assignedTo[p.id] && assignedTo[p.id] !== t.id ? assignedTo[p.id] : null;
-                          const otherTeamName = otherTeamId ? (teams.find(x => x.id === otherTeamId)?.name ?? 'another team') : null;
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => !otherTeamId && togglePlayer(t.id, p.id)}
-                              disabled={!!otherTeamId}
-                              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-colors ${
-                                otherTeamId
-                                  ? 'opacity-40 cursor-not-allowed border border-transparent'
-                                  : selected
-                                    ? 'bg-brand-green/10 border border-brand-green/30'
-                                    : 'hover:bg-ink-50 dark:hover:bg-white/5 border border-transparent'
-                              }`}
-                            >
+                      {rosterPlayers.length === 0 ? (
+                        <p className="text-sm text-ink-400 text-center py-2">No players in roster</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {rosterPlayers.map(p => (
+                            <div key={p.id} className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-brand-green/8 border border-brand-green/20">
                               <PlayerAvatar name={p.name} photoUrl={p.photo_url} size={28} />
-                              <span className="flex-1 min-w-0">
-                                <span className="block text-sm font-medium text-ink-900 dark:text-white truncate">{p.name}</span>
-                                {otherTeamName && (
-                                  <span className="block text-[10px] text-ink-400 truncate">In {otherTeamName}</span>
-                                )}
-                              </span>
-                              {p.is_guest && !otherTeamId && (
-                                <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                                  Guest
-                                </span>
+                              <span className="flex-1 min-w-0 text-sm font-medium text-ink-900 dark:text-white truncate">{p.name}</span>
+                              {p.is_guest && (
+                                <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">Guest</span>
                               )}
-                              {selected && !otherTeamId && (
-                                <span className="shrink-0 w-4 h-4 rounded-full bg-brand-green flex items-center justify-center">
-                                  <X size={9} className="text-white" strokeWidth={3} />
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                    </div>
+                              <button
+                                type="button"
+                                onClick={() => togglePlayer(t.id, p.id)}
+                                className="shrink-0 p-1 rounded-lg text-ink-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                                aria-label={`Remove ${p.name}`}
+                              >
+                                <X size={13} strokeWidth={2.5} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
-                    {exp.playerIds.length > 0 && (
-                      <p className="text-[11px] text-ink-400 text-center">
-                        {exp.playerIds.length} player{exp.playerIds.length !== 1 ? 's' : ''} in default roster
-                      </p>
-                    )}
-                  </div>
-                )}
+                      {/* Add Players — hidden for auction teams unless explicitly opened */}
+                      {!isAuctionTeam && (
+                        <button
+                          type="button"
+                          onClick={() => setExpanded(prev => ({ ...prev, [t.id]: { ...prev[t.id], addingOpen: !addingOpen, search: '' } }))}
+                          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-ink-200 dark:border-white/10 text-[12px] font-semibold text-ink-400 hover:text-brand-green hover:border-brand-green/40 transition-colors"
+                        >
+                          <UserPlus size={13} />
+                          {addingOpen ? 'Close' : 'Add / Remove Players'}
+                        </button>
+                      )}
+
+                      {!isAuctionTeam && addingOpen && (
+                        <div className="space-y-1.5">
+                          <input
+                            value={exp.search || ''}
+                            onChange={e => setExpanded(prev => ({ ...prev, [t.id]: { ...prev[t.id], search: e.target.value } }))}
+                            placeholder="Search players…"
+                            className="field-input !py-1.5 !text-sm"
+                          />
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {allPlayers
+                              .filter(p => !exp.search || p.name.toLowerCase().includes(exp.search.toLowerCase()))
+                              .map(p => {
+                                const selected = exp.playerIds.includes(p.id);
+                                const otherTeamId = assignedTo[p.id] && assignedTo[p.id] !== t.id ? assignedTo[p.id] : null;
+                                const otherTeamName = otherTeamId ? (teams.find(x => x.id === otherTeamId)?.name ?? 'another team') : null;
+                                return (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => !otherTeamId && togglePlayer(t.id, p.id)}
+                                    disabled={!!otherTeamId}
+                                    className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-colors ${
+                                      otherTeamId
+                                        ? 'opacity-40 cursor-not-allowed border border-transparent'
+                                        : selected
+                                          ? 'bg-brand-green/10 border border-brand-green/30'
+                                          : 'hover:bg-ink-50 dark:hover:bg-white/5 border border-transparent'
+                                    }`}
+                                  >
+                                    <PlayerAvatar name={p.name} photoUrl={p.photo_url} size={28} />
+                                    <span className="flex-1 min-w-0">
+                                      <span className="block text-sm font-medium text-ink-900 dark:text-white truncate">{p.name}</span>
+                                      {otherTeamName && <span className="block text-[10px] text-ink-400 truncate">In {otherTeamName}</span>}
+                                    </span>
+                                    {p.is_guest && !otherTeamId && (
+                                      <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">Guest</span>
+                                    )}
+                                    {selected && !otherTeamId && (
+                                      <span className="shrink-0 w-4 h-4 rounded-full bg-brand-green flex items-center justify-center">
+                                        <X size={9} className="text-white" strokeWidth={3} />
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

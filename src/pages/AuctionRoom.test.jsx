@@ -610,14 +610,18 @@ describe('AuctionRoom — Complete Auction', () => {
     expect(screen.queryByText('🏁 Complete Auction')).not.toBeInTheDocument();
   });
 
-  it('calls updateAuctionStatus with completed when confirmed', async () => {
-    const { updateAuctionStatus } = await import('../services/auctionService');
+  it('calls updateAuctionStatus and createTeamsFromAuction when confirmed', async () => {
+    const { updateAuctionStatus, createTeamsFromAuction } = await import('../services/auctionService');
     vi.mocked(updateAuctionStatus).mockResolvedValue({ ...BASE_AUCTION, status: 'completed' });
+    vi.mocked(createTeamsFromAuction).mockResolvedValue([]);
+    // Provide getState so handleComplete can call _onAuctionUpdate without throwing
+    vi.mocked(useAuctionStore).getState = vi.fn(() => ({ _onAuctionUpdate: vi.fn() }));
 
     renderRoom({ players: [], bids: [] }, { isAdmin: true, userId: 'admin-uid' });
     fireEvent.click(screen.getByText('🏁 Complete Auction'));
     await waitFor(() => expect(screen.getByText('Complete Auction')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Complete' }));
     await waitFor(() => expect(updateAuctionStatus).toHaveBeenCalledWith('a1', 'completed'));
+    await waitFor(() => expect(createTeamsFromAuction).toHaveBeenCalledWith('a1'));
   });
 });

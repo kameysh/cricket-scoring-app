@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Trophy } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 import * as auctionService from '../services/auctionService';
 import PlayerAvatar from '../components/player/PlayerAvatar';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
+import { useRole } from '../hooks/useRole';
+import { supabase } from '../lib/supabase';
 
 function StatChip({ label, value }) {
   return (
@@ -16,11 +20,21 @@ function StatChip({ label, value }) {
 export default function AuctionSummary() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isAdmin } = useRole();
   const [auction, setAuction] = useState(null);
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [userEmail, setUserEmail] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserEmail(session?.user?.email ?? null);
+    });
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -64,6 +78,19 @@ export default function AuctionSummary() {
     ? new Date(auction.completed_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
 
+  const isSuperAdmin = isAdmin && userEmail === 'kameshwaran26@gmail.com';
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await auctionService.deleteAuction(id);
+      navigate('/auctions', { replace: true });
+    } catch (e) {
+      toast.error(e.message);
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="p-4 pb-24 space-y-5 page-transition">
       {/* Header */}
@@ -78,6 +105,16 @@ export default function AuctionSummary() {
         <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-ink-100 dark:bg-white/10 text-ink-500 dark:text-ink-400 shrink-0">
           🏁 Completed
         </span>
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            className="p-2 rounded-xl text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 shrink-0"
+            aria-label="Delete auction"
+          >
+            <Trash2 size={18} />
+          </button>
+        )}
       </div>
 
       {/* Top stats strip */}
@@ -185,6 +222,17 @@ export default function AuctionSummary() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete Auction"
+        message={`Delete "${auction.name}"? This cannot be undone. Any teams created from this auction will remain.`}
+        confirmLabel="Delete"
+        danger
+        disabled={deleting}
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

@@ -47,7 +47,7 @@ export default function MatchSetupStepper() {
     venueService.listVenues().then(setVenues);
     tournamentService.listTournaments().then(setTournaments);
     teamService.listTeams().then(teams => {
-      setGlobalTeams(teams);
+      setGlobalTeams(teams.filter(t => !t.source_auction_id));
       // Reset defaults so the select shows the placeholder, not 'Team A'/'Team B'
       if (teams.length > 0) setForm(f => ({ ...f, team1_name: '', team2_name: '' }));
     }).catch(err => console.error('Failed to load teams:', err));

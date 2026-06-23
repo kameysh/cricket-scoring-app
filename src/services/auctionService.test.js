@@ -25,12 +25,19 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
+vi.mock('./teamService', () => ({
+  addTeam: vi.fn(),
+  setTeamPlayers: vi.fn(),
+}));
+
 import {
   createAuction, addAuctionTeam, getAuction,
   placeBid, dealPlayer, signalPass, holdPlayer, returnToPool,
   drawNextPlayer, updateAuctionStatus, undoLastBid, autosellCaptains,
+  createTeamsFromAuction,
 } from './auctionService';
 import { supabase } from '../lib/supabase';
+import * as teamService from './teamService';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -354,5 +361,65 @@ describe('autosellCaptains', () => {
     expect(soldUpdate?.sold_to_team_id).toBe('t1');
     expect(soldUpdate?.status).toBe('sold');
     expect(budgetUpdate?.budget_remaining).toBe(4500); // 5000 - 500
+  });
+});
+
+describe('createTeamsFromAuction', () => {
+  function makeChain(data, error = null) {
+    const c = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+    };
+    c.then = (resolve) => Promise.resolve({ data, error }).then(resolve);
+    return c;
+  }
+
+  beforeEach(() => {
+    vi.mocked(teamService.addTeam).mockReset();
+    vi.mocked(teamService.setTeamPlayers).mockReset();
+  });
+
+  it('creates a global team per auction_team and assigns sold players', async () => {
+    supabase.from
+      .mockReturnValueOnce(makeChain([
+        { id: 'at1', name: 'Super Kings' },
+        { id: 'at2', name: 'Royal Challengers' },
+      ]))
+      .mockReturnValueOnce(makeChain([
+        { player_id: 'p1', sold_to_team_id: 'at1' },
+        { player_id: 'p2', sold_to_team_id: 'at1' },
+        { player_id: 'p3', sold_to_team_id: 'at2' },
+      ]));
+
+    vi.mocked(teamService.addTeam)
+      .mockResolvedValueOnce({ id: 'g1', name: 'Super Kings' })
+      .mockResolvedValueOnce({ id: 'g2', name: 'Royal Challengers' });
+    vi.mocked(teamService.setTeamPlayers).mockResolvedValue();
+
+    const result = await createTeamsFromAuction('a1');
+
+    expect(teamService.addTeam).toHaveBeenCalledWith('Super Kings', false, 'a1');
+    expect(teamService.addTeam).toHaveBeenCalledWith('Royal Challengers', false, 'a1');
+    expect(teamService.setTeamPlayers).toHaveBeenCalledWith('g1', ['p1', 'p2']);
+    expect(teamService.setTeamPlayers).toHaveBeenCalledWith('g2', ['p3']);
+    expect(result).toHaveLength(2);
+  });
+
+  it('skips setTeamPlayers when team has no sold players', async () => {
+    supabase.from
+      .mockReturnValueOnce(makeChain([{ id: 'at1', name: 'Empty Kings' }]))
+      .mockReturnValueOnce(makeChain([]));
+
+    vi.mocked(teamService.addTeam).mockResolvedValueOnce({ id: 'g1', name: 'Empty Kings' });
+
+    await createTeamsFromAuction('a1');
+
+    expect(teamService.addTeam).toHaveBeenCalledTimes(1);
+    expect(teamService.setTeamPlayers).not.toHaveBeenCalled();
+  });
+
+  it('throws when DB fetch fails', async () => {
+    supabase.from.mockReturnValueOnce(makeChain(null, new Error('DB error')));
+    await expect(createTeamsFromAuction('a1')).rejects.toThrow('DB error');
   });
 });

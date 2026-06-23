@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 vi.mock('../services/auctionService');
 vi.mock('../components/player/PlayerAvatar', () => ({ default: () => <div data-testid="avatar" /> }));
+vi.mock('../hooks/useRole', () => ({ useRole: vi.fn() }));
+vi.mock('../lib/supabase', () => ({
+  supabase: {
+    auth: { getSession: vi.fn().mockResolvedValue({ data: { session: { user: { email: 'kameshwaran26@gmail.com' } } } }) },
+  },
+}));
 
 import * as auctionService from '../services/auctionService';
+import { useRole } from '../hooks/useRole';
 import AuctionSummary from './AuctionSummary';
 
 const BASE_AUCTION = {
@@ -41,7 +48,8 @@ const PLAYERS = [
   },
 ];
 
-function renderSummary() {
+function renderSummary({ isAdmin = false } = {}) {
+  vi.mocked(useRole).mockReturnValue({ isAdmin });
   vi.mocked(auctionService.getAuction).mockResolvedValue(BASE_AUCTION);
   vi.mocked(auctionService.listAuctionTeams).mockResolvedValue(TEAMS);
   vi.mocked(auctionService.listAuctionPlayers).mockResolvedValue(PLAYERS);
@@ -120,5 +128,41 @@ describe('AuctionSummary', () => {
       </MemoryRouter>
     );
     await waitFor(() => expect(screen.getByText('Auction not found')).toBeInTheDocument());
+  });
+});
+
+describe('AuctionSummary — delete auction', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('shows delete button for super admin', async () => {
+    renderSummary({ isAdmin: true });
+    await waitFor(() => expect(screen.getByText('Gully Premier League')).toBeInTheDocument());
+    expect(screen.getByLabelText('Delete auction')).toBeInTheDocument();
+  });
+
+  it('does not show delete button for regular admin', async () => {
+    const { supabase } = await import('../lib/supabase');
+    vi.mocked(supabase.auth.getSession).mockResolvedValueOnce({
+      data: { session: { user: { email: 'other@example.com' } } },
+    });
+    renderSummary({ isAdmin: true });
+    await waitFor(() => expect(screen.getByText('Gully Premier League')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Delete auction')).not.toBeInTheDocument();
+  });
+
+  it('does not show delete button for non-admin', async () => {
+    renderSummary({ isAdmin: false });
+    await waitFor(() => expect(screen.getByText('Gully Premier League')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Delete auction')).not.toBeInTheDocument();
+  });
+
+  it('calls deleteAuction and navigates to /auctions on confirm', async () => {
+    vi.mocked(auctionService.deleteAuction).mockResolvedValue();
+    renderSummary({ isAdmin: true });
+    await waitFor(() => expect(screen.getByLabelText('Delete auction')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Delete auction'));
+    await waitFor(() => expect(screen.getByText('Delete Auction')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(auctionService.deleteAuction).toHaveBeenCalledWith('a1'));
   });
 });

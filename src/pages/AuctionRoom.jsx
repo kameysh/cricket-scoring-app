@@ -425,6 +425,7 @@ export default function AuctionRoom() {
     try {
       const updated = await auctionService.updateAuctionStatus(id, 'completed');
       useAuctionStore.getState()._onAuctionUpdate(updated);
+      await auctionService.createTeamsFromAuction(id);
       navigate(`/auctions/${id}/summary`, { replace: true });
     } catch (e) {
       toast.error(e.message);

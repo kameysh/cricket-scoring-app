@@ -40,15 +40,19 @@ function setup() {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-async function renderAndExpandTeam(teamName, teamId, rosterIds = []) {
+async function expandTeam(teamName, rosterIds = []) {
   teamService.getTeamPlayers.mockResolvedValue(rosterIds);
-  const utils = render(<Teams />);
-  // Wait for initial load
+  render(<Teams />);
   await waitFor(() => expect(screen.getByText('Back Street Boyz')).toBeInTheDocument());
-  // Expand the requested team
   await userEvent.click(screen.getByText(teamName));
+  // Wait for roster section header
+  await waitFor(() => expect(screen.getByText('Roster')).toBeInTheDocument());
+}
+
+async function expandTeamAndOpenAddPanel(teamName, rosterIds = []) {
+  await expandTeam(teamName, rosterIds);
+  await userEvent.click(screen.getByText('Add / Remove Players'));
   await waitFor(() => expect(screen.getByPlaceholderText('Search players…')).toBeInTheDocument());
-  return utils;
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -58,69 +62,121 @@ describe('Teams — roster player filtering', () => {
     setup();
   });
 
-  it('shows all players when expanding a team with no prior assignments', async () => {
-    // Both teams have empty rosters for this test
-    teamService.getAllTeamPlayers.mockResolvedValue([]);
-    teamService.getTeamPlayers.mockResolvedValue([]);
+  it('shows roster players immediately on expand (no add panel needed)', async () => {
+    teamService.getTeamPlayers.mockResolvedValue(['p1']);
     render(<Teams />);
     await waitFor(() => expect(screen.getByText('Back Street Boyz')).toBeInTheDocument());
     await userEvent.click(screen.getByText('Back Street Boyz'));
-    await waitFor(() => expect(screen.getByPlaceholderText('Search players…')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Roster')).toBeInTheDocument());
+    // p1 (Balaji M) is in roster — shown without opening add panel
+    expect(screen.getByText('Balaji M')).toBeInTheDocument();
+  });
 
+  it('shows all players in add panel for non-auction team', async () => {
+    teamService.getAllTeamPlayers.mockResolvedValue([]);
+    await expandTeamAndOpenAddPanel('Back Street Boyz', []);
     expect(screen.getByText('Balaji M')).toBeInTheDocument();
     expect(screen.getByText('Charu')).toBeInTheDocument();
     expect(screen.getByText('Dinesh')).toBeInTheDocument();
   });
 
-  it('shows own-team players as selected (green checkmark button)', async () => {
-    // Team A has p1 in its roster
-    teamService.getTeamPlayers.mockResolvedValue(['p1']);
-    render(<Teams />);
-    await waitFor(() => expect(screen.getByText('Back Street Boyz')).toBeInTheDocument());
-    await userEvent.click(screen.getByText('Back Street Boyz'));
-    await waitFor(() => expect(screen.getByPlaceholderText('Search players…')).toBeInTheDocument());
-
-    // p1 (Balaji M) is in team A — its row should NOT be disabled
-    const balajiBtn = screen.getByRole('button', { name: /Balaji M/i });
-    expect(balajiBtn).not.toBeDisabled();
-  });
-
   it("shows a player assigned to another team as disabled with 'In <team>' label", async () => {
-    // Expand Team B; p1 is assigned to Team A
-    await renderAndExpandTeam('Super Kings', 'tb', ['p2']);
-
-    // p1 (Balaji M) is on Team A — should be disabled
+    await expandTeamAndOpenAddPanel('Super Kings', ['p2']);
     const balajiBtn = screen.getByRole('button', { name: /Balaji M/i });
     expect(balajiBtn).toBeDisabled();
-
-    // Should show "In Back Street Boyz" sublabel
     expect(screen.getByText('In Back Street Boyz')).toBeInTheDocument();
   });
 
-  it("does NOT show 'In <team>' label for a player assigned to the current team", async () => {
-    // Expand Team A; p1 is assigned to Team A
-    await renderAndExpandTeam('Back Street Boyz', 'ta', ['p1']);
-
-    // p1 belongs to this team — should NOT show "In Back Street Boyz"
+  it("does NOT show 'In <team>' label for a player in the current team's roster", async () => {
+    await expandTeam('Back Street Boyz', ['p1']);
+    // p1 is in this team's roster section — no "In ..." label
     expect(screen.queryByText('In Back Street Boyz')).not.toBeInTheDocument();
   });
 
-  it('unassigned player is enabled and clickable', async () => {
+  it('unassigned player is enabled in add panel', async () => {
     teamService.setTeamPlayers.mockResolvedValue();
-    await renderAndExpandTeam('Super Kings', 'tb', []);
-
-    // p3 (Dinesh) is unassigned — should be enabled
+    await expandTeamAndOpenAddPanel('Super Kings', []);
     const dineshBtn = screen.getByRole('button', { name: /Dinesh/i });
     expect(dineshBtn).not.toBeDisabled();
   });
 
-  it('clicking a player in another team does not call setTeamPlayers', async () => {
-    // Expand Team B; p1 is on Team A
-    await renderAndExpandTeam('Super Kings', 'tb', ['p2']);
-
+  it('clicking a disabled (cross-team) player does not call setTeamPlayers', async () => {
+    await expandTeamAndOpenAddPanel('Super Kings', ['p2']);
     const balajiBtn = screen.getByRole('button', { name: /Balaji M/i });
-    // Disabled buttons ignore click events
     await userEvent.click(balajiBtn);
     expect(teamService.setTeamPlayers).not.toHaveBeenCalled();
+  });
+});
+
+describe('Teams — auction team roster is restricted to sold players', () => {
+  it('shows only sold players in roster for auction-sourced team', async () => {
+    const auctionTeam = {
+      id: 'ta', name: 'Super Kings', is_guest: false,
+      source_auction_id: 'auc1',
+      source_auction: { name: 'GPL' },
+    };
+    teamService.listTeams.mockResolvedValue([auctionTeam]);
+    playerService.listPlayers.mockResolvedValue([
+      { id: 'p1', name: 'Sold Player', photo_url: null, is_guest: false },
+      { id: 'p2', name: 'Other Player', photo_url: null, is_guest: false },
+    ]);
+    teamService.getAllTeamPlayers.mockResolvedValue([{ team_id: 'ta', player_id: 'p1' }]);
+    teamService.getTeamPlayers.mockResolvedValue(['p1']);
+
+    render(<Teams />);
+    await waitFor(() => expect(screen.getByText('Super Kings')).toBeInTheDocument());
+    await userEvent.click(screen.getByText('Super Kings'));
+    await waitFor(() => expect(screen.getByText('Roster')).toBeInTheDocument());
+
+    // Only p1 (roster/sold player) shown — Other Player not in roster
+    expect(screen.getByText('Sold Player')).toBeInTheDocument();
+    expect(screen.queryByText('Other Player')).not.toBeInTheDocument();
+    // No "Add / Remove Players" button for auction teams
+    expect(screen.queryByText('Add / Remove Players')).not.toBeInTheDocument();
+  });
+
+  it('shows all players in add panel for non-auction team', async () => {
+    teamService.listTeams.mockResolvedValue([TEAM_A]);
+    playerService.listPlayers.mockResolvedValue([PLAYER_IN_A, PLAYER_FREE]);
+    teamService.getAllTeamPlayers.mockResolvedValue([{ team_id: 'ta', player_id: 'p1' }]);
+    teamService.getTeamPlayers.mockResolvedValue(['p1']);
+
+    render(<Teams />);
+    await waitFor(() => expect(screen.getByText('Back Street Boyz')).toBeInTheDocument());
+    await userEvent.click(screen.getByText('Back Street Boyz'));
+    await waitFor(() => expect(screen.getByText('Roster')).toBeInTheDocument());
+    // Open the add panel
+    await userEvent.click(screen.getByText('Add / Remove Players'));
+    await waitFor(() => expect(screen.getByPlaceholderText('Search players…')).toBeInTheDocument());
+
+    // Both players visible for non-auction teams (Balaji M may appear in roster + add panel)
+    expect(screen.getAllByText('Balaji M').length).toBeGreaterThan(0);
+    expect(screen.getByText('Dinesh')).toBeInTheDocument();
+  });
+});
+
+describe('Teams — auction source label', () => {
+  it('shows auction name badge on teams created from an auction', async () => {
+    teamService.listTeams.mockResolvedValue([
+      {
+        id: 'ta', name: 'Super Kings', is_guest: false,
+        source_auction_id: 'auc1',
+        source_auction: { name: 'Gully Premier League' },
+      },
+      {
+        id: 'tb', name: 'RCB', is_guest: false,
+        source_auction_id: null,
+        source_auction: null,
+      },
+    ]);
+    playerService.listPlayers.mockResolvedValue([]);
+    teamService.getAllTeamPlayers.mockResolvedValue([]);
+
+    render(<Teams />);
+    await waitFor(() => expect(screen.getByText('Super Kings')).toBeInTheDocument());
+
+    expect(screen.getByText(/Gully Premier League/)).toBeInTheDocument();
+    // RCB has no auction badge
+    expect(screen.queryAllByText(/Gully Premier League/).length).toBe(1);
   });
 });

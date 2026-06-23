@@ -100,6 +100,7 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 032 | `032_auction_teams_name.sql` | **`name text` added to `auction_teams`; `team_id` made nullable. Auction teams are now standalone bidding entities — admin just types a team name, no global registry required. Backfills `name` from existing `team_id` join for legacy rows.** |
 | 033 | `033_auction_bid_type_autosell.sql` | **Extends `auction_bids_bid_type_check` constraint to allow `'captain_autosell'` bid type — needed for captain auto-assign at auction start.** |
 | 034 | `034_player_nickname.sql` | **`nickname text` added to `players` — optional short name shown everywhere instead of `name` when set. `displayName(player)` helper in `cricketUtils.js` returns `nickname || name`.** |
+| 036 | `036_team_source_auction.sql` | **`source_auction_id uuid REFERENCES auctions(id) ON DELETE SET NULL` added to `teams` — links auto-created global teams back to their origin auction. Teams page shows "🏷️ AuctionName" badge on these teams.** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -230,9 +231,9 @@ Bucket: `player-photos` (public read, authenticated upload/update — migration 
 - **Roster filter:** OG / Guest toggle buttons inside the expanded roster panel — mutually exclusive; `rosterFilter` state on the expanded entry (`'' | 'og' | 'guest'`)
 
 ### `src/services/teamService.js`
-- `listTeams()`: fetches `id, name, is_guest` ordered by name
+- `listTeams()`: fetches `id, name, is_guest, source_auction_id, source_auction:source_auction_id(name)` ordered by name
 - `getAllTeamPlayers()`: returns every `team_players` row (`team_id, player_id`) — Teams page builds a `player_id → team_id` map so a player already on one team's default roster is hidden from every other team's roster picker (and excluded from the OG/Guest available counts)
-- `addTeam(name, isGuest?)`: inserts team with optional guest flag
+- `addTeam(name, isGuest?, sourceAuctionId?)`: inserts team with optional guest flag and optional auction source link
 - `deleteTeam(id)`: deletes by id; does NOT affect existing matches (team names are plain text on matches)
 - `getTeamPlayers(teamId)`: returns `player_id[]` for a team's default roster
 - `setTeamPlayers(teamId, playerIds)`: replaces full roster — delete all then insert new batch
@@ -528,6 +529,7 @@ For realtime to work, each table must have Replication enabled:
 | `auctionService.js` + `AuctionSetup.jsx` | Captains selected during setup had to be manually bid on like any other player — no auto-assignment | Added `autosellCaptains(auctionId)`: resolves each team's `captain_id` → `players.user_id` → `auction_players` pool row, then marks sold at `base_price`, deducts from `budget_remaining`, logs a `captain_autosell` bid record. Called in `handleStart` before going live; toast shows how many were auto-sold. Skips gracefully if captain has no player profile or their player isn't in the pool. |
 | `useAuctionRoom.js` + `auctionStore.js` | Bid `DELETE` events (from undo) never propagated to other viewers — they still saw deleted bids | Added `DELETE` subscription on `auction_bids` realtime channel; fires `_removeBid(payload.old?.id)` in store, which filters the bid out of `bids[]` for all viewers simultaneously. |
 | `ActivePlayerSpotlight.jsx` + `AuctionRoom.jsx` | Player card only showed photo/name — no career stats, no way to navigate to full profile | `AuctionRoom` fetches `getCareerStats(player_id)` on every new active player; passes `careerStats` + `onViewProfile` to spotlight; card now shows RUNS/WKTS/MATCHES strip + "View Profile →" button matching the Players carousel card exactly |
+| `AuctionRoom.jsx` + `auctionService.js` + `teamService.js` + `Teams.jsx` + `036_team_source_auction.sql` | After auction completion, team rosters only existed inside the auction — no way to use them for match/tournament setup | `handleComplete()` now calls `createTeamsFromAuction(id)` after marking completed: creates a global `teams` row per `auction_team` (name = team name, `source_auction_id` links back to auction), then `setTeamPlayers` with all sold players. Teams appear immediately in `/teams` page with "🏷️ AuctionName" badge and in match/tournament setup dropdowns. |
 
 ---
 
@@ -537,7 +539,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**39 test files, 531 tests — all passing:**
+**43 test files, 590 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|

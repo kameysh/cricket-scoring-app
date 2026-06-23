@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { addTeam, setTeamPlayers } from './teamService';
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
@@ -436,6 +437,36 @@ export async function undoLastBid(auctionPlayerRowId) {
     .single();
   if (error) throw error;
   return data;
+}
+
+// ── Team creation ─────────────────────────────────────────────────────────────
+
+// Called when an auction is completed. Creates a global team (in the `teams`
+// table) for each auction_team, populates its roster with sold players, and
+// links it back to this auction via source_auction_id.
+export async function createTeamsFromAuction(auctionId) {
+  const [{ data: auctionTeams, error: te }, { data: auctionPlayers, error: pe }] = await Promise.all([
+    supabase.from('auction_teams').select('id, name').eq('auction_id', auctionId),
+    supabase.from('auction_players').select('player_id, sold_to_team_id').eq('auction_id', auctionId).eq('status', 'sold'),
+  ]);
+  if (te) throw te;
+  if (pe) throw pe;
+
+  const soldByTeam = {};
+  for (const ap of auctionPlayers ?? []) {
+    if (!ap.sold_to_team_id) continue;
+    if (!soldByTeam[ap.sold_to_team_id]) soldByTeam[ap.sold_to_team_id] = [];
+    soldByTeam[ap.sold_to_team_id].push(ap.player_id);
+  }
+
+  const created = [];
+  for (const at of auctionTeams ?? []) {
+    const team = await addTeam(at.name, false, auctionId);
+    const playerIds = soldByTeam[at.id] ?? [];
+    if (playerIds.length > 0) await setTeamPlayers(team.id, playerIds);
+    created.push(team);
+  }
+  return created;
 }
 
 // ── Bid Log ───────────────────────────────────────────────────────────────────
