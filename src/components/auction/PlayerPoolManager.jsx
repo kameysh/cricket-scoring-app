@@ -5,7 +5,7 @@ import * as auctionService from '../../services/auctionService';
 import PlayerAvatar from '../player/PlayerAvatar';
 import toast from 'react-hot-toast';
 
-export default function PlayerPoolManager({ auctionId, poolPlayers, onPoolChange }) {
+export default function PlayerPoolManager({ auctionId, poolPlayers, captainUserIds = [], onPoolChange }) {
   const [allPlayers, setAllPlayers] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
@@ -16,9 +16,15 @@ export default function PlayerPoolManager({ auctionId, poolPlayers, onPoolChange
   }, []);
 
   const poolIds = new Set(poolPlayers.map(p => p.player_id));
+  const captainUserIdSet = new Set(captainUserIds);
+
+  // Separate captains from regular players so they don't appear in the bidding pool
+  const captainPlayers = allPlayers.filter(p => p.user_id && captainUserIdSet.has(p.user_id));
+  const captainPlayerIds = new Set(captainPlayers.map(p => p.id));
 
   const filtered = allPlayers.filter(p =>
-    !search || p.name?.toLowerCase().includes(search.toLowerCase())
+    !captainPlayerIds.has(p.id) &&
+    (!search || p.name?.toLowerCase().includes(search.toLowerCase()))
   );
 
   async function handleToggle(player) {
@@ -51,7 +57,7 @@ export default function PlayerPoolManager({ auctionId, poolPlayers, onPoolChange
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-ink-700 dark:text-ink-200">
-          Player Pool <span className="text-brand-green">({poolPlayers.length} selected)</span>
+          Player Pool <span className="text-brand-green">({poolPlayers.filter(p => !captainPlayerIds.has(p.player_id)).length} in pool)</span>
         </p>
       </div>
 
@@ -64,6 +70,25 @@ export default function PlayerPoolManager({ auctionId, poolPlayers, onPoolChange
           className="w-full pl-8 pr-3 py-2 rounded-xl border border-ink-200 dark:border-white/10 bg-white dark:bg-ink-800 text-sm focus:outline-none focus:ring-2 focus:ring-brand-green/30"
         />
       </div>
+
+      {/* Captains — auto-assigned at start, not available for bidding */}
+      {captainPlayers.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">
+            Captains — auto-assigned at auction start
+          </p>
+          {captainPlayers.map(player => (
+            <div key={player.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 opacity-75">
+              <PlayerAvatar player={player} size="sm" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{player.name}</p>
+                <p className="text-[11px] text-ink-400">{player.role}</p>
+              </div>
+              <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 shrink-0">👑 Captain</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-1.5 max-h-64 overflow-y-auto">
         {filtered.map(player => {

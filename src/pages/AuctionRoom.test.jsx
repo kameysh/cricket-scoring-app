@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
-vi.mock('../hooks/useAuctionRoom', () => ({ useAuctionRoom: vi.fn() }));
+vi.mock('../hooks/useAuctionRoom', () => ({ useAuctionRoom: vi.fn(() => ({ isRealtimeLive: true })) }));
 vi.mock('../hooks/useRole', () => ({ useRole: vi.fn() }));
 vi.mock('../stores/auctionStore', () => ({ useAuctionStore: vi.fn() }));
 vi.mock('../services/auctionService');
@@ -13,6 +13,7 @@ vi.mock('../lib/generateShareCard', () => ({
 }));
 
 import { useRole } from '../hooks/useRole';
+import { useAuctionRoom } from '../hooks/useAuctionRoom';
 import { useAuctionStore } from '../stores/auctionStore';
 import { generateAuctionSoldCard } from '../lib/generateShareCard';
 import AuctionRoom from './AuctionRoom';
@@ -404,6 +405,20 @@ describe('AuctionRoom — undo bid rapid-click guard', () => {
 
     resolveUndo({ id: 'ap1', current_bid: null, leading_team_id: null });
     await waitFor(() => expect(undoLastBid).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('AuctionRoom — realtime status indicator', () => {
+  it('shows "Live" with green dot when isRealtimeLive is true', () => {
+    vi.mocked(useAuctionRoom).mockReturnValue({ isRealtimeLive: true });
+    renderRoom({}, { isAdmin: true, userId: 'admin-uid' });
+    expect(screen.getAllByText('Live').length).toBeGreaterThan(0);
+  });
+
+  it('shows "Sync…" with amber dot when isRealtimeLive is false', () => {
+    vi.mocked(useAuctionRoom).mockReturnValue({ isRealtimeLive: false });
+    renderRoom({}, { isAdmin: false, userId: 'viewer-uid' });
+    expect(screen.getAllByText('Sync…').length).toBeGreaterThan(0);
   });
 });
 

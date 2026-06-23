@@ -185,7 +185,7 @@ export default function AuctionRoom() {
       .finally(() => setGeneratingCard(false));
   }
 
-  useAuctionRoom(id, userId);
+  const { isRealtimeLive } = useAuctionRoom(id, userId);
 
   const {
     auction, teams, players, bids, isLoading, error, reset,
@@ -493,6 +493,11 @@ export default function AuctionRoom() {
       {viewerCount > 1 && (
         <span className="text-[11px] text-ink-400 shrink-0">👁 {viewerCount}</span>
       )}
+      {/* Realtime connection indicator */}
+      <span className={`flex items-center gap-1 text-[10px] font-semibold shrink-0 ${isRealtimeLive ? 'text-green-500' : 'text-amber-500'}`}>
+        <span className={`inline-block w-1.5 h-1.5 rounded-full ${isRealtimeLive ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`} />
+        {isRealtimeLive ? 'Live' : 'Sync…'}
+      </span>
       {isAdmin && (
         <button onClick={() => setDeleteConfirmOpen(true)} className="p-2 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-500 shrink-0">
           <Trash2 size={16} />
@@ -736,6 +741,13 @@ export default function AuctionRoom() {
         <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${auction.status === 'live' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300' : 'bg-ink-100 text-ink-400'}`}>
           {auction.status === 'live' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1 animate-pulse" />}
           {auction.status.toUpperCase()}
+        </span>
+        {viewerCount > 1 && (
+          <span className="text-[11px] text-ink-400 shrink-0">👁 {viewerCount}</span>
+        )}
+        <span className={`flex items-center gap-1 text-[10px] font-semibold shrink-0 ${isRealtimeLive ? 'text-green-500' : 'text-amber-500'}`}>
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${isRealtimeLive ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`} />
+          {isRealtimeLive ? 'Live' : 'Sync…'}
         </span>
       </div>
 

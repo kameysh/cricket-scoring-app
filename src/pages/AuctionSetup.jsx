@@ -277,6 +277,7 @@ export default function AuctionSetup() {
             <PlayerPoolManager
               auctionId={auctionId}
               poolPlayers={poolPlayers.filter(p => p.status === 'pool')}
+              captainUserIds={auctionTeams.map(t => t.captain_id).filter(Boolean)}
               onPoolChange={() => {
                 auctionService.listAuctionPlayers(auctionId).then(setPoolPlayers);
               }}
