@@ -315,6 +315,22 @@ export async function markUnsold(auctionPlayerRowId) {
 }
 
 export async function raiseAuctioneerBid(auctionPlayerRowId, auctionTeamId, newAmount) {
+  // Budget + reserve guardrail (same rule as captain placeBid)
+  const { data: team } = await supabase
+    .from('auction_teams')
+    .select('budget_remaining, auction_id')
+    .eq('id', auctionTeamId)
+    .single();
+  if (!team) throw new Error('Team not found');
+  if (newAmount > team.budget_remaining) {
+    throw new Error(`Bid ₹${newAmount.toLocaleString()} exceeds remaining budget ₹${team.budget_remaining.toLocaleString()}`);
+  }
+  const minReserve = await computeMinReserve(team.auction_id, auctionTeamId, auctionPlayerRowId);
+  const maxBid = team.budget_remaining - minReserve;
+  if (newAmount > maxBid) {
+    throw new Error(`Bid ₹${newAmount.toLocaleString()} would leave insufficient purse to complete squad. Max allowed: ₹${maxBid.toLocaleString()}`);
+  }
+
   // Insert a raise bid, then update current_bid on the player row
   const { data: player } = await supabase
     .from('auction_players')
@@ -343,10 +359,52 @@ export async function raiseAuctioneerBid(auctionPlayerRowId, auctionTeamId, newA
   return data;
 }
 
+// ── Purse Reserve ─────────────────────────────────────────────────────────────
+
+const SQUAD_SIZE = 9;
+
+/**
+ * Computes the minimum purse a team must keep in reserve so they can still
+ * complete their squad. Formula: sum of top-N base prices from the remaining
+ * unpicked pool, where N = SQUAD_SIZE - picked_so_far - 1 (the -1 accounts
+ * for the current player being bid on — they count as the next pick if won).
+ *
+ * Returns 0 when the team has already filled SQUAD_SIZE - 1 slots (only one
+ * pick left, so no additional reserve is needed after winning this player).
+ */
+export async function computeMinReserve(auctionId, teamId, activePlayerId) {
+  // Count how many players this team has already won
+  const { data: soldRows, error: soldErr } = await supabase
+    .from('auction_players')
+    .select('id')
+    .eq('auction_id', auctionId)
+    .eq('sold_to_team_id', teamId)
+    .eq('status', 'sold');
+  if (soldErr) throw soldErr;
+
+  const pickedCount = soldRows?.length ?? 0;
+  const slotsAfterThisOne = SQUAD_SIZE - pickedCount - 1;
+
+  if (slotsAfterThisOne <= 0) return 0;
+
+  // Pickable players remaining (pool + held only; unsold/active excluded) except current
+  const { data: unpicked, error: poolErr } = await supabase
+    .from('auction_players')
+    .select('base_price')
+    .eq('auction_id', auctionId)
+    .in('status', ['pool', 'held'])
+    .neq('id', activePlayerId)
+    .order('base_price', { ascending: false });
+  if (poolErr) throw poolErr;
+
+  const topPrices = (unpicked ?? []).slice(0, slotsAfterThisOne).map(p => p.base_price ?? 0);
+  return topPrices.reduce((sum, p) => sum + p, 0);
+}
+
 // ── Captain Actions ───────────────────────────────────────────────────────────
 
 export async function placeBid(auctionPlayerRowId, auctionTeamId, amount) {
-  // Budget guardrail: reject if amount exceeds budget_remaining
+  // Budget + reserve guardrail
   const { data: team } = await supabase
     .from('auction_teams')
     .select('budget_remaining, auction_id')
@@ -354,7 +412,12 @@ export async function placeBid(auctionPlayerRowId, auctionTeamId, amount) {
     .single();
   if (!team) throw new Error('Team not found');
   if (amount > team.budget_remaining) {
-    throw new Error(`Bid ₹${amount} exceeds remaining budget ₹${team.budget_remaining}`);
+    throw new Error(`Bid ₹${amount.toLocaleString()} exceeds remaining budget ₹${team.budget_remaining.toLocaleString()}`);
+  }
+  const minReserve = await computeMinReserve(team.auction_id, auctionTeamId, auctionPlayerRowId);
+  const maxBid = team.budget_remaining - minReserve;
+  if (amount > maxBid) {
+    throw new Error(`Bid ₹${amount.toLocaleString()} would leave insufficient purse to complete your squad. Max allowed: ₹${maxBid.toLocaleString()}`);
   }
 
   // Insert bid record

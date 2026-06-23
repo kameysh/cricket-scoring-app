@@ -7,6 +7,12 @@ vi.mock('../hooks/useAuctionRoom', () => ({ useAuctionRoom: vi.fn(() => ({ isRea
 vi.mock('../hooks/useRole', () => ({ useRole: vi.fn() }));
 vi.mock('../stores/auctionStore', () => ({ useAuctionStore: vi.fn() }));
 vi.mock('../services/auctionService');
+
+// computeMinReserve must return a Promise; set up a global default before each test
+beforeEach(async () => {
+  const auctionService = await import('../services/auctionService');
+  vi.mocked(auctionService.computeMinReserve).mockResolvedValue(0);
+});
 vi.mock('../lib/generateShareCard', () => ({
   generateAuctionSoldCard: vi.fn(() => Promise.resolve(new Blob(['png'], { type: 'image/png' }))),
   generatePlayerCard: vi.fn(),

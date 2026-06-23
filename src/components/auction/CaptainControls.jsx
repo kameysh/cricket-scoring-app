@@ -7,6 +7,7 @@ export default function CaptainControls({
   activePlayer,
   bidIncrements = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000],
   budgetRemaining = 0,
+  maxBid = null,
   hasPassed = false,
   onBid,
   onPass,
@@ -25,7 +26,8 @@ export default function CaptainControls({
   const currentBid = activePlayer.current_bid ?? activePlayer.base_price ?? 0;
   const totalIncrement = Object.entries(chipCounts).reduce((sum, [inc, cnt]) => sum + Number(inc) * cnt, 0);
   const nextBid = currentBid + totalIncrement;
-  const overBudget = totalIncrement > 0 && nextBid > budgetRemaining;
+  const effectiveMax = maxBid != null ? Math.min(maxBid, budgetRemaining) : budgetRemaining;
+  const overBudget = totalIncrement > 0 && nextBid > effectiveMax;
 
   function incrementChip(inc) {
     haptic();
@@ -54,13 +56,23 @@ export default function CaptainControls({
 
   return (
     <div data-testid="captain-controls" className="card px-4 py-3 space-y-3">
-      <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">Your Bid</p>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">Your Bid</p>
+        {maxBid != null && (
+          <p className="text-[11px] text-ink-400">
+            Max:{' '}
+            <span className={`font-semibold tabular-nums ${effectiveMax <= 0 ? 'text-red-500' : 'text-brand-green'}`}>
+              ₹{Math.max(0, effectiveMax).toLocaleString()}
+            </span>
+          </p>
+        )}
+      </div>
 
       {/* Multi-tap chips */}
       <div className="grid grid-cols-5 gap-1.5">
         {bidIncrements.map(inc => {
           const count = chipCounts[inc] ?? 0;
-          const wouldExceed = (currentBid + totalIncrement + inc) > budgetRemaining;
+          const wouldExceed = (currentBid + totalIncrement + inc) > effectiveMax;
           return (
             <div key={inc} className="relative">
               <button

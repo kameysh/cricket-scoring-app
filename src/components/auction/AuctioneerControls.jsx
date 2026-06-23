@@ -17,6 +17,7 @@ export default function AuctioneerControls({
   auctionStatus,
   bidIncrements = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000],
   teams = [],
+  teamMaxBids = {},
   loading = false,
 }) {
   const isLive = auctionStatus === 'live';
@@ -32,7 +33,10 @@ export default function AuctioneerControls({
   const currentBid = activePlayer?.current_bid ?? activePlayer?.base_price ?? 0;
   const totalIncrement = Object.entries(chipCounts).reduce((sum, [inc, cnt]) => sum + Number(inc) * cnt, 0);
   const nextBid = currentBid + totalIncrement;
-  const overBudget = raiseTeam != null && totalIncrement > 0 && nextBid > raiseTeam.budget_remaining;
+  const raiseTeamMaxBid = raiseTeam != null
+    ? (teamMaxBids[raiseTeam.id] ?? raiseTeam.budget_remaining ?? 0)
+    : Infinity;
+  const overBudget = raiseTeam != null && totalIncrement > 0 && nextBid > raiseTeamMaxBid;
 
   function incrementChip(inc) {
     haptic();
@@ -114,14 +118,24 @@ export default function AuctioneerControls({
             </div>
           </div>
 
-          {/* Purse remaining */}
+          {/* Purse remaining + max bid */}
           {raiseTeam && (
-            <p className="text-[11px] text-ink-400">
-              {raiseTeam.name} purse left:{' '}
-              <span className="font-semibold text-ink-700 dark:text-ink-200 tabular-nums">
-                ₹{raiseTeam.budget_remaining?.toLocaleString()}
-              </span>
-            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <p className="text-[11px] text-ink-400">
+                Purse:{' '}
+                <span className="font-semibold text-ink-700 dark:text-ink-200 tabular-nums">
+                  ₹{raiseTeam.budget_remaining?.toLocaleString()}
+                </span>
+              </p>
+              {teamMaxBids[raiseTeam.id] != null && (
+                <p className="text-[11px] text-ink-400">
+                  Max bid:{' '}
+                  <span className={`font-semibold tabular-nums ${raiseTeamMaxBid <= 0 ? 'text-red-500' : 'text-brand-green'}`}>
+                    ₹{Math.max(0, raiseTeamMaxBid).toLocaleString()}
+                  </span>
+                </p>
+              )}
+            </div>
           )}
 
           {/* Multi-tap chips */}

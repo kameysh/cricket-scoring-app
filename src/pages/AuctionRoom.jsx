@@ -223,6 +223,23 @@ export default function AuctionRoom() {
       .catch(() => setActiveCareerStats(null));
   }, [activePlayer?.player_id]);
 
+  // Compute max allowable bid per team (purse minus reserve for remaining squad slots)
+  const [teamMaxBids, setTeamMaxBids] = useState({});
+  useEffect(() => {
+    if (!activePlayer || !teams.length) { setTeamMaxBids({}); return; }
+    Promise.all(
+      teams.map(t =>
+        auctionService.computeMinReserve(id, t.id, activePlayer.id)
+          .then(reserve => ({ id: t.id, maxBid: (t.budget_remaining ?? 0) - reserve }))
+          .catch(() => ({ id: t.id, maxBid: t.budget_remaining ?? 0 }))
+      )
+    ).then(results => {
+      const map = {};
+      results.forEach(r => { map[r.id] = r.maxBid; });
+      setTeamMaxBids(map);
+    });
+  }, [activePlayer?.id, teams.map(t => t.budget_remaining).join(',')]);
+
   // Determine role in this auction
   const myAuctionTeam = teams.find(t => t.captain_id === userId);
   const isAuctioneer = isAdmin;
@@ -292,10 +309,15 @@ export default function AuctionRoom() {
     const targetTeamId = teamId || activePlayer.leading_team_id || teams[0]?.id;
     if (!targetTeamId) return;
 
-    // Budget guard
+    // Budget + reserve guard
     const team = teams.find(t => t.id === targetTeamId);
+    const teamMax = teamMaxBids[targetTeamId] ?? team?.budget_remaining ?? Infinity;
     if (team && amount > team.budget_remaining) {
       toast.error(`Exceeds ${team.name} purse (₹${team.budget_remaining?.toLocaleString()})`);
+      return;
+    }
+    if (amount > teamMax) {
+      toast.error(`Max bid for ${team?.name} is ₹${teamMax.toLocaleString()} — reserve needed for remaining squad slots`);
       return;
     }
 
@@ -443,9 +465,14 @@ export default function AuctionRoom() {
   async function handleBid(amount) {
     if (!activePlayer || !myAuctionTeam) return;
 
-    // Budget guard
+    // Budget + reserve guard
+    const myMaxBid = teamMaxBids[myAuctionTeam.id] ?? (myAuctionTeam.budget_remaining ?? 0);
     if (amount > (myAuctionTeam.budget_remaining ?? 0)) {
       toast.error('Bid exceeds your remaining purse');
+      return;
+    }
+    if (amount > myMaxBid) {
+      toast.error(`Max bid is ₹${myMaxBid.toLocaleString()} — need to keep purse for remaining squad slots`);
       return;
     }
 
@@ -731,6 +758,7 @@ export default function AuctionRoom() {
           auctionStatus={auction.status}
           bidIncrements={auction.bid_increments ?? [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]}
           teams={teams}
+          teamMaxBids={teamMaxBids}
           loading={actionLoading}
         />
 
@@ -931,6 +959,7 @@ export default function AuctionRoom() {
           activePlayer={activePlayer}
           bidIncrements={auction.bid_increments ?? [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]}
           budgetRemaining={myAuctionTeam?.budget_remaining ?? 0}
+          maxBid={myAuctionTeam ? (teamMaxBids[myAuctionTeam.id] ?? myAuctionTeam.budget_remaining ?? 0) : 0}
           hasPassed={hasPassed}
           onBid={handleBid}
           onPass={handlePass}

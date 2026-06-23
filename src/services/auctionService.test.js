@@ -10,6 +10,7 @@ const chain = {
   delete: vi.fn().mockReturnThis(),
   eq: vi.fn().mockReturnThis(),
   neq: vi.fn().mockReturnThis(),
+  in: vi.fn().mockReturnThis(),
   order: vi.fn().mockReturnThis(),
   limit: vi.fn().mockReturnThis(),
   single: vi.fn(async () => ({ data: mockData, error: mockError })),
@@ -32,9 +33,9 @@ vi.mock('./teamService', () => ({
 
 import {
   createAuction, addAuctionTeam, getAuction,
-  placeBid, dealPlayer, signalPass, holdPlayer, returnToPool,
+  placeBid, raiseAuctioneerBid, dealPlayer, signalPass, holdPlayer, returnToPool,
   drawNextPlayer, updateAuctionStatus, undoLastBid, autosellCaptains,
-  createTeamsFromAuction,
+  createTeamsFromAuction, computeMinReserve,
 } from './auctionService';
 import { supabase } from '../lib/supabase';
 import * as teamService from './teamService';
@@ -45,7 +46,9 @@ beforeEach(() => {
   mockError = null;
   // Reset chain methods to return `this` by default
   Object.keys(chain).forEach(k => {
-    if (k !== 'single' && k !== 'maybeSingle' && k !== 'then') chain[k].mockReturnValue(chain);
+    if (k !== 'single' && k !== 'maybeSingle' && k !== 'then' && typeof chain[k]?.mockReturnValue === 'function') {
+      chain[k].mockReturnValue(chain);
+    }
   });
   chain.single.mockImplementation(async () => ({ data: mockData, error: mockError }));
   chain.maybeSingle.mockImplementation(async () => ({ data: mockData, error: mockError }));
@@ -364,16 +367,21 @@ describe('autosellCaptains', () => {
   });
 });
 
-describe('createTeamsFromAuction', () => {
-  function makeChain(data, error = null) {
-    const c = {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-    };
-    c.then = (resolve) => Promise.resolve({ data, error }).then(resolve);
-    return c;
-  }
+// Builds a lightweight chain that resolves via .then() (for queries without .single())
+function makeChain(data, error = null) {
+  const c = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    neq: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    single: vi.fn().mockResolvedValue({ data, error }),
+  };
+  c.then = (resolve) => Promise.resolve({ data, error }).then(resolve);
+  return c;
+}
 
+describe('createTeamsFromAuction', () => {
   beforeEach(() => {
     vi.mocked(teamService.addTeam).mockReset();
     vi.mocked(teamService.setTeamPlayers).mockReset();
@@ -421,5 +429,130 @@ describe('createTeamsFromAuction', () => {
   it('throws when DB fetch fails', async () => {
     supabase.from.mockReturnValueOnce(makeChain(null, new Error('DB error')));
     await expect(createTeamsFromAuction('a1')).rejects.toThrow('DB error');
+  });
+});
+
+// ── computeMinReserve ──────────────────────────────────────────────────────────
+
+describe('computeMinReserve', () => {
+  // computeMinReserve makes two sequential supabase.from() calls that resolve
+  // via .then() (not .single()). makeChain's .then() returns { data, error }.
+
+  it('returns 0 when team has already filled SQUAD_SIZE-1 slots', async () => {
+    // 8 players already sold — slotsAfterThisOne = 9 - 8 - 1 = 0
+    supabase.from.mockReturnValueOnce(makeChain(Array(8).fill({ id: 'x' })));
+    const reserve = await computeMinReserve('a1', 't1', 'ap-active');
+    expect(reserve).toBe(0);
+  });
+
+  it('returns sum of top-N base prices where N = SQUAD_SIZE - picked - 1', async () => {
+    // 0 players sold → need 8 more after winning current → sum top-8 unpicked
+    const unpicked = [
+      { base_price: 500 }, { base_price: 400 }, { base_price: 300 },
+      { base_price: 200 }, { base_price: 100 }, { base_price: 100 },
+      { base_price: 50 },  { base_price: 50 },  { base_price: 25 }, // 9 unpicked total, but only top-8 counted
+    ];
+    supabase.from
+      .mockReturnValueOnce(makeChain([]))          // 0 sold
+      .mockReturnValueOnce(makeChain(unpicked));   // unpicked pool (already ordered desc by query)
+
+    const reserve = await computeMinReserve('a1', 't1', 'ap-active');
+    // top-8: 500+400+300+200+100+100+50+50 = 1700
+    expect(reserve).toBe(1700);
+  });
+
+  it('caps at available pool size when fewer unpicked than slots needed', async () => {
+    // 7 sold → need 1 more after winning → top-1 from pool
+    supabase.from
+      .mockReturnValueOnce(makeChain(Array(7).fill({ id: 'x' }))) // 7 sold
+      .mockReturnValueOnce(makeChain([{ base_price: 300 }, { base_price: 200 }])); // 2 unpicked
+
+    const reserve = await computeMinReserve('a1', 't1', 'ap-active');
+    expect(reserve).toBe(300); // only top-1 needed
+  });
+
+  it('returns 0 when unpicked pool is empty', async () => {
+    supabase.from
+      .mockReturnValueOnce(makeChain([]))  // 0 sold
+      .mockReturnValueOnce(makeChain([])); // no players in pool at all
+
+    const reserve = await computeMinReserve('a1', 't1', 'ap-active');
+    expect(reserve).toBe(0);
+  });
+
+  it('throws when sold-count DB query errors', async () => {
+    supabase.from.mockReturnValueOnce(makeChain(null, new Error('sold fetch error')));
+    await expect(computeMinReserve('a1', 't1', 'ap1')).rejects.toThrow('sold fetch error');
+  });
+
+  it('throws when pool DB query errors', async () => {
+    supabase.from
+      .mockReturnValueOnce(makeChain([]))                              // sold ok
+      .mockReturnValueOnce(makeChain(null, new Error('pool error'))); // pool fails
+
+    await expect(computeMinReserve('a1', 't1', 'ap1')).rejects.toThrow('pool error');
+  });
+
+  it('uses .in([pool,held]) so unsold players do not inflate reserve', async () => {
+    // Verify the pool query filters by status IN ['pool','held'] not just neq 'sold'
+    const poolChain = makeChain([{ base_price: 200 }]);
+    supabase.from
+      .mockReturnValueOnce(makeChain([]))  // 0 sold
+      .mockReturnValueOnce(poolChain);     // pool query
+
+    await computeMinReserve('a1', 't1', 'ap1');
+    expect(poolChain.in).toHaveBeenCalledWith('status', ['pool', 'held']);
+  });
+});
+
+describe('raiseAuctioneerBid — reserve enforcement', () => {
+  it('throws when raise would violate minimum purse reserve', async () => {
+    // Team has ₹1000 purse, pool has 8 players at ₹100 → reserve=800 → maxBid=200
+    // Raise of ₹500 should be blocked
+    supabase.from
+      .mockReturnValueOnce(makeChain({ budget_remaining: 1000, auction_id: 'a1' })) // team
+      .mockReturnValueOnce(makeChain([]))                                            // computeMinReserve: 0 sold
+      .mockReturnValueOnce(makeChain(Array(8).fill({ base_price: 100 })));           // pool: 8 players
+
+    await expect(raiseAuctioneerBid('ap1', 'at1', 500)).rejects.toThrow('insufficient purse');
+  });
+
+  it('throws when raise exceeds raw budget', async () => {
+    supabase.from.mockReturnValueOnce(makeChain({ budget_remaining: 200, auction_id: 'a1' }));
+    await expect(raiseAuctioneerBid('ap1', 'at1', 500)).rejects.toThrow('exceeds remaining budget');
+  });
+});
+
+describe('placeBid — reserve enforcement', () => {
+  it('throws when bid would violate minimum purse reserve', async () => {
+    // Team has ₹1000 left, 0 sold, active player excluded from pool
+    // Pool has 8 players at ₹100 each → reserve needed = 8*100 = 800
+    // maxBid = 1000 - 800 = 200; bid of 500 should fail
+    const teamChain = makeChain({ budget_remaining: 1000, auction_id: 'a1' });
+    const soldChain = makeChain([]);
+    const poolChain = makeChain(Array(8).fill({ base_price: 100 }));
+
+    supabase.from
+      .mockReturnValueOnce(teamChain)  // team fetch (uses .single())
+      .mockReturnValueOnce(soldChain)  // computeMinReserve: sold count
+      .mockReturnValueOnce(poolChain); // computeMinReserve: unpicked pool
+
+    await expect(placeBid('ap1', 'at1', 500)).rejects.toThrow('insufficient purse');
+  });
+
+  it('allows bid within reserve limit (8 already sold → reserve=0 → maxBid=budget)', async () => {
+    // Team fetch (single), sold count (then), insert bid (then), update player (single)
+    chain.single
+      .mockResolvedValueOnce({ data: { budget_remaining: 1000, auction_id: 'a1' }, error: null })
+      .mockResolvedValueOnce({ data: { pass_team1: false, pass_team2: false }, error: null });
+    // Override .then() so computeMinReserve's "sold" query returns 8 sold players (→ reserve=0)
+    let thenCallCount = 0;
+    chain.then = (resolve) => {
+      thenCallCount++;
+      const data = thenCallCount === 1 ? Array(8).fill({ id: 'x' }) : [];
+      return Promise.resolve({ data, error: null }).then(resolve);
+    };
+
+    await expect(placeBid('ap1', 'at1', 800)).resolves.not.toThrow();
   });
 });
