@@ -9,9 +9,11 @@ const chain = {
   update: vi.fn().mockReturnThis(),
   delete: vi.fn().mockReturnThis(),
   eq: vi.fn().mockReturnThis(),
+  neq: vi.fn().mockReturnThis(),
   order: vi.fn().mockReturnThis(),
   limit: vi.fn().mockReturnThis(),
   single: vi.fn(async () => ({ data: mockData, error: mockError })),
+  maybeSingle: vi.fn(async () => ({ data: mockData, error: mockError })),
   then: (resolve) => Promise.resolve({ data: mockData, error: mockError }).then(resolve),
 };
 
@@ -26,7 +28,7 @@ vi.mock('../lib/supabase', () => ({
 import {
   createAuction, addAuctionTeam, getAuction,
   placeBid, dealPlayer, signalPass, holdPlayer, returnToPool,
-  drawNextPlayer, updateAuctionStatus, undoLastBid,
+  drawNextPlayer, updateAuctionStatus, undoLastBid, autosellCaptains,
 } from './auctionService';
 import { supabase } from '../lib/supabase';
 
@@ -36,9 +38,10 @@ beforeEach(() => {
   mockError = null;
   // Reset chain methods to return `this` by default
   Object.keys(chain).forEach(k => {
-    if (k !== 'single' && k !== 'then') chain[k].mockReturnValue(chain);
+    if (k !== 'single' && k !== 'maybeSingle' && k !== 'then') chain[k].mockReturnValue(chain);
   });
   chain.single.mockImplementation(async () => ({ data: mockData, error: mockError }));
+  chain.maybeSingle.mockImplementation(async () => ({ data: mockData, error: mockError }));
   supabase.from.mockReturnValue(chain);
   supabase.rpc.mockResolvedValue({ error: mockError });
 });
@@ -212,7 +215,7 @@ describe('undoLastBid', () => {
     expect(result.leading_team_id).toBeNull();
   });
 
-  it('restores previous bid when undoing the latest of multiple bids', async () => {
+  it('restores previous bid when undoing the latest of multiple bids — after undo button guards rapid clicks', async () => {
     let callCount = 0;
     chain.then = (resolve) => {
       callCount++;
@@ -236,5 +239,84 @@ describe('undoLastBid', () => {
     // Should restore to the previous bid (amount=200, team=at1)
     expect(result.current_bid).toBe(200);
     expect(result.leading_team_id).toBe('at1');
+  });
+});
+
+describe('autosellCaptains', () => {
+  it('returns empty array when no teams have a captain assigned', async () => {
+    // listAuctionTeams returns teams with no captain_id
+    chain.then = (resolve) => Promise.resolve({
+      data: [{ id: 't1', name: 'Super Kings', captain_id: null, budget_remaining: 5000 }],
+      error: null,
+    }).then(resolve);
+
+    const result = await autosellCaptains('a1');
+    expect(result).toEqual([]);
+    // players table should NOT have been queried
+    expect(supabase.from).not.toHaveBeenCalledWith('players');
+  });
+
+  it('skips gracefully when captain has no player profile', async () => {
+    let callCount = 0;
+    chain.then = (resolve) => {
+      callCount++;
+      // listAuctionTeams
+      return Promise.resolve({
+        data: [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }],
+        error: null,
+      }).then(resolve);
+    };
+    // captain's player lookup returns null (no profile)
+    chain.maybeSingle.mockResolvedValue({ data: null, error: null });
+
+    const result = await autosellCaptains('a1');
+    expect(result).toEqual([]);
+  });
+
+  it('skips gracefully when captain player is not in the auction pool', async () => {
+    chain.then = (resolve) => Promise.resolve({
+      data: [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }],
+      error: null,
+    }).then(resolve);
+
+    chain.maybeSingle
+      .mockResolvedValueOnce({ data: { id: 'p1' }, error: null })  // players lookup succeeds
+      .mockResolvedValueOnce({ data: null, error: null });           // auction_players not in pool
+
+    const result = await autosellCaptains('a1');
+    expect(result).toEqual([]);
+  });
+
+  it('marks captain as sold and deducts from team purse', async () => {
+    chain.then = (resolve) => Promise.resolve({
+      data: [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }],
+      error: null,
+    }).then(resolve);
+
+    chain.maybeSingle
+      .mockResolvedValueOnce({ data: { id: 'p1' }, error: null })   // players lookup
+      .mockResolvedValueOnce({
+        data: { id: 'ap1', base_price: 500, player: { name: 'Ravi' } },
+        error: null,
+      }); // auction_players
+
+    let soldUpdate = null;
+    let budgetUpdate = null;
+    chain.update.mockImplementation((fields) => {
+      if (fields.status === 'sold') soldUpdate = fields;
+      if ('budget_remaining' in fields) budgetUpdate = fields;
+      return chain;
+    });
+    // insert bid returns ok
+    chain.insert.mockReturnValue(chain);
+
+    const result = await autosellCaptains('a1');
+    expect(result).toHaveLength(1);
+    expect(result[0].teamName).toBe('Super Kings');
+    expect(result[0].price).toBe(500);
+    expect(soldUpdate?.sold_price).toBe(500);
+    expect(soldUpdate?.sold_to_team_id).toBe('t1');
+    expect(soldUpdate?.status).toBe('sold');
+    expect(budgetUpdate?.budget_remaining).toBe(4500); // 5000 - 500
   });
 });

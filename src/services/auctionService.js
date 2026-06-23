@@ -194,6 +194,72 @@ export async function drawNextPlayer(auctionId) {
   return null;
 }
 
+// Auto-sell each team's captain to their own team at base price.
+// Called once when the auction transitions from draft → live.
+// Skips gracefully if a team has no captain, the captain has no player profile,
+// or the captain's player is not in the auction pool.
+export async function autosellCaptains(auctionId) {
+  const teams = await listAuctionTeams(auctionId);
+  const sold = [];
+
+  for (const team of teams) {
+    if (!team.captain_id) continue;
+
+    // Resolve captain user → player profile
+    const { data: player } = await supabase
+      .from('players')
+      .select('id')
+      .eq('user_id', team.captain_id)
+      .maybeSingle();
+    if (!player) continue;
+
+    // Find their auction_player row (must be in pool)
+    const { data: ap } = await supabase
+      .from('auction_players')
+      .select('id, base_price, player:player_id(name)')
+      .eq('auction_id', auctionId)
+      .eq('player_id', player.id)
+      .eq('status', 'pool')
+      .maybeSingle();
+    if (!ap) continue;
+
+    const price = ap.base_price ?? 100;
+
+    // Mark sold
+    const { error: sellErr } = await supabase
+      .from('auction_players')
+      .update({
+        status: 'sold',
+        sold_to_team_id: team.id,
+        sold_price: price,
+        current_bid: price,
+        leading_team_id: team.id,
+      })
+      .eq('id', ap.id);
+    if (sellErr) throw sellErr;
+
+    // Deduct from team purse
+    const { error: budgetErr } = await supabase
+      .from('auction_teams')
+      .update({ budget_remaining: Math.max(0, (team.budget_remaining ?? 0) - price) })
+      .eq('id', team.id);
+    if (budgetErr) throw budgetErr;
+
+    // Log it in bid history so the UI shows a record
+    await supabase.from('auction_bids').insert({
+      auction_id: auctionId,
+      auction_player_id: ap.id,
+      auction_team_id: team.id,
+      amount: price,
+      bid_type: 'captain_autosell',
+    });
+
+    sold.push({ teamName: team.name, playerName: ap.player?.name, price });
+  }
+
+  return sold;
+}
+
 export async function dealPlayer(auctionPlayerRowId) {
   const { error } = await supabase.rpc('deal_player', {
     p_auction_player_id: auctionPlayerRowId,

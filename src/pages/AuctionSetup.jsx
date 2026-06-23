@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import * as auctionService from '../services/auctionService';
 import PlayerPoolManager from '../components/auction/PlayerPoolManager';
 
-const DEFAULT_INCREMENTS = [1000, 2000, 3000, 5000, 10000];
+const DEFAULT_INCREMENTS = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
 
 export default function AuctionSetup() {
   const { id } = useParams();
@@ -118,6 +118,11 @@ export default function AuctionSetup() {
     }
     setStarting(true);
     try {
+      // Auto-sell each team's captain at base price before going live
+      const sold = await auctionService.autosellCaptains(auctionId);
+      if (sold.length > 0) {
+        toast.success(`${sold.length} captain${sold.length > 1 ? 's' : ''} auto-sold to their teams`);
+      }
       await auctionService.updateAuctionStatus(auctionId, 'live');
       navigate(`/auctions/${auctionId}`, { replace: true });
     } catch (e) {

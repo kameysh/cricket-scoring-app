@@ -522,7 +522,9 @@ For realtime to work, each table must have Replication enabled:
 | `AuctionRoom.jsx` | Sold sheet was a flat list with no team grouping | Rewrote sold BottomSheet: players grouped by `sold_to_team_id`; each team section shows player count + total spent; player rows include avatar, role, and sold price |
 | `AuctionSetup.jsx` + `auctionService.js` + `032_auction_teams_name.sql` | Auction setup required selecting from the global Teams registry — but auction players are free agents not belonging to any cricket team before the auction. Admin couldn't just type "Super Kings" as a bidding team without pre-creating it in the registry | Full re-architecture: migration 032 adds `name text` to `auction_teams` and makes `team_id` nullable; `addAuctionTeam` now takes a team name string; Teams tab replaced registry dropdowns with plain text inputs; all components (`BudgetBars`, `AuctioneerControls`, `BidLog`, `ActivePlayerSpotlight`, `AuctionRoom`) updated to use `t.name` directly |
 | `AuctionSetup.jsx` | "Save Teams" button gave no feedback while saving — looked frozen during slow writes | Added `savingTeams` state; button shows "Saving…" + `disabled` while in progress |
-| `AuctioneerControls.jsx` + `AuctionRoom.jsx` + `auctionService.js` | No way to undo a wrong bid — auctioneer had to deal or hold even if the wrong team was credited | Added `undoLastBid(auctionPlayerRowId)`: fetches bid log, deletes latest entry, rolls `current_bid` + `leading_team_id` back to previous bid (or null if it was the only bid). "↩ Undo Last Bid" button shown in AuctioneerControls when `hasBid=true`; refreshes bid log after undo. |
+| `AuctioneerControls.jsx` + `AuctionRoom.jsx` + `auctionService.js` | No way to undo a wrong bid — auctioneer had to deal or hold even if the wrong team was credited | Added `undoLastBid(auctionPlayerRowId)`: fetches bid log, deletes latest entry, rolls `current_bid` + `leading_team_id` back to previous bid (or null if it was the only bid). "↩ Undo Last Bid" button shown in AuctioneerControls when `hasBid=true`; refreshes bid log after undo. Undo is now guarded against rapid clicks (`actionLoading` check). |
+| `auctionService.js` + `AuctionSetup.jsx` | Captains selected during setup had to be manually bid on like any other player — no auto-assignment | Added `autosellCaptains(auctionId)`: resolves each team's `captain_id` → `players.user_id` → `auction_players` pool row, then marks sold at `base_price`, deducts from `budget_remaining`, logs a `captain_autosell` bid record. Called in `handleStart` before going live; toast shows how many were auto-sold. Skips gracefully if captain has no player profile or their player isn't in the pool. |
+| `useAuctionRoom.js` + `auctionStore.js` | Bid `DELETE` events (from undo) never propagated to other viewers — they still saw deleted bids | Added `DELETE` subscription on `auction_bids` realtime channel; fires `_removeBid(payload.old?.id)` in store, which filters the bid out of `bids[]` for all viewers simultaneously. |
 | `ActivePlayerSpotlight.jsx` + `AuctionRoom.jsx` | Player card only showed photo/name — no career stats, no way to navigate to full profile | `AuctionRoom` fetches `getCareerStats(player_id)` on every new active player; passes `careerStats` + `onViewProfile` to spotlight; card now shows RUNS/WKTS/MATCHES strip + "View Profile →" button matching the Players carousel card exactly |
 
 ---
@@ -533,7 +535,7 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**38 test files, 491 tests — all passing:**
+**39 test files, 522 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -625,7 +627,7 @@ For realtime to work, each table must have Replication enabled:
 - **`src/pages/AuctionSetup.jsx`** — Admin-only 3-tab form (Basics / Teams / Pool): configure name, budget, bid increments, assign teams + captains (from `auction_teams`), manage player pool with inline base-price editing. "Start Auction" button fixed at bottom.
 - **`src/pages/AuctionRoom.jsx`** — Live room for all authenticated users. Mounts `useAuctionRoom(id)` for realtime. Role-gated: admin sees `AuctioneerControls`, captains see `CaptainControls`, viewers see read-only. Shows `BudgetBars`, `ActivePlayerSpotlight`, `PassIndicator`, `BidLog`, and Pool/Held/Sold counter chips that open BottomSheets.
 - **`src/stores/auctionStore.js`** — Zustand store: `auction`, `teams`, `players`, `bids` state; `loadAuction(id)` parallel fetches; `_patchPlayer`, `_appendBid`, `_patchTeam` handlers for realtime events.
-- **`src/hooks/useAuctionRoom.js`** — Mounts 4 Supabase Realtime channels (`auctions`, `auction_players`, `auction_bids`, `auction_teams`), pipes events into store, cleans up on unmount.
+- **`src/hooks/useAuctionRoom.js`** — Mounts 4 Supabase Realtime channels (`auctions`, `auction_players`, `auction_bids INSERT+DELETE`, `auction_teams`) + 1 Presence channel for viewer count, pipes events into store, cleans up on unmount.
 - **`src/services/auctionService.js`** — Full CRUD: `createAuction`, `addAuctionTeam`, `addPlayerToPool`, `drawNextPlayer` (random pool → FIFO held → complete), `dealPlayer` (RPC), `holdPlayer`, `markUnsold`, `raiseAuctioneerBid`, `placeBid` (budget guard + pass reset), `signalPass`, `getBidsForPlayer`.
 - **`src/components/auction/`** — `AuctionCard`, `ActivePlayerSpotlight`, `BudgetBars`, `BidLog`, `AuctioneerControls`, `CaptainControls`, `PassIndicator`, `HeldQueue`, `PlayerPoolManager`.
 - **Role:** `canManageAuctions: role === 'admin'` added to `useRole.js`.

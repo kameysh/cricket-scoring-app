@@ -38,12 +38,18 @@ const BASE_STORE = {
   bids: [],
   isLoading: false,
   error: null,
+  viewerDraw: null,
+  soldFlash: null,
+  viewerCount: 0,
   reset: vi.fn(),
   _patchPlayer: vi.fn(),
   _appendBid: vi.fn(),
   _patchTeam: vi.fn(),
   _onAuctionUpdate: vi.fn(),
   loadAuction: vi.fn(),
+  _startViewerDraw: vi.fn(),
+  _clearViewerDraw: vi.fn(),
+  _clearSoldFlash: vi.fn(),
 };
 
 function renderRoom(storeOverrides = {}, roleOverrides = {}) {
@@ -307,5 +313,113 @@ describe('AuctionRoom — SoldCardSheet', () => {
         expect.objectContaining({ teamName: 'Back Street', basePrice: 150, soldPrice: 500 })
       );
     });
+  });
+});
+
+// ── Live relay — draw animation for viewers ───────────────────────────────────
+describe('AuctionRoom — viewer draw animation', () => {
+  const POOL = [
+    { id: 'ap2', status: 'pool', player_id: 'p2', base_price: 100,
+      player: { id: 'p2', name: 'Karthik', role: 'keeper' } },
+  ];
+
+  it('shows PlayerDrawAnimation for captain when viewerDraw is set', () => {
+    renderRoom(
+      { viewerDraw: { pool: POOL, winner: POOL[0] }, players: [] },
+      { isAdmin: false, userId: 'captain-uid' },
+    );
+    expect(screen.getByText('🎲 Drawing…')).toBeInTheDocument();
+  });
+
+  it('shows PlayerDrawAnimation for viewer when viewerDraw is set', () => {
+    renderRoom(
+      { viewerDraw: { pool: POOL, winner: POOL[0] }, players: [] },
+      { isAdmin: false, userId: 'viewer-uid' },
+    );
+    expect(screen.getByText('🎲 Drawing…')).toBeInTheDocument();
+  });
+
+  it('shows PlayerDrawAnimation for auctioneer when viewerDraw is set', () => {
+    renderRoom(
+      { viewerDraw: { pool: POOL, winner: POOL[0] }, players: [] },
+      { isAdmin: true, userId: 'admin-uid' },
+    );
+    expect(screen.getByText('🎲 Drawing…')).toBeInTheDocument();
+  });
+
+  it('hides "Tap Next Player" placeholder while viewerDraw is active', () => {
+    renderRoom(
+      { viewerDraw: { pool: POOL, winner: POOL[0] }, players: [] },
+      { isAdmin: true },
+    );
+    expect(screen.queryByText(/Tap "Next Player" to begin/)).not.toBeInTheDocument();
+  });
+});
+
+// ── Live relay — SOLD! overlay ────────────────────────────────────────────────
+describe('AuctionRoom — SOLD! overlay', () => {
+  const SOLD_FLASH = {
+    player: { name: 'Ravi Kumar', role: 'batsman', photo_url: null },
+    teamName: 'Super Kings',
+    soldPrice: 5000,
+  };
+
+  it('shows SOLD! overlay when soldFlash is set (viewer)', () => {
+    renderRoom({ soldFlash: SOLD_FLASH }, { isAdmin: false, userId: 'viewer-uid' });
+    expect(screen.getByText('🔨 SOLD!')).toBeInTheDocument();
+    expect(screen.getByText('Sold to')).toBeInTheDocument();
+    expect(screen.getByText('₹5,000')).toBeInTheDocument();
+  });
+
+  it('shows SOLD! overlay for auctioneer too', () => {
+    renderRoom({ soldFlash: SOLD_FLASH }, { isAdmin: true, userId: 'admin-uid' });
+    expect(screen.getByText('🔨 SOLD!')).toBeInTheDocument();
+  });
+
+  it('calls _clearSoldFlash when overlay is tapped', () => {
+    const clearSoldFlash = vi.fn();
+    renderRoom({ soldFlash: SOLD_FLASH, _clearSoldFlash: clearSoldFlash }, { isAdmin: false });
+    fireEvent.click(screen.getByText('🔨 SOLD!').closest('[class*="fixed"]'));
+    expect(clearSoldFlash).toHaveBeenCalled();
+  });
+
+  it('does not show SOLD! overlay when soldFlash is null', () => {
+    renderRoom({ soldFlash: null }, { isAdmin: false });
+    expect(screen.queryByText('🔨 SOLD!')).not.toBeInTheDocument();
+  });
+});
+
+// ── Live relay — viewer count ──────────────────────────────────────────────────
+describe('AuctionRoom — undo bid rapid-click guard', () => {
+  it('only calls undoLastBid once even if undo button is clicked twice rapidly', async () => {
+    const { undoLastBid } = await import('../services/auctionService');
+    let resolveUndo;
+    vi.mocked(undoLastBid).mockReturnValue(new Promise(res => { resolveUndo = res; }));
+
+    renderRoom({ players: [ACTIVE_PLAYER] }, { isAdmin: true, userId: 'admin-uid' });
+
+    const btn = screen.getByTestId('undo-bid-btn');
+    fireEvent.click(btn);
+    fireEvent.click(btn); // rapid second click while first is pending
+
+    resolveUndo({ id: 'ap1', current_bid: null, leading_team_id: null });
+    await waitFor(() => expect(undoLastBid).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('AuctionRoom — viewer count', () => {
+  it('shows viewer count when more than 1 viewer', () => {
+    renderRoom({ viewerCount: 4 }, { isAdmin: true });
+    expect(screen.getByText('👁 4')).toBeInTheDocument();
+  });
+
+  it('hides viewer count when only 1 viewer (yourself)', () => {
+    renderRoom({ viewerCount: 1 }, { isAdmin: true });
+    expect(screen.queryByText(/👁/)).not.toBeInTheDocument();
+  });
+
+  it('hides viewer count when 0', () => {
+    renderRoom({ viewerCount: 0 }, { isAdmin: false });
+    expect(screen.queryByText(/👁/)).not.toBeInTheDocument();
   });
 });

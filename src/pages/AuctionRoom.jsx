@@ -168,9 +168,6 @@ export default function AuctionRoom() {
   const [soldCardData, setSoldCardData] = useState(null);   // { player, teamName, basePrice, soldPrice }
   const [soldCardUrl, setSoldCardUrl] = useState(null);
   const [generatingCard, setGeneratingCard] = useState(false);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawWinner, setDrawWinner] = useState(null);
-
   function openSoldCard(ap) {
     const soldTeam = teams.find(t => t.id === ap.sold_to_team_id);
     const data = {
@@ -188,9 +185,14 @@ export default function AuctionRoom() {
       .finally(() => setGeneratingCard(false));
   }
 
-  useAuctionRoom(id);
+  useAuctionRoom(id, userId);
 
-  const { auction, teams, players, bids, isLoading, error, reset, _patchPlayer, _appendBid, loadAuction } = useAuctionStore();
+  const {
+    auction, teams, players, bids, isLoading, error, reset,
+    _patchPlayer, _appendBid, loadAuction,
+    viewerDraw, soldFlash, viewerCount,
+    _startViewerDraw, _clearViewerDraw, _clearSoldFlash,
+  } = useAuctionStore();
 
   // Clear stale auction data when leaving the room
   useEffect(() => () => reset(), []);
@@ -200,6 +202,13 @@ export default function AuctionRoom() {
   const poolPlayers  = players.filter(p => p.status === 'pool');
   const heldPlayers  = players.filter(p => p.status === 'held').sort((a, b) => new Date(a.held_at) - new Date(b.held_at));
   const soldPlayers  = players.filter(p => p.status === 'sold');
+
+  // Auto-dismiss SOLD! overlay after 4 seconds
+  useEffect(() => {
+    if (!soldFlash) return;
+    const t = setTimeout(_clearSoldFlash, 4000);
+    return () => clearTimeout(t);
+  }, [soldFlash]);
 
   // Fetch career stats whenever a new player becomes active
   useEffect(() => {
@@ -249,23 +258,23 @@ export default function AuctionRoom() {
   // ── Auctioneer handlers ────────────────────────────────────────────────────
 
   async function handleNextPlayer() {
+    if (actionLoading || activePlayer) return;
     setActionLoading(true);
-    setIsDrawing(true);
-    setDrawWinner(null);
     try {
+      // Snapshot pool before draw so animation has players to cycle through
+      const poolSnapshot = players.filter(p => p.status === 'pool');
       const drawn = await auctionService.drawNextPlayer(id);
       if (drawn) {
+        // Optimistically start animation — realtime will also fire but _patchPlayer skips if already set
+        const winner = { ...drawn, player: drawn.player ?? poolSnapshot.find(p => p.id === drawn.id)?.player };
+        _startViewerDraw(poolSnapshot, winner);
         _patchPlayer(drawn);
         useAuctionStore.setState({ bids: [] });
-        setDrawWinner(drawn);
-        // onComplete callback will clear isDrawing after animation finishes
       } else {
-        setIsDrawing(false);
         toast('Auction complete!', { icon: '🏆' });
         loadAuction(id);
       }
     } catch (e) {
-      setIsDrawing(false);
       toast.error(e.message);
     } finally {
       setActionLoading(false);
@@ -353,7 +362,7 @@ export default function AuctionRoom() {
   }
 
   async function handleUndoBid() {
-    if (!activePlayer) return;
+    if (!activePlayer || actionLoading) return;
     setActionLoading(true);
     try {
       const updated = await auctionService.undoLastBid(activePlayer.id);
@@ -481,6 +490,9 @@ export default function AuctionRoom() {
         {auction.status === 'live' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1 animate-pulse" />}
         {auction.status.toUpperCase()}
       </span>
+      {viewerCount > 1 && (
+        <span className="text-[11px] text-ink-400 shrink-0">👁 {viewerCount}</span>
+      )}
       {isAdmin && (
         <button onClick={() => setDeleteConfirmOpen(true)} className="p-2 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-500 shrink-0">
           <Trash2 size={16} />
@@ -520,16 +532,16 @@ export default function AuctionRoom() {
         <BudgetBars teams={teams} budgetPerTeam={auction.budget_per_team} />
 
         {/* Draw animation — shown while next player is being selected */}
-        {isDrawing && (
+        {viewerDraw && (
           <PlayerDrawAnimation
-            poolPlayers={poolPlayers}
-            winner={drawWinner}
-            onComplete={() => setIsDrawing(false)}
+            poolPlayers={viewerDraw.pool}
+            winner={viewerDraw.winner}
+            onComplete={_clearViewerDraw}
           />
         )}
 
         {/* Compact player banner — tap to open full card in sheet */}
-        {!isDrawing && activePlayer ? (
+        {!viewerDraw && activePlayer ? (
           <button
             onClick={() => setPlayerSheetOpen(true)}
             className="w-full card px-3 py-3 flex items-center gap-3 text-left"
@@ -560,7 +572,7 @@ export default function AuctionRoom() {
             </div>
             <span className="shrink-0 text-[10px] text-ink-300 font-semibold leading-tight text-center">Tap<br/>card</span>
           </button>
-        ) : !isDrawing ? (
+        ) : !viewerDraw ? (
           <div className="card px-4 py-4 text-center">
             <p className="text-sm text-ink-400">🎲 Tap "Next Player" to begin</p>
           </div>
@@ -586,7 +598,7 @@ export default function AuctionRoom() {
           onPause={handlePause}
           onResume={handleResume}
           auctionStatus={auction.status}
-          bidIncrements={auction.bid_increments ?? [1000, 2000, 3000, 5000, 10000]}
+          bidIncrements={auction.bid_increments ?? [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]}
           teams={teams}
           loading={actionLoading}
         />
@@ -677,6 +689,35 @@ export default function AuctionRoom() {
           generating={generatingCard}
           onClose={() => setSoldCardData(null)}
         />
+
+        {/* 🔨 SOLD! overlay */}
+        {soldFlash && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm"
+            onClick={_clearSoldFlash}
+          >
+            <div
+              className="mx-6 rounded-3xl overflow-hidden text-center shadow-2xl animate-[draw-land_0.5s_cubic-bezier(0.34,1.56,0.64,1)_forwards]"
+              style={{ background: 'linear-gradient(160deg,#064e3b 0%,#065f46 50%,#047857 100%)', boxShadow: '0 0 60px rgba(16,185,129,0.4)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="px-8 pt-7 pb-4">
+                <p className="text-3xl font-black text-white mb-5">🔨 SOLD!</p>
+                <div className="rounded-full overflow-hidden w-24 h-24 mx-auto ring-4 ring-emerald-400 ring-offset-2 ring-offset-emerald-900">
+                  <PlayerAvatar name={soldFlash.player?.name} photoUrl={soldFlash.player?.photo_url} size={96} />
+                </div>
+                <p className="text-xl font-extrabold text-white mt-4 leading-tight">{soldFlash.player?.name ?? '—'}</p>
+                <p className="text-sm text-emerald-300 mt-1 capitalize">{soldFlash.player?.role ?? ''}</p>
+              </div>
+              <div className="px-8 py-5 mt-1" style={{ background: 'rgba(0,0,0,0.25)' }}>
+                <p className="text-[11px] text-emerald-400 uppercase tracking-[0.2em] font-semibold">Sold to</p>
+                <p className="text-2xl font-extrabold text-white mt-0.5">{soldFlash.teamName}</p>
+                <p className="text-3xl font-black mt-2" style={{ color: '#34d399' }}>₹{soldFlash.soldPrice?.toLocaleString()}</p>
+              </div>
+              <p className="text-[10px] text-emerald-500/60 py-3">Tap anywhere to dismiss</p>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -702,11 +743,11 @@ export default function AuctionRoom() {
       <BudgetBars teams={teams} budgetPerTeam={auction.budget_per_team} />
 
       {/* Draw animation or active player spotlight */}
-      {isDrawing ? (
+      {viewerDraw ? (
         <PlayerDrawAnimation
-          poolPlayers={poolPlayers}
-          winner={drawWinner}
-          onComplete={() => setIsDrawing(false)}
+          poolPlayers={viewerDraw.pool}
+          winner={viewerDraw.winner}
+          onComplete={_clearViewerDraw}
         />
       ) : (
         <ActivePlayerSpotlight
@@ -724,7 +765,7 @@ export default function AuctionRoom() {
         <CaptainControls
           auctionTeamId={myAuctionTeam?.id}
           activePlayer={activePlayer}
-          bidIncrements={auction.bid_increments ?? [1000, 2000, 3000, 5000, 10000]}
+          bidIncrements={auction.bid_increments ?? [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]}
           budgetRemaining={myAuctionTeam?.budget_remaining ?? 0}
           hasPassed={hasPassed}
           onBid={handleBid}
@@ -830,6 +871,35 @@ export default function AuctionRoom() {
         generating={generatingCard}
         onClose={() => setSoldCardData(null)}
       />
+
+      {/* 🔨 SOLD! overlay — appears for all viewers when a deal is struck */}
+      {soldFlash && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm"
+          onClick={_clearSoldFlash}
+        >
+          <div
+            className="mx-6 rounded-3xl overflow-hidden text-center shadow-2xl animate-[draw-land_0.5s_cubic-bezier(0.34,1.56,0.64,1)_forwards]"
+            style={{ background: 'linear-gradient(160deg,#064e3b 0%,#065f46 50%,#047857 100%)', boxShadow: '0 0 60px rgba(16,185,129,0.4)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-8 pt-7 pb-4">
+              <p className="text-3xl font-black text-white mb-5">🔨 SOLD!</p>
+              <div className="rounded-full overflow-hidden w-24 h-24 mx-auto ring-4 ring-emerald-400 ring-offset-2 ring-offset-emerald-900">
+                <PlayerAvatar name={soldFlash.player?.name} photoUrl={soldFlash.player?.photo_url} size={96} />
+              </div>
+              <p className="text-xl font-extrabold text-white mt-4 leading-tight">{soldFlash.player?.name ?? '—'}</p>
+              <p className="text-sm text-emerald-300 mt-1 capitalize">{soldFlash.player?.role ?? ''}</p>
+            </div>
+            <div className="px-8 py-5 mt-1" style={{ background: 'rgba(0,0,0,0.25)' }}>
+              <p className="text-[11px] text-emerald-400 uppercase tracking-[0.2em] font-semibold">Sold to</p>
+              <p className="text-2xl font-extrabold text-white mt-0.5">{soldFlash.teamName}</p>
+              <p className="text-3xl font-black mt-2" style={{ color: '#34d399' }}>₹{soldFlash.soldPrice?.toLocaleString()}</p>
+            </div>
+            <p className="text-[10px] text-emerald-500/60 py-3">Tap anywhere to dismiss</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

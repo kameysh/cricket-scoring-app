@@ -111,13 +111,6 @@ export default function BottomNav() {
                   <ChevronRight size={16} className="text-ink-400" />
                 </button>
                 <button
-                  onClick={() => { setShowSheet(false); navigate('/auctions'); }}
-                  className="w-full flex items-center justify-between py-3 px-1 border-t border-ink-100 dark:border-white/10 text-sm font-medium text-ink-700 dark:text-ink-200"
-                >
-                  <span className="flex items-center gap-2"><Gavel size={16} /> Auctions</span>
-                  <ChevronRight size={16} className="text-ink-400" />
-                </button>
-                <button
                   onClick={() => { setShowSheet(false); navigate('/admin/users'); }}
                   className="w-full flex items-center justify-between py-3 px-1 border-t border-ink-100 dark:border-white/10 text-sm font-medium text-ink-700 dark:text-ink-200"
                 >
@@ -126,6 +119,15 @@ export default function BottomNav() {
                 </button>
               </>
             )}
+
+            {/* Auctions — visible to all logged-in users */}
+            <button
+              onClick={() => { setShowSheet(false); navigate('/auctions'); }}
+              className="w-full flex items-center justify-between py-3 px-1 border-t border-ink-100 dark:border-white/10 text-sm font-medium text-ink-700 dark:text-ink-200"
+            >
+              <span className="flex items-center gap-2"><Gavel size={16} /> Auctions</span>
+              <ChevronRight size={16} className="text-ink-400" />
+            </button>
 
             {/* Theme toggle — visible to all logged-in users */}
             <div className="w-full flex items-center justify-between py-3 px-1 border-t border-ink-100 dark:border-white/10">

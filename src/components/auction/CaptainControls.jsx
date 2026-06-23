@@ -5,7 +5,7 @@ const haptic = (ms = 12) => navigator.vibrate?.(ms);
 export default function CaptainControls({
   auctionTeamId,
   activePlayer,
-  bidIncrements = [1000, 2000, 3000, 5000, 10000],
+  bidIncrements = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000],
   budgetRemaining = 0,
   hasPassed = false,
   onBid,

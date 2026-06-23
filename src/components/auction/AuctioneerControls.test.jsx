@@ -174,6 +174,29 @@ describe('AuctioneerControls — BidLogStrip always renders', () => {
   });
 });
 
+describe('AuctioneerControls — default bid increments', () => {
+  it('renders all 10 chips (1K–10K) when no bidIncrements prop is passed', () => {
+    const props = {
+      activePlayer: ACTIVE_PLAYER,
+      bothPassing: false,
+      onNextPlayer: vi.fn(), onRaise: vi.fn(), onUndoBid: vi.fn(),
+      onDeal: vi.fn(), onHold: vi.fn(), onUnsold: vi.fn(),
+      onPause: vi.fn(), onResume: vi.fn(),
+      auctionStatus: 'live', teams: [TEAM1, TEAM2], loading: false,
+      // bidIncrements intentionally omitted — uses component default
+    };
+    render(<AuctioneerControls {...props} />);
+    [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000].forEach(inc => {
+      expect(screen.getByTestId(`chip-${inc}`)).toBeInTheDocument();
+    });
+  });
+
+  it('does not render 4K chip when explicit 5-value list is passed', () => {
+    renderControls({ bidIncrements: [1000, 2000, 3000, 5000, 10000] });
+    expect(screen.queryByTestId('chip-4000')).not.toBeInTheDocument();
+  });
+});
+
 describe('AuctioneerControls — undo bid', () => {
   it('shows Undo Last Bid when current_bid is set', () => {
     renderControls();

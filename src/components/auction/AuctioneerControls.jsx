@@ -15,7 +15,7 @@ export default function AuctioneerControls({
   onPause,
   onResume,
   auctionStatus,
-  bidIncrements = [1000, 2000, 3000, 5000, 10000],
+  bidIncrements = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000],
   teams = [],
   loading = false,
 }) {

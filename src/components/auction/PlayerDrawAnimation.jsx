@@ -141,7 +141,7 @@ export default function PlayerDrawAnimation({ poolPlayers, winner, onComplete })
             }}
           >
             <div className="rounded-full overflow-hidden" style={{ width: 72, height: 72 }}>
-              <PlayerAvatar player={displayPlayer} size="lg" />
+              <PlayerAvatar name={displayPlayer?.name} photoUrl={displayPlayer?.photo_url} size={72} />
             </div>
           </div>
 
