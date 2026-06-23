@@ -193,7 +193,7 @@ describe('undoLastBid', () => {
   });
 
   it('clears current_bid and leading_team_id when undoing the only bid', async () => {
-    // First call (fetch bids) returns one bid; subsequent calls (delete + update) use chain
+    // First call (fetch bids) returns one bid; second call (delete) returns deleted row
     let callCount = 0;
     chain.then = (resolve) => {
       callCount++;
@@ -203,7 +203,8 @@ describe('undoLastBid', () => {
           error: null,
         }).then(resolve);
       }
-      return Promise.resolve({ data: null, error: null }).then(resolve);
+      // Delete call — return the deleted row so the no-op guard passes
+      return Promise.resolve({ data: [{ id: 'bid1' }], error: null }).then(resolve);
     };
     chain.single.mockResolvedValue({
       data: { id: 'ap1', current_bid: null, leading_team_id: null },
@@ -228,7 +229,8 @@ describe('undoLastBid', () => {
           error: null,
         }).then(resolve);
       }
-      return Promise.resolve({ data: null, error: null }).then(resolve);
+      // Delete call — return the deleted row so the no-op guard passes
+      return Promise.resolve({ data: [{ id: 'bid2' }], error: null }).then(resolve);
     };
     chain.single.mockResolvedValue({
       data: { id: 'ap1', current_bid: 200, leading_team_id: 'at1' },

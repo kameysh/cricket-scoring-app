@@ -401,12 +401,14 @@ export async function undoLastBid(auctionPlayerRowId) {
 
   const [latest, prev] = bids;
 
-  // Delete the last bid
-  const { error: delErr } = await supabase
+  // Delete the last bid — use .select() so we can detect RLS silent no-ops
+  const { data: deleted, error: delErr } = await supabase
     .from('auction_bids')
     .delete()
-    .eq('id', latest.id);
+    .eq('id', latest.id)
+    .select('id');
   if (delErr) throw delErr;
+  if (!deleted?.length) throw new Error('Could not delete bid — check RLS policies on auction_bids');
 
   // Roll the player row back: if there was a previous bid use it, else clear
   const update = prev
