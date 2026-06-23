@@ -332,16 +332,11 @@ export async function raiseAuctioneerBid(auctionPlayerRowId, auctionTeamId, newA
   }
 
   // Insert a raise bid, then update current_bid on the player row
-  const { data: player } = await supabase
-    .from('auction_players')
-    .select('auction_id')
-    .eq('id', auctionPlayerRowId)
-    .single();
-
+  // team.auction_id already fetched above — no extra query needed
   const { error: bidError } = await supabase
     .from('auction_bids')
     .insert({
-      auction_id: player.auction_id,
+      auction_id: team.auction_id,
       auction_player_id: auctionPlayerRowId,
       auction_team_id: auctionTeamId,
       amount: newAmount,

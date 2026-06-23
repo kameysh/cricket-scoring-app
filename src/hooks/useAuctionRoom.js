@@ -25,6 +25,7 @@ export function useAuctionRoom(auctionId, userId) {
     _appendBid,
     _removeBid,
     _patchTeam,
+    _refreshBids,
     _setViewerCount,
   } = useAuctionStore();
 
@@ -42,21 +43,15 @@ export function useAuctionRoom(auctionId, userId) {
     function onChannelStatus(status) {
       if (status === 'SUBSCRIBED') {
         subscribedCount.current += 1;
-        // All 4 postgres_changes channels confirmed live
-        if (subscribedCount.current >= 4) {
-          setIsRealtimeLive(true);
-          // Cancel polling — realtime takes over
-          if (pollTimerRef.current) {
-            clearInterval(pollTimerRef.current);
-            pollTimerRef.current = null;
-          }
-        }
+        if (subscribedCount.current >= 4) setIsRealtimeLive(true);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         setIsRealtimeLive(false);
       }
     }
 
-    // Start polling fallback immediately; cancelled once realtime confirms
+    // Polling runs permanently as a safety net — realtime is best-effort.
+    // This ensures bids, budgets, and player status stay correct even if
+    // a realtime channel drops or a table's replication isn't enabled.
     pollTimerRef.current = setInterval(() => {
       loadAuction(auctionId);
     }, POLL_INTERVAL_MS);
@@ -72,7 +67,15 @@ export function useAuctionRoom(auctionId, userId) {
       .channel(`auction:${auctionId}:players`)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'auction_players', filter: `auction_id=eq.${auctionId}`,
-      }, (payload) => _patchPlayer(payload.new))
+      }, (payload) => {
+        _patchPlayer(payload.new);
+        // Whenever the active player's bid changes, refresh the full bid log from DB
+        // so all viewers (not just the auctioneer who calls refreshBids locally) stay in sync.
+        // This is the primary fallback for auction_bids realtime not delivering to all clients.
+        if (payload.new.status === 'active' && payload.new.current_bid != null) {
+          _refreshBids(payload.new.id);
+        }
+      })
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'auction_players', filter: `auction_id=eq.${auctionId}`,
       }, (payload) => _patchPlayer(payload.new))

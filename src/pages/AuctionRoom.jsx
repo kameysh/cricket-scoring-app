@@ -11,7 +11,6 @@ import { generateAuctionSoldCard } from '../lib/generateShareCard';
 import ActivePlayerSpotlight from '../components/auction/ActivePlayerSpotlight';
 import PlayerDrawAnimation from '../components/auction/PlayerDrawAnimation';
 import BudgetBars from '../components/auction/BudgetBars';
-import BidLog from '../components/auction/BidLog';
 import AuctioneerControls from '../components/auction/AuctioneerControls';
 import CaptainControls from '../components/auction/CaptainControls';
 import PassIndicator from '../components/auction/PassIndicator';

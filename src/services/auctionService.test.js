@@ -35,7 +35,7 @@ import {
   createAuction, addAuctionTeam, getAuction,
   placeBid, raiseAuctioneerBid, dealPlayer, signalPass, holdPlayer, returnToPool,
   drawNextPlayer, updateAuctionStatus, undoLastBid, autosellCaptains,
-  createTeamsFromAuction, computeMinReserve,
+  createTeamsFromAuction, computeMinReserve, getBidsForPlayer,
 } from './auctionService';
 import { supabase } from '../lib/supabase';
 import * as teamService from './teamService';
@@ -540,7 +540,7 @@ describe('placeBid — reserve enforcement', () => {
     await expect(placeBid('ap1', 'at1', 500)).rejects.toThrow('insufficient purse');
   });
 
-  it('allows bid within reserve limit (8 already sold → reserve=0 → maxBid=budget)', async () => {
+  it('allows bid at exactly the max bid (boundary)', async () => {
     // Team fetch (single), sold count (then), insert bid (then), update player (single)
     chain.single
       .mockResolvedValueOnce({ data: { budget_remaining: 1000, auction_id: 'a1' }, error: null })
@@ -554,5 +554,33 @@ describe('placeBid — reserve enforcement', () => {
     };
 
     await expect(placeBid('ap1', 'at1', 800)).resolves.not.toThrow();
+  });
+});
+
+describe('getBidsForPlayer', () => {
+  beforeEach(() => {
+    // Restore chain.then — previous tests may have overridden it
+    chain.then = (resolve) => resolve({ data: mockData, error: mockError });
+  });
+
+  it('returns bids ordered newest first', async () => {
+    const bids = [{ id: 'b1', amount: 1000 }, { id: 'b2', amount: 500 }];
+    mockData = bids;
+    const result = await getBidsForPlayer('ap1');
+    expect(result).toEqual(bids);
+    expect(chain.eq).toHaveBeenCalledWith('auction_player_id', 'ap1');
+    expect(chain.limit).toHaveBeenCalledWith(20);
+  });
+
+  it('returns empty array when data is null', async () => {
+    mockData = null;
+    const result = await getBidsForPlayer('ap1');
+    expect(result).toEqual([]);
+  });
+
+  it('throws on DB error', async () => {
+    mockData = null;
+    mockError = { message: 'DB error' };
+    await expect(getBidsForPlayer('ap1')).rejects.toEqual({ message: 'DB error' });
   });
 });

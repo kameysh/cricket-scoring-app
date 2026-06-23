@@ -97,6 +97,13 @@ export const useAuctionStore = create((set, get) => ({
     set(state => ({ bids: state.bids.filter(b => b.id !== bidId) }));
   },
 
+  async _refreshBids(playerRowId) {
+    try {
+      const bids = await auctionService.getBidsForPlayer(playerRowId);
+      set({ bids });
+    } catch {}
+  },
+
   _patchTeam(updatedRow) {
     set(state => ({
       teams: state.teams.map(t => t.id === updatedRow.id ? { ...t, ...updatedRow } : t),

@@ -51,6 +51,8 @@ const BASE_STORE = {
   reset: vi.fn(),
   _patchPlayer: vi.fn(),
   _appendBid: vi.fn(),
+  _removeBid: vi.fn(),
+  _refreshBids: vi.fn(),
   _patchTeam: vi.fn(),
   _onAuctionUpdate: vi.fn(),
   loadAuction: vi.fn(),
