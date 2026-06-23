@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Trash2, Share2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -19,91 +20,450 @@ import BottomSheet from '../components/shared/BottomSheet';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import PlayerAvatar from '../components/player/PlayerAvatar';
 
-async function shareCard(cardUrl, playerName) {
-  const res = await fetch(cardUrl);
+const SOLD_CARD_STYLES = `
+@keyframes sc-confetti-fall {
+  0%   { transform: translateY(-10px) rotate(0deg) scale(1); opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(110vh) rotate(900deg) scale(0.5); opacity: 0; }
+}
+@keyframes sc-confetti-sway {
+  0%, 100% { margin-left: 0; }
+  25%       { margin-left: 30px; }
+  75%       { margin-left: -30px; }
+}
+@keyframes sc-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes sc-card-pop {
+  0%   { transform: scale(0.4) translateY(80px); opacity: 0; }
+  65%  { transform: scale(1.06) translateY(-6px); opacity: 1; }
+  82%  { transform: scale(0.97) translateY(2px); }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes sc-sold-stamp {
+  0%   { transform: rotate(-8deg) scale(4); opacity: 0; filter: blur(6px); }
+  55%  { transform: rotate(-8deg) scale(0.92); opacity: 1; filter: blur(0); }
+  70%  { transform: rotate(-8deg) scale(1.04); }
+  85%  { transform: rotate(-8deg) scale(0.98); }
+  100% { transform: rotate(-8deg) scale(1); opacity: 1; filter: blur(0); }
+}
+@keyframes sc-price-pop {
+  0%   { transform: scale(0) rotate(-12deg); opacity: 0; }
+  60%  { transform: scale(1.15) rotate(3deg); opacity: 1; }
+  80%  { transform: scale(0.95) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes sc-glow {
+  0%, 100% { text-shadow: 0 0 20px #f59e0b, 0 0 40px #f59e0b88; }
+  50%       { text-shadow: 0 0 40px #fbbf24, 0 0 80px #f59e0baa, 0 0 120px #f59e0b55; }
+}
+@keyframes sc-shine {
+  0%   { left: -100%; }
+  100% { left: 200%; }
+}
+@keyframes sc-ring-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.7); }
+  50%       { box-shadow: 0 0 0 16px rgba(16,185,129,0); }
+}
+.sc-overlay  { animation: sc-overlay-in 0.25s ease both; }
+.sc-card     { animation: sc-card-pop 0.65s cubic-bezier(0.34,1.56,0.64,1) 0.05s both; }
+.sc-stamp    { animation: sc-sold-stamp 0.7s cubic-bezier(0.22,1,0.36,1) 0.55s both; }
+.sc-price    { animation: sc-price-pop 0.6s cubic-bezier(0.34,1.56,0.64,1) 1.0s both; }
+.sc-glow     { animation: sc-glow 2s ease-in-out 1.2s infinite; }
+.sc-ring     { animation: sc-ring-pulse 1.8s ease-out 0.8s infinite; }
+.sc-confetti { animation: sc-confetti-fall var(--dur) linear var(--delay) both,
+                           sc-confetti-sway calc(var(--dur) * 0.6) ease-in-out var(--delay) infinite; }
+.sc-shine-wrap { position: relative; overflow: hidden; }
+.sc-shine-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%; height: 100%;
+  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%);
+  animation: sc-shine 2.2s ease-in-out 1.3s infinite;
+}
+`;
+
+const CONFETTI_COLORS = ['#f59e0b','#10b981','#3b82f6','#ef4444','#8b5cf6','#ec4899','#f97316','#06b6d4','#84cc16'];
+const CONFETTI_SHAPES = ['rounded-sm', 'rounded-full', ''];
+
+// ── Canvas photo cache ────────────────────────────────────────────────────────
+const _canvasImgCache = {};
+function loadCanvasImage(url) {
+  if (_canvasImgCache[url]) return Promise.resolve(_canvasImgCache[url]);
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { _canvasImgCache[url] = img; res(img); };
+    img.onerror = rej;
+    img.src = url;
+  });
+}
+
+function drawRRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function springOut(t) {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return 1 - Math.cos(t * Math.PI * 2.4) * Math.pow(1 - t, 2.2);
+}
+function easeOut3(t) { return 1 - Math.pow(1 - Math.min(1, t), 3); }
+
+// ── Canvas → GIF encoder ──────────────────────────────────────────────────────
+// Renders a 3s animated sold card frame-by-frame and encodes as animated GIF.
+// Runs synchronously (no rAF) so it works in all browsers including iOS Safari.
+async function generateSoldCardGif(data, onProgress) {
+  const { GIFEncoder, quantize, applyPalette, prequantize } = await import('gifenc');
+
+  // Render at 540×960 (high-DPI mobile resolution) using a logical 360×640 drawing space.
+  // All coordinates below are in logical pixels; ctx.scale(S,S) maps them to physical pixels.
+  const W = 540, H = 960, S = 1.5;   // physical GIF dimensions
+  const LW = W / S, LH = H / S;      // logical drawing space (360×640)
+  const FPS = 15, DURATION = 3.0;
+  const TOTAL_FRAMES = Math.round(FPS * DURATION);
+  const DELAY = Math.round(1000 / FPS);
+
+  let photo = null;
+  if (data.player?.photo_url) {
+    try { photo = await loadCanvasImage(data.player.photo_url); } catch {}
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  // Confetti particles in logical coords — seeded for deterministic frames
+  const particles = Array.from({ length: 60 }, (_, i) => ({
+    x: (i * 137.5) % LW,
+    y: -40 - (i * 83) % 300,
+    vx: ((i % 5) - 2) * 1.2,
+    vy: 2.5 + (i % 4) * 0.8,
+    rot: (i * 0.7) % (Math.PI * 2),
+    vr: ((i % 3) - 1) * 0.1,
+    w: 6 + (i % 8),
+    h: 4 + (i % 7),
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    circle: i % 3 === 1,
+  }));
+
+  const gif = GIFEncoder();
+  // All layout values in logical (360×640) pixels
+  const CX = 20, CW = LW - 40, CH = Math.round(LH * 0.84), CY = Math.round((LH - CH) / 2);
+
+  for (let fi = 0; fi < TOTAL_FRAMES; fi++) {
+    const t = fi / FPS;
+    onProgress?.(fi / TOTAL_FRAMES);
+
+    ctx.save();
+    ctx.scale(S, S); // all drawing in 360×640 logical space
+
+    // ── Background ──────────────────────────────────────────
+    // Solid flat colours instead of gradients — GIF's 256-colour palette handles
+    // flat fills perfectly; gradients cause visible dithering bands.
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, LW, LH);
+
+    // ── Card bg ─────────────────────────────────────────────
+    ctx.fillStyle = '#1e1b4b'; drawRRect(ctx, CX, CY, CW, CH, 22); ctx.fill();
+    // Subtle inner highlight strip (flat, no gradient)
+    ctx.fillStyle = '#1e293b';
+    drawRRect(ctx, CX + 1, CY + 1, CW - 2, Math.round(CH * 0.5), 21); ctx.fill();
+
+    // Rainbow top bar (5 solid segments, no gradient)
+    const barColors = ['#10b981','#f59e0b','#ef4444','#8b5cf6','#10b981'];
+    const segW = CW / barColors.length;
+    barColors.forEach((c, i) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(CX + i * segW, CY, segW + 1, 6);
+    });
+
+    // ── Avatar ──────────────────────────────────────────────
+    const AX = LW / 2, AY = CY + 96, AR = 46;
+    const ringT = easeOut3(Math.min(1, t / 0.6));
+    // Pulsing glow ring (flat green)
+    ctx.beginPath(); ctx.arc(AX, AY, AR + 5, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(16,185,129,${(ringT * (0.7 + Math.sin(t * 3) * 0.3)).toFixed(2)})`;
+    ctx.lineWidth = 4; ctx.stroke();
+    // Solid gradient-ring replaced with two-tone stroke
+    ctx.beginPath(); ctx.arc(AX, AY, AR + 3, 0, Math.PI * 2);
+    ctx.strokeStyle = '#10b981'; ctx.lineWidth = 3; ctx.stroke();
+    // Photo / initials
+    ctx.save(); ctx.beginPath(); ctx.arc(AX, AY, AR, 0, Math.PI * 2); ctx.clip();
+    if (photo) {
+      ctx.drawImage(photo, AX - AR, AY - AR, AR * 2, AR * 2);
+    } else {
+      ctx.fillStyle = '#1e293b'; ctx.fillRect(AX - AR, AY - AR, AR * 2, AR * 2);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 26px Arial';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText((data.player?.name ?? '').split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase(), AX, AY);
+    }
+    ctx.restore();
+
+    // ── SOLD stamp ──────────────────────────────────────────
+    const stampT = Math.min(1, Math.max(0, (t - 0.4) / 0.4));
+    if (stampT > 0) {
+      const sc = springOut(stampT);
+      const SX = CX + CW - 18, SY = CY + 42;
+      ctx.save();
+      ctx.translate(SX, SY); ctx.rotate(-8 * Math.PI / 180); ctx.scale(sc, sc);
+      ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 4;
+      ctx.strokeRect(-58, -21, 116, 42);
+      ctx.fillStyle = '#ef4444'; ctx.font = '900 34px Impact, Arial Black, Arial';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('SOLD', 0, 2);
+      ctx.restore();
+    }
+
+    // ── Name + role ─────────────────────────────────────────
+    const nameAlpha = easeOut3(Math.min(1, t / 0.4));
+    ctx.globalAlpha = nameAlpha;
+    const nameY = AY + AR + 28;
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(data.player?.name ?? '—', LW / 2, nameY);
+    ctx.fillStyle = '#34d399'; ctx.font = '600 12px Arial';
+    ctx.fillText((data.player?.role ?? '').toUpperCase(), LW / 2, nameY + 24);
+    ctx.globalAlpha = 1;
+
+    // Divider
+    const divY = nameY + 44;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(CX + 20, divY, CW - 40, 1);
+
+    // ── Bought by ───────────────────────────────────────────
+    const buyAlpha = easeOut3(Math.min(1, Math.max(0, (t - 0.35) / 0.35)));
+    ctx.globalAlpha = buyAlpha;
+    const buyY = divY + 16;
+    ctx.fillStyle = '#0d2e22'; drawRRect(ctx, CX + 10, buyY, CW - 20, 58, 10); ctx.fill();
+    ctx.strokeStyle = '#10b981'; ctx.lineWidth = 1; drawRRect(ctx, CX + 10, buyY, CW - 20, 58, 10); ctx.stroke();
+    ctx.fillStyle = '#34d399'; ctx.font = '700 10px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('BOUGHT BY', LW / 2, buyY + 17);
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 17px Arial';
+    ctx.fillText(data.teamName ?? '—', LW / 2, buyY + 40);
+    ctx.globalAlpha = 1;
+
+    // ── Price ───────────────────────────────────────────────
+    const priceT = Math.min(1, Math.max(0, (t - 0.75) / 0.4));
+    const priceSc = springOut(priceT);
+    const priceY = buyY + 70;
+    ctx.save();
+    ctx.translate(LW / 2, priceY + 42); ctx.scale(priceSc, priceSc); ctx.translate(-LW / 2, -(priceY + 42));
+    ctx.globalAlpha = Math.min(1, priceT * 3);
+    ctx.fillStyle = '#2d1f00'; drawRRect(ctx, CX + 10, priceY, CW - 20, 86, 10); ctx.fill();
+    ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1; drawRRect(ctx, CX + 10, priceY, CW - 20, 86, 10); ctx.stroke();
+    ctx.fillStyle = '#fbbf24'; ctx.font = '700 10px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('FINAL PRICE', LW / 2, priceY + 18);
+    ctx.font = 'bold 34px Arial Narrow, Arial'; ctx.fillStyle = '#fbbf24';
+    ctx.fillText(`₹${(data.soldPrice ?? 0).toLocaleString('en-IN')}`, LW / 2, priceY + 54);
+    if ((data.soldPrice ?? 0) > (data.basePrice ?? 0)) {
+      ctx.font = '500 10px Arial'; ctx.fillStyle = '#d97706';
+      const pct = Math.round(((data.soldPrice - data.basePrice) / data.basePrice) * 100);
+      ctx.fillText(`Base ₹${(data.basePrice).toLocaleString('en-IN')} · +${pct}%`, LW / 2, priceY + 74);
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
+
+    // ── Confetti ────────────────────────────────────────────
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      if (p.y > LH + 20) { p.y = -20; p.x = (p.x + 73) % LW; }
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = Math.min(1, (p.y + 40) / 60) * 0.9;
+      if (p.circle) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2); ctx.fill(); }
+      else { ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); }
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
+
+    ctx.restore(); // restore scale
+
+    // ── Encode frame ────────────────────────────────────────
+    const frame = ctx.getImageData(0, 0, W, H);
+    prequantize(frame.data, { roundRobin: true, oneBitAlpha: false });
+    const palette = quantize(frame.data, 256, { format: 'rgb444', oneBitAlpha: false });
+    const indexed = applyPalette(frame.data, palette, 'rgb444');
+    gif.writeFrame(indexed, W, H, { palette, delay: DELAY, repeat: 0 });
+  }
+
+  onProgress?.(1);
+  gif.finish();
+  return new Blob([gif.bytesView()], { type: 'image/gif' });
+}
+
+async function shareExport(url, mimeType, playerName) {
+  const res = await fetch(url);
   const blob = await res.blob();
-  const file = new File([blob], `${playerName ?? 'player'}-sold.png`, { type: 'image/png' });
+  const ext = mimeType === 'image/gif' ? 'gif' : 'png';
+  const file = new File([blob], `${playerName ?? 'player'}-sold.${ext}`, { type: mimeType });
   if (navigator.canShare?.({ files: [file] })) {
     try { await navigator.share({ files: [file], title: `${playerName} — Sold!` }); return; } catch {}
   }
-  try {
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-    toast.success('Card copied to clipboard');
-    return;
-  } catch {}
   const a = document.createElement('a');
-  a.href = cardUrl;
-  a.download = `${playerName ?? 'player'}-sold.png`;
-  a.click();
-  toast.success('Card downloaded');
+  a.href = url; a.download = file.name; a.click();
+  toast.success(ext === 'gif' ? 'GIF downloaded' : 'Card downloaded');
 }
 
-function SoldCardSheet({ data, cardUrl, generating, onClose }) {
+function SoldCardModal({ data, exportUrl, exportMimeType, recording, recordingProgress, onClose }) {
+  const particles = useMemo(() =>
+    Array.from({ length: 70 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      shape: CONFETTI_SHAPES[i % CONFETTI_SHAPES.length],
+      dur: (2.2 + Math.random() * 2.5).toFixed(2),
+      delay: (Math.random() * 1.8).toFixed(2),
+      w: Math.floor(6 + Math.random() * 9),
+      h: Math.floor(4 + Math.random() * 10),
+    })), []);
+
   if (!data) return null;
-  return (
-    <BottomSheet open={!!data} onClose={onClose} title="Player Sold!" noScroll>
-      <div className="flex flex-col gap-3">
-        {/* Summary row */}
-        <div className="flex items-center gap-3 bg-green-50 dark:bg-green-500/10 rounded-2xl px-4 py-2.5">
-          <div className="flex-1 min-w-0">
-            <p className="font-extrabold text-ink-900 dark:text-white text-sm truncate">{data.player?.name}</p>
-            <p className="text-xs text-ink-400 capitalize">{data.player?.role}</p>
-          </div>
-          <div className="flex flex-col items-end gap-0.5">
-            <p className="text-[10px] text-ink-400 uppercase tracking-wider">Sold to</p>
-            <p className="text-sm font-bold text-brand-green">{data.teamName}</p>
-          </div>
-        </div>
 
-        {/* Price row */}
-        <div className="flex gap-2">
-          <div className="flex-1 card py-2.5 flex flex-col items-center gap-0.5">
-            <span className="text-[10px] text-ink-400 uppercase tracking-wider font-semibold">Base Price</span>
-            <span className="text-sm font-extrabold text-ink-600 dark:text-ink-300 tabular-nums">₹{data.basePrice?.toLocaleString()}</span>
-          </div>
-          <div className="flex-1 card py-2.5 flex flex-col items-center gap-0.5 ring-2 ring-brand-green/30">
-            <span className="text-[10px] text-ink-400 uppercase tracking-wider font-semibold">Bought For</span>
-            <span className="text-sm font-extrabold text-brand-green tabular-nums">₹{data.soldPrice?.toLocaleString()}</span>
-          </div>
-        </div>
+  const isGif = exportMimeType === 'image/gif';
+  const shareLabel = recording ? 'Preparing…' : isGif ? 'Share GIF' : 'Share Card';
+  const pct = Math.round((recordingProgress ?? 0) * 100);
 
-        {/* Card preview — square container matches 1:1 card exactly, no letterbox bars */}
-        <div className="rounded-2xl overflow-hidden bg-ink-900 mx-auto" style={{ width: 240, height: 240 }}>
-          {generating ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="w-8 h-8 border-2 border-brand-green border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : cardUrl ? (
-            <img src={cardUrl} alt="Sold card" className="w-full h-full object-contain" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <p className="text-xs text-ink-400">Card unavailable</p>
-            </div>
-          )}
-        </div>
+  return createPortal(
+    <>
+      <style>{SOLD_CARD_STYLES}</style>
+      <div
+        className="sc-overlay fixed inset-0 z-[200] flex items-center justify-center px-5"
+        style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(8px)' }}
+        onClick={onClose}
+      >
+        {/* Confetti rain */}
+        {particles.map(p => (
+          <div
+            key={p.id}
+            className={`sc-confetti fixed top-0 pointer-events-none ${p.shape}`}
+            style={{
+              left: `${p.left}%`,
+              width: p.w,
+              height: p.h,
+              background: p.color,
+              '--dur': `${p.dur}s`,
+              '--delay': `${p.delay}s`,
+              zIndex: 201,
+            }}
+          />
+        ))}
 
-        {/* Share / download */}
-        <div className="flex gap-3">
-          <button
-            onClick={() => cardUrl && shareCard(cardUrl, data.player?.name)}
-            disabled={!cardUrl || generating}
-            className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-40"
-          >
-            <Share2 size={16} />
-            Share Card
-          </button>
-          {cardUrl && (
-            <a
-              href={cardUrl}
-              download={`${data.player?.name ?? 'player'}-sold.png`}
-              className="p-3 card flex items-center justify-center rounded-xl"
+        {/* Main card */}
+        <div
+          className="sc-card relative w-full max-w-sm rounded-3xl overflow-hidden"
+          style={{ background: 'linear-gradient(160deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)', zIndex: 202 }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Top glow bar */}
+          <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg, #10b981, #f59e0b, #ef4444, #8b5cf6, #10b981)' }} />
+
+          {/* SOLD stamp */}
+          <div className="sc-stamp absolute top-6 right-5 pointer-events-none" style={{ zIndex: 10 }}>
+            <div
+              className="sc-glow px-4 py-1 rounded border-4 border-red-500"
+              style={{
+                fontFamily: 'Impact, Arial Black, sans-serif',
+                fontSize: 44, fontWeight: 900, color: '#ef4444',
+                letterSpacing: 4, lineHeight: 1,
+                textShadow: '0 0 20px #ef444488',
+                background: 'rgba(239,68,68,0.08)',
+              }}
             >
-              <Download size={18} className="text-ink-500" />
-            </a>
+              SOLD
+            </div>
+          </div>
+
+          {/* Player identity */}
+          <div className="flex flex-col items-center pt-8 pb-4 px-6">
+            <div className="sc-ring rounded-full mb-3" style={{ padding: 3, background: 'linear-gradient(135deg, #10b981, #f59e0b)' }}>
+              <div className="rounded-full overflow-hidden" style={{ width: 96, height: 96 }}>
+                <PlayerAvatar name={data.player?.name} photoUrl={data.player?.photo_url} size={96} />
+              </div>
+            </div>
+            <p className="text-white font-black text-xl text-center leading-tight mt-1">{data.player?.name}</p>
+            <p className="text-emerald-400 text-xs font-semibold uppercase tracking-widest mt-0.5 capitalize">{data.player?.role}</p>
+          </div>
+
+          {/* Divider */}
+          <div className="mx-6 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)' }} />
+
+          {/* Team + price */}
+          <div className="px-6 py-4 flex flex-col items-center gap-3">
+            <div className="w-full rounded-2xl px-4 py-3 text-center sc-shine-wrap" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)' }}>
+              <p className="text-[10px] text-emerald-400 uppercase tracking-widest font-bold mb-0.5">Bought by</p>
+              <p className="text-white font-black text-lg leading-tight">{data.teamName}</p>
+            </div>
+            <div className="sc-price w-full rounded-2xl px-4 py-3 text-center" style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(239,68,68,0.15))', border: '1px solid rgba(245,158,11,0.4)' }}>
+              <p className="text-[10px] text-amber-400 uppercase tracking-widest font-bold mb-0.5">Final Price</p>
+              <p className="font-black tabular-nums" style={{ fontSize: 32, color: '#fbbf24', textShadow: '0 0 20px rgba(245,158,11,0.6)' }}>
+                ₹{data.soldPrice?.toLocaleString()}
+              </p>
+              {data.soldPrice > data.basePrice && (
+                <p className="text-[11px] text-amber-400/70 mt-0.5">
+                  Base ₹{data.basePrice?.toLocaleString()} · {Math.round((data.soldPrice / data.basePrice - 1) * 100)}% above base
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Recording progress bar — shown while video is being captured */}
+          {recording && (
+            <div className="px-6 pb-4">
+              <div className="rounded-2xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] text-white/50 font-semibold">Generating animated GIF…</p>
+                  <p className="text-[11px] text-emerald-400 font-bold tabular-nums">{pct}%</p>
+                </div>
+                <div className="w-full h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #10b981, #f59e0b)' }}
+                  />
+                </div>
+              </div>
+            </div>
           )}
+
+          {/* Actions */}
+          <div className="flex gap-3 px-6 pb-6">
+            <button
+              onClick={() => exportUrl && shareExport(exportUrl, exportMimeType ?? 'image/png', data.player?.name)}
+              disabled={!exportUrl || recording}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm text-white disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+            >
+              <Share2 size={16} />
+              {shareLabel}
+            </button>
+            {exportUrl && (
+              <a
+                href={exportUrl}
+                download={`${data.player?.name ?? 'player'}-sold.${isGif ? 'gif' : 'png'}`}
+                className="p-3 flex items-center justify-center rounded-2xl"
+                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
+              >
+                <Download size={18} className="text-white/70" />
+              </a>
+            )}
+            <button
+              onClick={onClose}
+              className="p-3 flex items-center justify-center rounded-2xl text-white/60 text-sm font-semibold"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
       </div>
-    </BottomSheet>
+    </>,
+    document.body
   );
 }
 
@@ -170,8 +530,12 @@ export default function AuctionRoom() {
   const [activeCareerStats, setActiveCareerStats] = useState(null);
   const [playerSheetOpen, setPlayerSheetOpen] = useState(false);
   const [soldCardData, setSoldCardData] = useState(null);   // { player, teamName, basePrice, soldPrice }
-  const [soldCardUrl, setSoldCardUrl] = useState(null);
-  const [generatingCard, setGeneratingCard] = useState(false);
+  const soldCardGenRef = useRef(0); // incremented per openSoldCard call; stale GIF results are ignored
+  const [exportUrl, setExportUrl] = useState(null);
+  const [exportMimeType, setExportMimeType] = useState(null);
+  const [recordingCard, setRecordingCard] = useState(false);
+  const [recordingProgress, setRecordingProgress] = useState(0);
+
   function openSoldCard(ap) {
     const soldTeam = teams.find(t => t.id === ap.sold_to_team_id);
     const data = {
@@ -180,13 +544,38 @@ export default function AuctionRoom() {
       basePrice: ap.base_price,
       soldPrice: ap.sold_price ?? ap.base_price,
     };
+
+    // Stamp this generation — any previous in-flight GIF that finishes later will be ignored
+    const genId = ++soldCardGenRef.current;
+
     setSoldCardData(data);
-    setSoldCardUrl(null);
-    setGeneratingCard(true);
-    generateAuctionSoldCard({ ...data, auctionName: auction?.name })
-      .then(blob => setSoldCardUrl(URL.createObjectURL(blob)))
-      .catch(() => {})
-      .finally(() => setGeneratingCard(false));
+    setExportUrl(null);
+    setExportMimeType(null);
+    setRecordingCard(true);
+    setRecordingProgress(0);
+
+    // Generate animated GIF; fall back to Satori PNG if gifenc fails
+    generateSoldCardGif(data, p => {
+      if (soldCardGenRef.current === genId) setRecordingProgress(p);
+    })
+      .then(blob => {
+        if (soldCardGenRef.current !== genId) return; // a newer deal started — discard this GIF
+        setExportUrl(URL.createObjectURL(blob));
+        setExportMimeType('image/gif');
+        setRecordingCard(false);
+      })
+      .catch((err) => {
+        if (soldCardGenRef.current !== genId) return;
+        console.error('[SoldCard] GIF generation failed, falling back to PNG:', err);
+        generateAuctionSoldCard({ ...data, auctionName: auction?.name })
+          .then(blob => {
+            if (soldCardGenRef.current !== genId) return;
+            setExportUrl(URL.createObjectURL(blob));
+            setExportMimeType('image/png');
+          })
+          .catch(() => {})
+          .finally(() => { if (soldCardGenRef.current === genId) setRecordingCard(false); });
+      });
   }
 
   const { isRealtimeLive } = useAuctionRoom(id, userId);
@@ -345,13 +734,7 @@ export default function AuctionRoom() {
         basePrice: activePlayer.base_price,
         soldPrice: activePlayer.current_bid ?? activePlayer.base_price,
       };
-      setSoldCardData(data);
-      setSoldCardUrl(null);
-      setGeneratingCard(true);
-      generateAuctionSoldCard({ ...data, auctionName: auction?.name })
-        .then(blob => { setSoldCardUrl(URL.createObjectURL(blob)); })
-        .catch(() => {})
-        .finally(() => setGeneratingCard(false));
+      openSoldCard({ player: data.player, sold_to_team_id: activePlayer.leading_team_id, base_price: data.basePrice, sold_price: data.soldPrice });
       loadAuction(id);
     } catch (e) {
       toast.error(e.message);
@@ -868,10 +1251,12 @@ export default function AuctionRoom() {
         />
 
         {/* Sold card sheet */}
-        <SoldCardSheet
+        <SoldCardModal
           data={soldCardData}
-          cardUrl={soldCardUrl}
-          generating={generatingCard}
+          exportUrl={exportUrl}
+          exportMimeType={exportMimeType}
+          recording={recordingCard}
+          recordingProgress={recordingProgress}
           onClose={() => setSoldCardData(null)}
         />
 
@@ -1072,11 +1457,13 @@ export default function AuctionRoom() {
         onCancel={() => setDeleteConfirmOpen(false)}
       />
 
-      {/* Sold card sheet */}
-      <SoldCardSheet
+      {/* Sold card modal */}
+      <SoldCardModal
         data={soldCardData}
-        cardUrl={soldCardUrl}
-        generating={generatingCard}
+        exportUrl={exportUrl}
+        exportMimeType={exportMimeType}
+        recording={recordingCard}
+        recordingProgress={recordingProgress}
         onClose={() => setSoldCardData(null)}
       />
 

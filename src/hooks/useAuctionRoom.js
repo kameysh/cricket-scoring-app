@@ -40,21 +40,34 @@ export function useAuctionRoom(auctionId, userId) {
     setIsRealtimeLive(false);
     loadAuction(auctionId);
 
+    function startPolling() {
+      if (pollTimerRef.current) return;
+      pollTimerRef.current = setInterval(() => loadAuction(auctionId, true), POLL_INTERVAL_MS);
+    }
+
+    function stopPolling() {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+
     function onChannelStatus(status) {
       if (status === 'SUBSCRIBED') {
         subscribedCount.current += 1;
-        if (subscribedCount.current >= 4) setIsRealtimeLive(true);
+        // All 4 channels confirmed — realtime is live, stop polling
+        if (subscribedCount.current >= 4) {
+          setIsRealtimeLive(true);
+          stopPolling();
+        }
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        // Realtime degraded — restart polling as fallback
         setIsRealtimeLive(false);
+        startPolling();
       }
     }
 
-    // Polling runs permanently as a safety net — realtime is best-effort.
-    // This ensures bids, budgets, and player status stay correct even if
-    // a realtime channel drops or a table's replication isn't enabled.
-    pollTimerRef.current = setInterval(() => {
-      loadAuction(auctionId);
-    }, POLL_INTERVAL_MS);
+    // Poll until all 4 realtime channels confirm SUBSCRIBED; stops automatically once live.
+    // Bids are kept fresh via _refreshBids() in the players channel handler (no polling needed for bids).
+    startPolling();
 
     const metaChannel = supabase
       .channel(`auction:${auctionId}:meta`)

@@ -14,8 +14,8 @@ export const useAuctionStore = create((set, get) => ({
   soldFlash: null,    // { player, teamName, soldPrice } | null
   viewerCount: 0,
 
-  async loadAuction(id) {
-    set({ isLoading: true, error: null });
+  async loadAuction(id, silent = false) {
+    if (!silent) set({ isLoading: true, error: null });
     try {
       const [auction, teams, players] = await Promise.all([
         auctionService.getAuction(id),
@@ -26,7 +26,7 @@ export const useAuctionStore = create((set, get) => ({
       const bids = active ? await auctionService.getBidsForPlayer(active.id) : [];
       set({ auction, teams, players, bids, isLoading: false });
     } catch (err) {
-      set({ error: err.message, isLoading: false });
+      if (!silent) set({ error: err.message, isLoading: false });
     }
   },
 

@@ -416,13 +416,14 @@ describe('AuctionRoom — BidLogStrip always renders', () => {
   });
 });
 
-describe('AuctionRoom — SoldCardSheet', () => {
-  it('sold card sheet is not shown before any deal', () => {
+describe('AuctionRoom — SoldCardModal', () => {
+  it('sold card modal is not shown before any deal', () => {
     renderRoom({}, { isAdmin: true, userId: 'admin-uid' });
-    expect(screen.queryByText('Player Sold!')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bought by')).not.toBeInTheDocument();
+    expect(screen.queryByText('Final Price')).not.toBeInTheDocument();
   });
 
-  it('opens sold card sheet with correct data after Deal is clicked', async () => {
+  it('opens sold card modal with correct data after Deal is clicked', async () => {
     const { dealPlayer } = await import('../services/auctionService');
     vi.mocked(generateAuctionSoldCard).mockClear();
     vi.mocked(dealPlayer).mockResolvedValue({});
@@ -431,15 +432,14 @@ describe('AuctionRoom — SoldCardSheet', () => {
     fireEvent.click(screen.getByTestId('deal-btn'));
 
     await waitFor(() => {
-      expect(screen.getByText('Player Sold!')).toBeInTheDocument();
+      expect(screen.getByText('Bought by')).toBeInTheDocument();
     });
 
-    // Player name and team appear in the sold sheet (may also appear elsewhere)
+    // Player name and team appear in the modal
     expect(screen.getAllByText('Ravi Kumar').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Super Kings').length).toBeGreaterThan(0);
-    // Price tiles show base and sold price
-    expect(screen.getAllByText('₹100').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('₹200').length).toBeGreaterThan(0);
+    // Final Price label is visible
+    expect(screen.getByText('Final Price')).toBeInTheDocument();
   });
 
   it('tapping a sold player in the list calls generateAuctionSoldCard with correct data', async () => {
