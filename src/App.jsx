@@ -35,6 +35,7 @@ import Auctions from './pages/Auctions';
 import AuctionSetup from './pages/AuctionSetup';
 import AuctionRoom from './pages/AuctionRoom';
 import AuctionSummary from './pages/AuctionSummary';
+import TournamentPromo from './pages/TournamentPromo';
 import AcceptInvite from './pages/AcceptInvite';
 import ResetPassword from './pages/ResetPassword';
 
@@ -121,6 +122,7 @@ export default function App() {
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/teams" element={<Teams />} />
             <Route path="/series" element={<Series />} />
+            <Route path="/tournament-promo" element={<TournamentPromo />} />
           </Route>
 
           {/* Series detail — all authenticated users can view */}

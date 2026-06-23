@@ -425,7 +425,12 @@ export default function AuctionRoom() {
     try {
       const updated = await auctionService.updateAuctionStatus(id, 'completed');
       useAuctionStore.getState()._onAuctionUpdate(updated);
-      await auctionService.createTeamsFromAuction(id);
+      try {
+        await auctionService.createTeamsFromAuction(id);
+      } catch (teamErr) {
+        // Non-fatal — auction is completed; teams can be synced manually via /teams
+        toast.error('Auction completed, but team roster sync failed: ' + teamErr.message);
+      }
       navigate(`/auctions/${id}/summary`, { replace: true });
     } catch (e) {
       toast.error(e.message);

@@ -244,6 +244,12 @@ vi.mock('../services/playerService', () => ({
 vi.mock('../services/tournamentService', () => ({
   listTournaments: vi.fn().mockResolvedValue([]),
 }));
+vi.mock('../services/auctionService', () => ({
+  listAuctions: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('../services/promoService', () => ({
+  getActivePromo: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('../lib/cricketUtils', () => ({
   formatOvers: (balls) => `${Math.floor(balls / 6)}.${balls % 6}`,
   displayName: (p) => p?.nickname?.trim() || p?.name || '',
@@ -297,5 +303,88 @@ describe('Home — live hero shows innings score', () => {
     });
     expect(screen.getByText('67/4')).toBeTruthy();
     expect(screen.queryByText('45/3')).toBeNull();
+  });
+});
+
+import * as auctionService from '../services/auctionService';
+import * as promoService from '../services/promoService';
+
+describe('Home — live auction hero', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.keys(channelHandlers).forEach(k => delete channelHandlers[k]);
+    matchService.listMatches.mockResolvedValue([]);
+    matchService.getInnings.mockResolvedValue([]);
+  });
+
+  it('shows live auction hero when auction status is live', async () => {
+    auctionService.listAuctions.mockResolvedValue([
+      { id: 'auc1', name: 'Gully Premier League', status: 'live' },
+    ]);
+    await renderHome();
+    expect(screen.getByText('AUCTION LIVE')).toBeTruthy();
+    expect(screen.getByText('Gully Premier League')).toBeTruthy();
+    expect(screen.getByText('Join Auction →')).toBeTruthy();
+  });
+
+  it('shows paused auction hero when auction status is paused', async () => {
+    auctionService.listAuctions.mockResolvedValue([
+      { id: 'auc1', name: 'GPL Season 2', status: 'paused' },
+    ]);
+    await renderHome();
+    expect(screen.getByText('AUCTION PAUSED')).toBeTruthy();
+  });
+
+  it('does not show auction hero when no live/paused auctions', async () => {
+    auctionService.listAuctions.mockResolvedValue([
+      { id: 'auc1', name: 'Old Auction', status: 'completed' },
+    ]);
+    await renderHome();
+    expect(screen.queryByText('Join Auction →')).toBeNull();
+  });
+});
+
+describe('Home — tournament promo banner', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.keys(channelHandlers).forEach(k => delete channelHandlers[k]);
+    matchService.listMatches.mockResolvedValue([]);
+    matchService.getInnings.mockResolvedValue([]);
+    auctionService.listAuctions.mockResolvedValue([]);
+  });
+
+  it('shows promo banner image when an active promo exists', async () => {
+    promoService.getActivePromo.mockResolvedValue({
+      id: 'pr1',
+      banner_url: 'https://cdn.test/banner.png',
+      tournament_name: 'GPL 2026',
+      team1_name: null, team2_name: null,
+      captain1_name: null, captain2_name: null,
+      event_date: null,
+    });
+    await renderHome();
+    const img = screen.getByRole('img', { name: 'GPL 2026' });
+    expect(img).toBeTruthy();
+    expect(img.src).toBe('https://cdn.test/banner.png');
+  });
+
+  it('shows tournament name and teams when present', async () => {
+    promoService.getActivePromo.mockResolvedValue({
+      id: 'pr1',
+      banner_url: 'https://cdn.test/banner.png',
+      tournament_name: 'GPL 2026',
+      team1_name: 'CSK', captain1_name: 'Kamesh',
+      team2_name: 'RCB', captain2_name: 'Balaji',
+      event_date: null,
+    });
+    await renderHome();
+    expect(screen.getByText('GPL 2026')).toBeTruthy();
+    expect(screen.getByText(/CSK.*C: Kamesh.*vs.*RCB.*C: Balaji/)).toBeTruthy();
+  });
+
+  it('does not show promo section when no active promo', async () => {
+    promoService.getActivePromo.mockResolvedValue(null);
+    await renderHome();
+    expect(screen.queryByRole('img', { name: /tournament/i })).toBeNull();
   });
 });

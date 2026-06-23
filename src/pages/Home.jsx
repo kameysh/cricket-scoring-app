@@ -2,10 +2,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import { Plus, Swords, Trophy, Users, BarChart2, ChevronRight, Zap, PauseCircle, Trash2 } from 'lucide-react';
+import { Plus, Swords, Trophy, Users, BarChart2, ChevronRight, Zap, PauseCircle, Trash2, Gavel } from 'lucide-react';
 import * as matchService from '../services/matchService';
 import * as playerService from '../services/playerService';
 import * as tournamentService from '../services/tournamentService';
+import { listAuctions } from '../services/auctionService';
+import { getActivePromo } from '../services/promoService';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
@@ -23,6 +25,8 @@ export default function Home() {
   const [matches, setMatches] = useState([]);
   const [allStats, setAllStats] = useState([]);
   const [tournaments, setTournaments] = useState([]);
+  const [liveAuctions, setLiveAuctions] = useState([]);
+  const [activePromo, setActivePromo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toDelete, setToDelete] = useState(null);
   const [matchStats, setMatchStats] = useState({});
@@ -37,10 +41,14 @@ export default function Home() {
       matchService.listMatches(),
       playerService.getAllCareerStats().catch(() => []),
       tournamentService.listTournaments().catch(() => []),
-    ]).then(([m, s, t]) => {
+      listAuctions().catch(() => []),
+      getActivePromo().catch(() => null),
+    ]).then(([m, s, t, auctions, promo]) => {
       setMatches(m);
       setAllStats(s);
       setTournaments(t);
+      setLiveAuctions(auctions.filter(a => a.status === 'live' || a.status === 'paused'));
+      setActivePromo(promo);
     }).catch(() => {
       toast.error('Failed to load home data');
     }).finally(() => setLoading(false));
@@ -246,6 +254,76 @@ export default function Home() {
                   </div>
                 </div>
               ))}
+            </section>
+          )}
+
+          {/* Live Auction Hero */}
+          {liveAuctions.length > 0 && (
+            <section className="space-y-2">
+              {liveAuctions.map(a => (
+                <div
+                  key={a.id}
+                  className="rounded-2xl border-2 border-amber-400/40 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-500/10 dark:to-orange-500/10 p-4 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${
+                      a.status === 'live'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
+                        : 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400'
+                    }`}>
+                      <Gavel size={11} />
+                      {a.status === 'live' ? (
+                        <><span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> AUCTION LIVE</>
+                      ) : 'AUCTION PAUSED'}
+                    </span>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-bold text-ink-900 dark:text-white text-base">{a.name}</p>
+                    <p className="text-xs text-ink-500 dark:text-ink-400 mt-0.5">Player auction in progress — tap to follow live</p>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/auctions/${a.id}`)}
+                    className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-colors"
+                  >
+                    Join Auction →
+                  </button>
+                </div>
+              ))}
+            </section>
+          )}
+
+          {/* Tournament Promo Banner */}
+          {activePromo && (
+            <section>
+              <div className="rounded-2xl overflow-hidden shadow-sm border border-ink-100 dark:border-white/10">
+                <img
+                  src={activePromo.banner_url}
+                  alt={activePromo.tournament_name || 'Tournament'}
+                  className="w-full object-cover"
+                  style={{ maxHeight: 220 }}
+                />
+                {(activePromo.tournament_name || activePromo.team1_name) && (
+                  <div className="px-4 py-3 bg-white dark:bg-ink-800 space-y-1">
+                    {activePromo.tournament_name && (
+                      <p className="text-sm font-bold text-ink-900 dark:text-white">{activePromo.tournament_name}</p>
+                    )}
+                    {activePromo.team1_name && activePromo.team2_name && (
+                      <p className="text-xs text-ink-500 dark:text-ink-400">
+                        {activePromo.team1_name}
+                        {activePromo.captain1_name ? ` (C: ${activePromo.captain1_name})` : ''}
+                        {' vs '}
+                        {activePromo.team2_name}
+                        {activePromo.captain2_name ? ` (C: ${activePromo.captain2_name})` : ''}
+                      </p>
+                    )}
+                    {activePromo.event_date && (
+                      <p className="text-xs text-ink-400">
+                        {new Date(activePromo.event_date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </section>
           )}
 
