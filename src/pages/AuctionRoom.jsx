@@ -163,6 +163,7 @@ export default function AuctionRoom() {
   const [heldSheetOpen, setHeldSheetOpen] = useState(false);
   const [poolSheetOpen, setPoolSheetOpen] = useState(false);
   const [soldSheetOpen, setSoldSheetOpen] = useState(false);
+  const [topDealsSheetOpen, setTopDealsSheetOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [activeCareerStats, setActiveCareerStats] = useState(null);
@@ -515,6 +516,16 @@ export default function AuctionRoom() {
     </div>
   );
 
+  // captain_id on auction_teams is a user_id — match against player.user_id to identify captains
+  const captainUserIds = new Set(teams.map(t => t.captain_id).filter(Boolean));
+  const isCaptainPlayer = (ap) => !!(ap.player?.user_id && captainUserIds.has(ap.player.user_id));
+
+  // Highest Bid: exclude captain auto-sells (they're pre-assigned at base price, not bid on)
+  const biddedSoldPlayers = soldPlayers.filter(ap => !isCaptainPlayer(ap));
+  const topSoldPlayer = biddedSoldPlayers.length > 0
+    ? biddedSoldPlayers.reduce((best, ap) => (ap.sold_price ?? 0) > (best.sold_price ?? 0) ? ap : best)
+    : null;
+
   const counterRow = (
     <div className="flex gap-2 px-4">
       {[
@@ -528,7 +539,80 @@ export default function AuctionRoom() {
           <span className="text-[10px] text-ink-400 uppercase tracking-wider font-semibold">{label}</span>
         </button>
       ))}
+      <button onClick={() => setTopDealsSheetOpen(true)}
+        className="flex-1 card py-2 flex flex-col items-center gap-0.5 hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
+        <span className="text-base">🏆</span>
+        <span className="text-[10px] text-amber-500 uppercase tracking-wider font-semibold">Deals</span>
+      </button>
     </div>
+  );
+
+  const topDealsSheet = (
+    <BottomSheet open={topDealsSheetOpen} onClose={() => setTopDealsSheetOpen(false)} title="Top Deals">
+      {soldPlayers.length === 0 ? (
+        <p className="text-sm text-ink-400 text-center py-6">No players sold yet</p>
+      ) : (
+        <div className="space-y-4">
+          {/* Highest bid hero card */}
+          {topSoldPlayer && (() => {
+            const heroTeam = teams.find(t => t.id === topSoldPlayer.sold_to_team_id);
+            return (
+              <div className="rounded-2xl overflow-hidden"
+                style={{ background: 'linear-gradient(135deg, #78350f 0%, #92400e 50%, #b45309 100%)' }}>
+                <div className="px-4 pt-3 pb-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-300">👑 Highest Bid</p>
+                </div>
+                <div className="flex items-center gap-3 px-4 pb-4">
+                  <PlayerAvatar player={topSoldPlayer.player} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-extrabold text-base leading-tight truncate">{topSoldPlayer.player?.name}</p>
+                    <p className="text-amber-300 text-[11px] capitalize">{topSoldPlayer.player?.role}</p>
+                    {heroTeam && <p className="text-amber-200 text-[11px] mt-0.5 truncate">→ {heroTeam.name}</p>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-amber-300 text-[10px] font-semibold">SOLD FOR</p>
+                    <p className="text-white font-extrabold text-xl tabular-nums">₹{topSoldPlayer.sold_price?.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Per-team top 5 */}
+          {teams.map(t => {
+            const teamSold = (soldByTeam[t.id] ?? [])
+              .slice()
+              .sort((a, b) => (b.sold_price ?? 0) - (a.sold_price ?? 0))
+              .slice(0, 5);
+            if (teamSold.length === 0) return null;
+            return (
+              <div key={t.id}>
+                <p className="text-xs font-bold text-ink-500 dark:text-ink-400 uppercase tracking-wider mb-2">{t.name}</p>
+                <div className="space-y-1.5">
+                  {teamSold.map((ap, i) => {
+                    const isCapt = isCaptainPlayer(ap);
+                    return (
+                      <div key={ap.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-ink-50 dark:bg-white/5">
+                        <span className="w-5 text-center text-xs font-bold tabular-nums text-ink-400">#{i + 1}</span>
+                        <PlayerAvatar player={ap.player} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{ap.player?.name}</p>
+                            {isCapt && <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400">(C)</span>}
+                          </div>
+                          <p className="text-[11px] text-ink-400 capitalize">{ap.player?.role}</p>
+                        </div>
+                        <span className="text-sm font-bold text-brand-green tabular-nums shrink-0">₹{ap.sold_price?.toLocaleString()}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </BottomSheet>
   );
 
   // ── AUCTIONEER layout: compact no-scroll design ─────────────────────────────
@@ -671,7 +755,10 @@ export default function AuctionRoom() {
                           <button key={ap.id} onClick={() => { setSoldSheetOpen(false); openSoldCard(ap); }} className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-green-50 dark:bg-green-500/10 mb-1 text-left active:scale-[0.98] transition-transform">
                             <PlayerAvatar player={ap.player} size="sm" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{ap.player?.name}</p>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{ap.player?.name}</p>
+                                {isCaptainPlayer(ap) && <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400">(C)</span>}
+                              </div>
                               <p className="text-[11px] text-ink-400">{ap.player?.role}</p>
                             </div>
                             <div className="flex flex-col items-end gap-0.5 shrink-0">
@@ -688,6 +775,7 @@ export default function AuctionRoom() {
             )
           }
         </BottomSheet>
+        {topDealsSheet}
         <ConfirmDialog
           open={deleteConfirmOpen}
           title="Delete Auction"
@@ -800,20 +888,8 @@ export default function AuctionRoom() {
       {/* Bid log — same horizontal strip as auctioneer view */}
       <BidLogStrip bids={bids} teams={teams} />
 
-      {/* Pool / Held / Sold counters */}
-      <div className="flex gap-2">
-        {[
-          { label: 'Pool', count: poolPlayers.length, onClick: () => setPoolSheetOpen(true) },
-          { label: 'Held', count: heldPlayers.length, onClick: () => setHeldSheetOpen(true) },
-          { label: 'Sold', count: soldPlayers.length, onClick: () => setSoldSheetOpen(true) },
-        ].map(({ label, count, onClick }) => (
-          <button key={label} onClick={onClick}
-            className="flex-1 card py-2 flex flex-col items-center gap-0.5 hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
-            <span className="text-base font-extrabold text-ink-900 dark:text-white tabular-nums">{count}</span>
-            <span className="text-[10px] text-ink-400 uppercase tracking-wider font-semibold">{label}</span>
-          </button>
-        ))}
-      </div>
+      {/* Pool / Held / Sold / Deals counters */}
+      {counterRow}
 
       {/* Held Queue sheet */}
       <BottomSheet open={heldSheetOpen} onClose={() => setHeldSheetOpen(false)} title="Held Queue">
@@ -860,7 +936,10 @@ export default function AuctionRoom() {
                         <button key={ap.id} onClick={() => { setSoldSheetOpen(false); openSoldCard(ap); }} className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-green-50 dark:bg-green-500/10 mb-1 text-left active:scale-[0.98] transition-transform">
                           <PlayerAvatar player={ap.player} size="sm" />
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{ap.player?.name}</p>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">{ap.player?.name}</p>
+                              {isCaptainPlayer(ap) && <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400">(C)</span>}
+                            </div>
                             <p className="text-[11px] text-ink-400">{ap.player?.role}</p>
                           </div>
                           <div className="flex flex-col items-end gap-0.5 shrink-0">
@@ -877,6 +956,7 @@ export default function AuctionRoom() {
           )
         }
       </BottomSheet>
+      {topDealsSheet}
 
       {/* Delete confirm */}
       <ConfirmDialog

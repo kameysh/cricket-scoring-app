@@ -106,7 +106,7 @@ export async function addPlayerToPool(auctionId, playerId, basePrice = 100) {
   const { data, error } = await supabase
     .from('auction_players')
     .insert({ auction_id: auctionId, player_id: playerId, base_price: basePrice, pool_order })
-    .select('*, player:player_id(id, name, role, photo_url)')
+    .select('*, player:player_id(id, name, role, photo_url, user_id)')
     .single();
   if (error) throw error;
   return data;
@@ -136,7 +136,7 @@ export async function updatePlayerBasePrice(auctionPlayerRowId, basePrice) {
 export async function listAuctionPlayers(auctionId) {
   const { data, error } = await supabase
     .from('auction_players')
-    .select('*, player:player_id(id, name, role, photo_url)')
+    .select('*, player:player_id(id, name, role, photo_url, user_id)')
     .eq('auction_id', auctionId)
     .order('pool_order', { ascending: true });
   if (error) throw error;
@@ -157,7 +157,7 @@ async function activatePlayer(auctionPlayerRowId) {
       held_at: null,
     })
     .eq('id', auctionPlayerRowId)
-    .select('*, player:player_id(id, name, role, photo_url)')
+    .select('*, player:player_id(id, name, role, photo_url, user_id)')
     .single();
   if (error) throw error;
   return data;

@@ -201,6 +201,111 @@ describe('AuctionRoom — sold sheet grouping', () => {
   });
 });
 
+describe('AuctionRoom — Top Deals sheet', () => {
+  const soldP1 = {
+    id: 'ap-s1', player_id: 'p1', status: 'sold', base_price: 100,
+    current_bid: 800, sold_price: 800, sold_to_team_id: 'at1', leading_team_id: 'at1',
+    pass_team1: false, pass_team2: false,
+    player: { id: 'p1', name: 'Ravi Kumar', role: 'batsman' },
+  };
+  const soldP2 = {
+    id: 'ap-s2', player_id: 'p2', status: 'sold', base_price: 100,
+    current_bid: 400, sold_price: 400, sold_to_team_id: 'at1', leading_team_id: 'at1',
+    pass_team1: false, pass_team2: false,
+    player: { id: 'p2', name: 'Dhoni', role: 'keeper' },
+  };
+
+  it('shows Deals chip for all users', () => {
+    renderRoom({ players: [soldP1] }, { isAdmin: false, userId: 'viewer-uid' });
+    expect(screen.getByText('Deals')).toBeInTheDocument();
+  });
+
+  it('shows "No players sold yet" when sheet opened with no sold players', async () => {
+    renderRoom({}, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getByText('Deals'));
+    await waitFor(() => expect(screen.getByText('No players sold yet')).toBeInTheDocument());
+  });
+
+  it('shows highest bid hero card with player name and sold price', async () => {
+    renderRoom({ players: [soldP1, soldP2] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getByText('Deals'));
+    await waitFor(() => expect(screen.getByText('👑 Highest Bid')).toBeInTheDocument());
+    // highest sold player (Ravi Kumar ₹800) shown prominently
+    expect(screen.getAllByText('Ravi Kumar').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('₹800').length).toBeGreaterThan(0);
+  });
+
+  it('shows team name under highest bid player', async () => {
+    renderRoom({ players: [soldP1] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getByText('Deals'));
+    await waitFor(() => expect(screen.getByText('👑 Highest Bid')).toBeInTheDocument());
+    expect(screen.getByText(/→ Super Kings/)).toBeInTheDocument();
+  });
+
+  it('lists players per team sorted by sold price descending', async () => {
+    renderRoom({ players: [soldP2, soldP1] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getByText('Deals'));
+    await waitFor(() => expect(screen.getByText('#1')).toBeInTheDocument());
+    const ranks = screen.getAllByText(/^#\d$/);
+    expect(ranks[0].textContent).toBe('#1');
+    expect(ranks[1].textContent).toBe('#2');
+  });
+});
+
+describe('AuctionRoom — captain identification ((C) badge + highest bid exclusion)', () => {
+  // TEAM1 captain_id = 'captain-uid' (from BASE_STORE teams)
+  const captainSold = {
+    id: 'ap-capt', player_id: 'pc', status: 'sold', base_price: 500,
+    current_bid: 500, sold_price: 500, sold_to_team_id: 'at1', leading_team_id: 'at1',
+    pass_team1: false, pass_team2: false,
+    player: { id: 'pc', name: 'Kamesh S', role: 'all-rounder', user_id: 'captain-uid' },
+  };
+  const regularSold = {
+    id: 'ap-reg', player_id: 'pr', status: 'sold', base_price: 100,
+    current_bid: 300, sold_price: 300, sold_to_team_id: 'at1', leading_team_id: 'at1',
+    pass_team1: false, pass_team2: false,
+    player: { id: 'pr', name: 'Naveen', role: 'bowler', user_id: 'other-uid' },
+  };
+
+  it('shows (C) badge next to captain in Top Deals list', async () => {
+    renderRoom({ players: [captainSold, regularSold] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getByText('Deals'));
+    await waitFor(() => expect(screen.getByText('Kamesh S')).toBeInTheDocument());
+    expect(screen.getByText('(C)')).toBeInTheDocument();
+  });
+
+  it('does not show (C) badge on non-captain players', async () => {
+    renderRoom({ players: [regularSold] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getByText('Deals'));
+    await waitFor(() => expect(screen.getAllByText('Naveen').length).toBeGreaterThan(0));
+    expect(screen.queryByText('(C)')).not.toBeInTheDocument();
+  });
+
+  it('excludes captain auto-sell from Highest Bid hero', async () => {
+    // Captain sold for 500, regular player sold for 300 — captain should be excluded
+    renderRoom({ players: [captainSold, regularSold] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getByText('Deals'));
+    await waitFor(() => expect(screen.getByText('👑 Highest Bid')).toBeInTheDocument());
+    // Hero should show the regular player (₹300), not the captain (₹500)
+    expect(screen.getAllByText('Naveen').length).toBeGreaterThan(0);
+  });
+
+  it('hides Highest Bid hero when only captain auto-sells exist', async () => {
+    renderRoom({ players: [captainSold] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getByText('Deals'));
+    await waitFor(() => expect(screen.queryByText('No players sold yet')).not.toBeInTheDocument());
+    // No hero card since the only sold player is a captain auto-sell
+    expect(screen.queryByText('👑 Highest Bid')).not.toBeInTheDocument();
+  });
+
+  it('shows (C) badge in the Sold sheet', async () => {
+    renderRoom({ players: [captainSold] }, { isAdmin: false, userId: 'viewer-uid' });
+    fireEvent.click(screen.getAllByText('Sold')[0]);
+    await waitFor(() => expect(screen.getByText('Kamesh S')).toBeInTheDocument());
+    expect(screen.getByText('(C)')).toBeInTheDocument();
+  });
+});
+
 describe('AuctionRoom — return held player to pool', () => {
   it('calls returnToPool service when admin clicks ↩ Pool on a held player', async () => {
     const { returnToPool } = await import('../services/auctionService');
