@@ -48,6 +48,11 @@ export async function updateAuctionStatus(id, status) {
 }
 
 export async function deleteAuction(id) {
+  // Remove global teams that were auto-created from this auction before deleting the auction row.
+  // Without this, ON DELETE SET NULL keeps the orphaned teams alive in the registry.
+  const { error: teamsError } = await supabase.from('teams').delete().eq('source_auction_id', id);
+  if (teamsError) throw teamsError;
+
   const { error } = await supabase.from('auctions').delete().eq('id', id);
   if (error) throw error;
 }

@@ -35,7 +35,7 @@ import {
   createAuction, addAuctionTeam, getAuction,
   placeBid, raiseAuctioneerBid, dealPlayer, signalPass, holdPlayer, returnToPool,
   drawNextPlayer, updateAuctionStatus, undoLastBid, autosellCaptains,
-  createTeamsFromAuction, computeMinReserve, getBidsForPlayer,
+  createTeamsFromAuction, computeMinReserve, getBidsForPlayer, deleteAuction,
 } from './auctionService';
 import { supabase } from '../lib/supabase';
 import * as teamService from './teamService';
@@ -582,5 +582,37 @@ describe('getBidsForPlayer', () => {
     mockData = null;
     mockError = { message: 'DB error' };
     await expect(getBidsForPlayer('ap1')).rejects.toEqual({ message: 'DB error' });
+  });
+});
+
+describe('deleteAuction', () => {
+  it('deletes linked global teams before deleting the auction', async () => {
+    const fromSpy = supabase.from;
+    await deleteAuction('auction-1');
+    // First call: teams delete
+    expect(fromSpy).toHaveBeenNthCalledWith(1, 'teams');
+    expect(chain.delete).toHaveBeenCalled();
+    expect(chain.eq).toHaveBeenCalledWith('source_auction_id', 'auction-1');
+    // Second call: auctions delete
+    expect(fromSpy).toHaveBeenNthCalledWith(2, 'auctions');
+  });
+
+  it('throws if team deletion fails and does not proceed to delete auction', async () => {
+    mockError = { message: 'teams delete failed' };
+    await expect(deleteAuction('auction-1')).rejects.toEqual({ message: 'teams delete failed' });
+    expect(supabase.from).toHaveBeenCalledTimes(1); // stopped after teams error
+  });
+
+  it('throws if auction deletion fails', async () => {
+    // First call (teams) succeeds, second call (auctions) fails
+    let callCount = 0;
+    supabase.from.mockImplementation(() => {
+      callCount++;
+      if (callCount === 2) {
+        return { ...chain, delete: vi.fn().mockReturnValue({ ...chain, eq: vi.fn().mockReturnValue({ then: (r) => r({ data: null, error: { message: 'auctions delete failed' } }) }) }) };
+      }
+      return chain;
+    });
+    await expect(deleteAuction('auction-1')).rejects.toEqual({ message: 'auctions delete failed' });
   });
 });
