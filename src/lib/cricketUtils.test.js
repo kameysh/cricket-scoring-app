@@ -8,7 +8,31 @@ import {
   calcWinByWickets, calcWinByRuns,
   round, fmt,
   computeBadges, calcMotmScore, calcMotmDetail, pickMotm,
+  displayName,
 } from './cricketUtils';
+
+// ── displayName ────────────────────────────────────────────────────────────────
+
+describe('displayName', () => {
+  it('returns nickname when set', () => {
+    expect(displayName({ name: 'Dhoni', nickname: 'Mahi' })).toBe('Mahi');
+  });
+  it('falls back to name when nickname absent', () => {
+    expect(displayName({ name: 'Sachin Tendulkar' })).toBe('Sachin Tendulkar');
+  });
+  it('falls back to name when nickname is empty string', () => {
+    expect(displayName({ name: 'Virat', nickname: '' })).toBe('Virat');
+  });
+  it('falls back to name when nickname is whitespace only', () => {
+    expect(displayName({ name: 'Rohit', nickname: '   ' })).toBe('Rohit');
+  });
+  it('returns empty string for null', () => {
+    expect(displayName(null)).toBe('');
+  });
+  it('returns empty string for undefined', () => {
+    expect(displayName(undefined)).toBe('');
+  });
+});
 
 // ── formatOvers ────────────────────────────────────────────────────────────────
 

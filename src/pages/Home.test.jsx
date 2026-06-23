@@ -244,7 +244,10 @@ vi.mock('../services/playerService', () => ({
 vi.mock('../services/tournamentService', () => ({
   listTournaments: vi.fn().mockResolvedValue([]),
 }));
-vi.mock('../lib/cricketUtils', () => ({ formatOvers: (balls) => `${Math.floor(balls / 6)}.${balls % 6}` }));
+vi.mock('../lib/cricketUtils', () => ({
+  formatOvers: (balls) => `${Math.floor(balls / 6)}.${balls % 6}`,
+  displayName: (p) => p?.nickname?.trim() || p?.name || '',
+}));
 
 import * as matchService from '../services/matchService';
 import Home from './Home';

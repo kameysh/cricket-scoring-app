@@ -73,7 +73,7 @@ export async function getTopPartnerships(limit = 10) {
   if (error) throw error;
 
   // Fetch player names map
-  const { data: players } = await supabase.from('players').select('id, name, photo_url');
+  const { data: players } = await supabase.from('players').select('id, name, nickname, photo_url');
   const playerMap = Object.fromEntries((players || []).map(p => [p.id, p]));
 
   // Group deliveries by innings

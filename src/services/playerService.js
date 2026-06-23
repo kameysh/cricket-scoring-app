@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 export async function getAllCareerStats() {
   const { data, error } = await supabase
     .from('player_career_stats')
-    .select('*, players(id, name, photo_url, role)')
+    .select('*, players(id, name, nickname, photo_url, role)')
     .order('bat_runs', { ascending: false });
   if (error) throw error;
   return data || [];
@@ -321,7 +321,7 @@ export async function getPlayerSeriesStats(playerId, seriesId) {
 export async function getHeadToHeadAll(batsmanId, inningsIds) {
   let query = supabase
     .from('deliveries')
-    .select('bowler_id, bowler:players!bowler_id(id,name), runs_off_bat, extra_type, is_wicket, wicket_type, innings_id')
+    .select('bowler_id, bowler:players!bowler_id(id,name,nickname), runs_off_bat, extra_type, is_wicket, wicket_type, innings_id')
     .eq('batsman_id', batsmanId);
   if (inningsIds?.length) query = query.in('innings_id', inningsIds);
   const { data, error } = await query;

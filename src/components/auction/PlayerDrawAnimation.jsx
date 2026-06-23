@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import PlayerAvatar from '../player/PlayerAvatar';
+import { displayName } from '../../lib/cricketUtils';
 
 const FAST_MS = 80;
 const SLOW_STEPS = [160, 250, 370, 510, 680];
@@ -119,7 +120,7 @@ export default function PlayerDrawAnimation({ poolPlayers, winner, onComplete })
 
         {/* Avatar + name — keyed to trigger re-animation on change */}
         <div
-          key={`${displayPlayer?.name}-${idx}`}
+          key={`${displayName(displayPlayer)}-${idx}`}
           className={`flex flex-col items-center gap-2.5 relative z-10 ${
             spinning ? 'animate-[draw-roll_0.08s_ease-out]' : revealed ? 'animate-[draw-land_0.5s_cubic-bezier(0.34,1.56,0.64,1)_forwards]' : ''
           }`}
@@ -151,7 +152,7 @@ export default function PlayerDrawAnimation({ poolPlayers, winner, onComplete })
               className={`font-extrabold text-lg leading-tight transition-all duration-300 ${spinning ? 'opacity-70' : 'opacity-100'}`}
               style={{ color: revealed ? '#ecfdf5' : '#f8fafc' }}
             >
-              {displayPlayer?.name ?? '…'}
+              {displayName(displayPlayer) || '…'}
             </p>
             {displayPlayer?.role && (
               <p

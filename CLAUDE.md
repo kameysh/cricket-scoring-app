@@ -98,6 +98,8 @@ App users table: `public.app_users` (id = auth.uid(), email, full_name, role)
 | 029 | `029_push_subscriptions.sql` | **`push_subscriptions` table (user_id, endpoint, p256dh, auth) — users own their rows; admin can read all. Powers Web Push notifications.** |
 | 030 | `030_auctions.sql` | **Four tables: `auctions`, `auction_teams`, `auction_players`, `auction_bids` + `deal_player` RPC. Full RLS. Powers the live player auction feature.** Replication must be enabled for all 4 tables. |
 | 032 | `032_auction_teams_name.sql` | **`name text` added to `auction_teams`; `team_id` made nullable. Auction teams are now standalone bidding entities — admin just types a team name, no global registry required. Backfills `name` from existing `team_id` join for legacy rows.** |
+| 033 | `033_auction_bid_type_autosell.sql` | **Extends `auction_bids_bid_type_check` constraint to allow `'captain_autosell'` bid type — needed for captain auto-assign at auction start.** |
+| 034 | `034_player_nickname.sql` | **`nickname text` added to `players` — optional short name shown everywhere instead of `name` when set. `displayName(player)` helper in `cricketUtils.js` returns `nickname || name`.** |
 
 ### Critical RLS Behaviour
 Supabase RLS with no matching policy = **silent no-op**: returns HTTP 200, 0 rows deleted, no error. This burned us on player deletion — migration 003 replaced the blanket policy but never added DELETE. Migration 010 fixes this.
@@ -535,11 +537,11 @@ For realtime to work, each table must have Replication enabled:
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**39 test files, 522 tests — all passing:**
+**39 test files, 531 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
-| `src/lib/cricketUtils.test.js` | formatOvers, calcCRR/RRR/NRR, calcStrikeRate/Average/Economy, formatBestFigures, isMaiden, detectHatTrick, deriveRunType, applyStrikerSwap, calcWinByWickets/Runs, round, fmt, computeBadges (all 7 badges), calcMotmScore, pickMotm |
+| `src/lib/cricketUtils.test.js` | formatOvers, calcCRR/RRR/NRR, calcStrikeRate/Average/Economy, formatBestFigures, isMaiden, detectHatTrick, deriveRunType, applyStrikerSwap, calcWinByWickets/Runs, round, fmt, computeBadges (all 7 badges), calcMotmScore, pickMotm, **displayName** (nickname fallback, null/undefined safety) |
 | `src/services/scoringService.test.js` | checkWinCondition — all 6 paths (innings 1, win by wickets, last-ball win, win by runs all-out, win by runs overs, tie) |
 | `src/hooks/useRole.test.js` | All 5 roles × all capability flags |
 | `src/hooks/useWinCondition.test.js` | Guard clauses (null match, null innings, innings 1, SO odd innings); Regular innings 2 — null when not won, win by wickets, last-ball win, win by runs (all-out), tie, team-name from batting_team field; Super over — null for inn3, win by wickets + super_over type, win by runs, 6-ball limit, SO tie, type=super_over tag, successive SO (innings 6) |

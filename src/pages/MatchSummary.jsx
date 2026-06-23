@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Share2, Trash2, ChevronDown } from 'lucide-react';
 import * as matchService from '../services/matchService';
-import { calcMotmScore, formatOvers, fmt, calcStrikeRate, calcEconomy } from '../lib/cricketUtils';
+import { calcMotmScore, formatOvers, fmt, calcStrikeRate, calcEconomy, displayName } from '../lib/cricketUtils';
 import { useRole } from '../hooks/useRole';
 import PlayerLink from '../components/player/PlayerLink';
 import PlayerAvatar from '../components/player/PlayerAvatar';
@@ -21,7 +21,7 @@ function buildStatsFromDeliveries(deliveries) {
     if (!pid) continue;
     if (!batMap.has(pid)) {
       batOrder.push(pid);
-      batMap.set(pid, { name: d.batsman?.name || pid, runs: 0, balls: 0, fours: 0, sixes: 0 });
+      batMap.set(pid, { name: displayName(d.batsman) || pid, runs: 0, balls: 0, fours: 0, sixes: 0 });
     }
     const s = batMap.get(pid);
     if (d.extra_type !== 'wide') {
@@ -40,8 +40,8 @@ function buildStatsFromDeliveries(deliveries) {
     if (!outId || dismissalMap.has(outId)) continue;
     dismissalMap.set(outId, {
       type: d.wicket_type,
-      bowlerName: d.bowler?.name || '',
-      fielderName: d.fielder?.name || '',
+      bowlerName: displayName(d.bowler) || '',
+      fielderName: displayName(d.fielder) || '',
     });
   }
 
@@ -52,7 +52,7 @@ function buildStatsFromDeliveries(deliveries) {
     if (!pid) continue;
     if (!bowlMap.has(pid)) {
       bowlOrder.push(pid);
-      bowlMap.set(pid, { name: d.bowler?.name || pid, legal_balls: 0, runs: 0, wickets: 0 });
+      bowlMap.set(pid, { name: displayName(d.bowler) || pid, legal_balls: 0, runs: 0, wickets: 0 });
     }
     const s = bowlMap.get(pid);
     if (d.is_legal_delivery) s.legal_balls += 1;
@@ -118,7 +118,7 @@ function ScorecardInnings({ innings, deliveries, playerMeta, playersMap, matchPl
     const battedSet = new Set(batOrder);
     return (matchPlayers || [])
       .filter(mp => (mp.team === innings.batting_team || mp.team === 0) && mp.is_active !== false && !battedSet.has(mp.player_id))
-      .map(mp => mp.players?.name || mp.player_id)
+      .map(mp => displayName(mp.players) || mp.player_id)
       .filter(Boolean);
   }, [batOrder, matchPlayers, innings.batting_team]);
 
@@ -129,7 +129,7 @@ function ScorecardInnings({ innings, deliveries, playerMeta, playersMap, matchPl
       runs += d.total_runs_on_delivery ?? ((d.runs_off_bat || 0) + (d.extra_runs || 0));
       if (d.is_wicket) {
         const pid = d.batsman_out_id || d.batsman_id;
-        const name = playersMap[pid]?.name || batMap.get(pid)?.name || '';
+        const name = displayName(playersMap[pid]) || batMap.get(pid)?.name || '';
         const shortName = name.split(' ').slice(-1)[0];
         result.push({ runs, wickets: result.length + 1, over: d.over_number !== undefined ? `${d.over_number + 1}.${d.ball_number || 0}` : '', shortName });
       }
@@ -334,7 +334,7 @@ export default function MatchSummary() {
       .filter(mp => { if (seen.has(mp.player_id)) return false; seen.add(mp.player_id); return true; })
       .map(mp => ({
         id: mp.player_id,
-        name: mp.players?.name || mp.player_id,
+        name: displayName(mp.players) || mp.player_id,
         pts: calcMotmScore(mp.player_id, battingCards, bowlingCards, fieldingCards),
       }))
       .sort((a, b) => b.pts - a.pts);
@@ -345,7 +345,7 @@ export default function MatchSummary() {
   const inn1 = inningsList.find(i => i.batting_team === 1);
   const inn2 = inningsList.find(i => i.batting_team === 2);
   const motmId = match.man_of_match_id || match.man_of_match?.id;
-  const motmName = matchPlayers.find(mp => mp.player_id === motmId)?.players?.name || match.man_of_match?.name;
+  const motmName = displayName(matchPlayers.find(mp => mp.player_id === motmId)?.players) || displayName(match.man_of_match);
   const motmPhotoUrl = matchPlayers.find(mp => mp.player_id === motmId)?.players?.photo_url;
   const motmBat = battingCards.find(c => c.player_id === motmId);
   const motmBowl = bowlingCards.find(c => c.player_id === motmId);
@@ -354,7 +354,7 @@ export default function MatchSummary() {
     motmBowl?.wickets ? `${motmBowl.wickets}/${motmBowl.runs_conceded || 0} (${formatOvers(motmBowl.legal_balls || 0)})` : null,
   ].filter(Boolean).join(' · ');
 
-  const playerNameMap = new Map(matchPlayers.map(mp => [mp.player_id, mp.players?.name || mp.player_id]));
+  const playerNameMap = new Map(matchPlayers.map(mp => [mp.player_id, displayName(mp.players) || mp.player_id]));
   const playerTeamMap = new Map(matchPlayers.map(mp => [mp.player_id, mp.team]));
 
   const topBatters = teamId => battingCards

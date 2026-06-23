@@ -2,6 +2,12 @@
 // Cricket math & rule utilities — pure functions, no side effects
 // ============================================================
 
+// Returns nickname when set, otherwise full name. Safe to call with null/undefined.
+export function displayName(player) {
+  if (!player) return '';
+  return player.nickname?.trim() || player.name || '';
+}
+
 export function formatOvers(legalBalls) {
   if (!legalBalls) return '0.0';
   const overs = Math.floor(legalBalls / 6);

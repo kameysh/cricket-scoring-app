@@ -24,7 +24,7 @@ export async function getMatchNumber(id) {
 export async function getMatch(id) {
   const { data, error } = await supabase
     .from('matches')
-    .select('*, venues(name,city), tournaments(name), man_of_match:man_of_match_id(id,name)')
+    .select('*, venues(name,city), tournaments(name), man_of_match:man_of_match_id(id,name,nickname)')
     .eq('id', id)
     .single();
   if (error) throw error;
@@ -163,9 +163,9 @@ export async function completeInnings(inningsId, endReason = null) {
 
 export async function getScorecards(inningsId) {
   const [batting, bowling, fielding] = await Promise.all([
-    supabase.from('batting_scorecards').select('*, players!player_id(name)').eq('innings_id', inningsId).order('batting_position'),
-    supabase.from('bowling_scorecards').select('*, players!player_id(name)').eq('innings_id', inningsId),
-    supabase.from('fielding_scorecards').select('*, players!player_id(name)').eq('innings_id', inningsId),
+    supabase.from('batting_scorecards').select('*, players!player_id(name,nickname)').eq('innings_id', inningsId).order('batting_position'),
+    supabase.from('bowling_scorecards').select('*, players!player_id(name,nickname)').eq('innings_id', inningsId),
+    supabase.from('fielding_scorecards').select('*, players!player_id(name,nickname)').eq('innings_id', inningsId),
   ]);
   return { batting: batting.data || [], bowling: bowling.data || [], fielding: fielding.data || [] };
 }
@@ -173,7 +173,7 @@ export async function getScorecards(inningsId) {
 export async function getDeliveries(inningsId) {
   const { data, error } = await supabase
     .from('deliveries')
-    .select('*, batsman:batsman_id(name), bowler:bowler_id(name), fielder:fielder_id(name), batsman_out:batsman_out_id(name)')
+    .select('*, batsman:batsman_id(name,nickname), bowler:bowler_id(name,nickname), fielder:fielder_id(name,nickname), batsman_out:batsman_out_id(name,nickname)')
     .eq('innings_id', inningsId)
     .order('total_ball_sequence');
   if (error) throw error;
@@ -293,8 +293,8 @@ export async function getH2HTopPerformers(matchIds) {
   if (!inningsIds.length) return { topBatsmen: [], topBowlers: [] };
 
   const [bat, bowl] = await Promise.all([
-    supabase.from('batting_scorecards').select('player_id, bat_runs, players(name, photo_url)').in('innings_id', inningsIds).limit(200),
-    supabase.from('bowling_scorecards').select('player_id, bowl_wickets, players(name, photo_url)').in('innings_id', inningsIds).limit(200),
+    supabase.from('batting_scorecards').select('player_id, bat_runs, players(name, nickname, photo_url)').in('innings_id', inningsIds).limit(200),
+    supabase.from('bowling_scorecards').select('player_id, bowl_wickets, players(name, nickname, photo_url)').in('innings_id', inningsIds).limit(200),
   ]);
 
   const batMap = new Map();

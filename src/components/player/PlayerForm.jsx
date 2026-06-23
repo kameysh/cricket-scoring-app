@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 
 const schema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(60),
+  nickname: z.string().max(30).optional(),
   role: z.string().optional(),
   batting_style: z.string().optional(),
   bowling_style: z.string().optional(),
@@ -79,7 +80,7 @@ export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Play
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: initial || { name: '', role: '', batting_style: '', bowling_style: '' },
+    defaultValues: initial || { name: '', nickname: '', role: '', batting_style: '', bowling_style: '' },
   });
 
   const role = watch('role');
@@ -123,15 +124,25 @@ export default function PlayerForm({ initial, onSubmit, submitLabel = 'Save Play
             <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
           </label>
 
-          {/* Name input */}
-          <div className="flex-1 min-w-0">
-            <label className="block text-xs font-semibold text-ink-400 mb-1">Player Name <span className="text-red-400">*</span></label>
-            <input
-              {...register('name')}
-              placeholder="Full name"
-              className="w-full bg-transparent text-xl font-bold text-ink-900 dark:text-white placeholder-ink-300 dark:placeholder-ink-600 border-b-2 border-ink-200 dark:border-white/20 focus:border-brand-green focus:outline-none pb-1 transition-colors"
-            />
-            {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>}
+          {/* Name + Nickname inputs */}
+          <div className="flex-1 min-w-0 space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-ink-400 mb-1">Player Name <span className="text-red-400">*</span></label>
+              <input
+                {...register('name')}
+                placeholder="Full name"
+                className="w-full bg-transparent text-xl font-bold text-ink-900 dark:text-white placeholder-ink-300 dark:placeholder-ink-600 border-b-2 border-ink-200 dark:border-white/20 focus:border-brand-green focus:outline-none pb-1 transition-colors"
+              />
+              {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-ink-400 mb-1">Nickname <span className="text-ink-300">(optional)</span></label>
+              <input
+                {...register('nickname')}
+                placeholder="e.g. Mahi, Cheeku…"
+                className="w-full bg-transparent text-sm font-medium text-ink-700 dark:text-ink-300 placeholder-ink-300 dark:placeholder-ink-600 border-b border-ink-200 dark:border-white/10 focus:border-brand-green focus:outline-none pb-1 transition-colors"
+              />
+            </div>
           </div>
         </div>
       </div>

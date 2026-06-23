@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import PlayerLink from '../player/PlayerLink';
+import { displayName } from '../../lib/cricketUtils';
 
 function chipLabel(d) {
   if (d.is_wicket) return 'W';
@@ -27,8 +28,9 @@ export default function BallLog({ deliveries, matchPlayers = [] }) {
   // Deliveries added during the session carry only IDs (no joined name objects).
   // Fall back to matchPlayers lookup so names always show in the popover.
   function resolveName(id, joinedObj) {
-    if (joinedObj?.name) return joinedObj.name;
-    return matchPlayers.find(mp => mp.players?.id === id)?.players?.name || null;
+    const dn = displayName(joinedObj);
+    if (dn) return dn;
+    return displayName(matchPlayers.find(mp => mp.players?.id === id)?.players) || null;
   }
 
   return (

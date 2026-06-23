@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import * as playerService from '../../services/playerService';
-import { computeBadges } from '../../lib/cricketUtils';
+import { computeBadges, displayName } from '../../lib/cricketUtils';
 
 const ROLE_LABELS = {
   batsman:       'Batsman',
@@ -384,8 +384,11 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                     )}
 
                     <p className="text-[15px] font-bold text-ink-900 dark:text-white text-center leading-tight truncate">
-                      {player.name}
+                      {displayName(player)}
                     </p>
+                    {player.nickname && (
+                      <p className="text-[11px] text-ink-400 dark:text-ink-500 text-center truncate mt-0.5">{player.name}</p>
+                    )}
                     <div className="flex items-center justify-center mt-2">
                       {player.role && (
                         <span className={`text-[11px] font-semibold px-3 py-1 rounded-full ${ROLE_COLORS[player.role] || ''}`}>
@@ -453,7 +456,7 @@ export default function PlayerCarousel({ players, activeIndex, onChangeIndex, on
                   ) : (
                     <>
                       <div className="px-5 pt-5 pb-3 border-b border-white/10">
-                        <p className="text-white font-bold text-sm text-center truncate">{player.name}</p>
+                        <p className="text-white font-bold text-sm text-center truncate">{displayName(player)}</p>
                         {player.role && (
                           <p className="text-white/40 text-[11px] text-center mt-0.5">
                             {ROLE_LABELS[player.role] || player.role}
