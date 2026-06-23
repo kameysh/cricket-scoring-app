@@ -36,7 +36,9 @@ export default function AuctioneerControls({
   const raiseTeamMaxBid = raiseTeam != null
     ? (teamMaxBids[raiseTeam.id] ?? raiseTeam.budget_remaining ?? 0)
     : Infinity;
-  const overBudget = raiseTeam != null && totalIncrement > 0 && nextBid > raiseTeamMaxBid;
+  const overRawBudget = raiseTeam != null && totalIncrement > 0 && nextBid > (raiseTeam.budget_remaining ?? 0);
+  const overReserve = !overRawBudget && raiseTeam != null && totalIncrement > 0 && nextBid > raiseTeamMaxBid;
+  const overBudget = overRawBudget || overReserve;
 
   function incrementChip(inc) {
     haptic();
@@ -184,7 +186,7 @@ export default function AuctioneerControls({
                     : 'bg-brand-green text-white hover:opacity-90'
                 }`}
               >
-                {overBudget ? 'Over budget' : `Raise → ₹${nextBid.toLocaleString()}`}
+                {overRawBudget ? 'Exceeds purse' : overReserve ? 'Need purse for remaining picks' : `Raise → ₹${nextBid.toLocaleString()}`}
               </button>
               <button
                 onClick={resetChips}

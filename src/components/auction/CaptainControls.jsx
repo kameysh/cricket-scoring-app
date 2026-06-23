@@ -27,7 +27,9 @@ export default function CaptainControls({
   const totalIncrement = Object.entries(chipCounts).reduce((sum, [inc, cnt]) => sum + Number(inc) * cnt, 0);
   const nextBid = currentBid + totalIncrement;
   const effectiveMax = maxBid != null ? Math.min(maxBid, budgetRemaining) : budgetRemaining;
-  const overBudget = totalIncrement > 0 && nextBid > effectiveMax;
+  const overRawBudget = totalIncrement > 0 && nextBid > budgetRemaining;
+  const overReserve = !overRawBudget && totalIncrement > 0 && nextBid > effectiveMax;
+  const overBudget = overRawBudget || overReserve;
 
   function incrementChip(inc) {
     haptic();
@@ -116,7 +118,7 @@ export default function CaptainControls({
                 : 'bg-brand-green text-white hover:opacity-90'
             }`}
           >
-            {overBudget ? 'Over budget' : `Bid ₹${nextBid.toLocaleString()}`}
+            {overRawBudget ? 'Exceeds your purse' : overReserve ? 'Need purse for remaining picks' : `Bid ₹${nextBid.toLocaleString()}`}
           </button>
           <button
             onClick={() => setChipCounts({})}

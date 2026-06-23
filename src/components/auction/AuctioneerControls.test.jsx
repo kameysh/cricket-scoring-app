@@ -156,13 +156,13 @@ describe('AuctioneerControls — multi-tap chips', () => {
     expect(screen.getByRole('button', { name: 'Super Kings' }).className).toMatch(/bg-brand-green/);
   });
 
-  it('confirm button shows "Over budget" and is disabled when total exceeds purse', () => {
+  it('confirm button shows "Exceeds purse" and is disabled when total exceeds raw budget', () => {
     const tightTeam = { ...TEAM1, budget_remaining: 1500 };
     renderControls({ teams: [tightTeam, TEAM2] });
     // currentBid=1000, +2000 → nextBid=3000 > 1500
     fireEvent.click(screen.getByTestId('chip-2000'));
     const btn = screen.getByTestId('confirm-raise-btn');
-    expect(btn).toHaveTextContent('Over budget');
+    expect(btn).toHaveTextContent('Exceeds purse');
     expect(btn).toBeDisabled();
   });
 });
