@@ -302,19 +302,17 @@ export default function Home() {
                     alt={activePromo.tournament_name || 'Tournament'}
                     className="w-full h-full object-contain"
                   />
-                  {/* Upcoming Event tag */}
-                  <div className="absolute top-3 left-3">
-                    <span className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-brand-green text-white shadow-lg animate-pulse">
-                      <span className="relative flex h-2 w-2 shrink-0">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
-                      </span>
-                      UPCOMING EVENT
-                    </span>
-                  </div>
                 </div>
                 {(activePromo.tournament_name || activePromo.team1_name) && (
                   <div className="px-4 py-3 bg-white dark:bg-ink-800 space-y-1">
+                    {/* Upcoming Event tag */}
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide bg-brand-green/10 text-brand-green animate-pulse">
+                      <span className="relative flex h-1.5 w-1.5 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-green opacity-75" />
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand-green" />
+                      </span>
+                      UPCOMING EVENT
+                    </span>
                     {activePromo.tournament_name && (
                       <p className="text-sm font-bold text-ink-900 dark:text-white">{activePromo.tournament_name}</p>
                     )}
