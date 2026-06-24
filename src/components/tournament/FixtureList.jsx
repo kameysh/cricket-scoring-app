@@ -4,10 +4,19 @@ import MatchCard from '../match/MatchCard';
 
 const DONE_STATUSES = ['completed', 'no_result', 'abandoned'];
 
-function UpcomingFixtureCard({ match, onStart, matchNumber, locked, prevMatchNumber }) {
+function UpcomingFixtureCard({ match, onStart, matchNumber, locked, prevMatchNumber, lockedUntil }) {
   const numLabel = matchNumber != null ? `Match ${String(matchNumber).padStart(2, '0')} · ` : '';
+  const timeLocked = lockedUntil && Date.now() < lockedUntil.getTime();
+  const isLocked = locked || timeLocked;
+
+  let lockLabel = prevMatchNumber != null ? `After Match ${String(prevMatchNumber).padStart(2, '0')}` : 'Locked';
+  if (timeLocked) {
+    // Format unlock time in IST (UTC+5:30)
+    lockLabel = `Unlocks ${format(lockedUntil, 'dd MMM, h:mm a')} IST`;
+  }
+
   return (
-    <div className={`card overflow-hidden ${locked ? 'opacity-60' : ''}`}>
+    <div className={`card overflow-hidden ${isLocked ? 'opacity-60' : ''}`}>
       <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-ink-100 dark:border-white/5">
         <span className="text-[11px] font-semibold tracking-widest text-ink-400 uppercase">{numLabel}Upcoming</span>
         <span className="text-[11px] text-ink-400">{match.created_at && format(new Date(match.created_at), 'dd MMM yyyy')}</span>
@@ -25,10 +34,10 @@ function UpcomingFixtureCard({ match, onStart, matchNumber, locked, prevMatchNum
           </p>
         </div>
 
-        {locked ? (
+        {isLocked ? (
           <div className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-ink-100 dark:bg-white/10 text-xs font-semibold text-ink-400">
             <Lock size={12} />
-            {prevMatchNumber != null ? `After Match ${String(prevMatchNumber).padStart(2, '0')}` : 'Locked'}
+            {lockLabel}
           </div>
         ) : onStart ? (
           <button
@@ -56,7 +65,7 @@ function DeletedFixtureCard({ matchNumber }) {
   );
 }
 
-export default function FixtureList({ matches, onStart, seriesTotal }) {
+export default function FixtureList({ matches, onStart, seriesTotal, match1UnlockAt }) {
   const realCount = matches?.length ?? 0;
   // Only show tombstones when at least one real match exists — otherwise it's a clean slate.
   const deletedCount = (seriesTotal && realCount > 0) ? Math.max(0, seriesTotal - realCount) : 0;
@@ -70,8 +79,9 @@ export default function FixtureList({ matches, onStart, seriesTotal }) {
       {matches.map((m, i) => {
         const prev = matches[i - 1];
         const locked = seriesTotal && i > 0 && prev && !DONE_STATUSES.includes(prev.status);
+        const lockedUntil = i === 0 && match1UnlockAt ? match1UnlockAt : null;
         return onStart && m.status === 'upcoming'
-          ? <UpcomingFixtureCard key={m.id} match={m} onStart={onStart} matchNumber={i + 1} locked={locked} prevMatchNumber={i} />
+          ? <UpcomingFixtureCard key={m.id} match={m} onStart={onStart} matchNumber={i + 1} locked={locked} prevMatchNumber={i} lockedUntil={lockedUntil} />
           : <MatchCard key={m.id} match={m} matchNumber={i + 1} />;
       })}
       {Array.from({ length: deletedCount }, (_, i) => (

@@ -9,6 +9,7 @@ import FixtureList from '../components/tournament/FixtureList';
 import KnockoutBracket from '../components/tournament/KnockoutBracket';
 import BottomSheet from '../components/shared/BottomSheet';
 import { useRole } from '../hooks/useRole';
+import { useAuthStore } from '../stores/authStore';
 
 function formatDate(d) {
   if (!d) return null;
@@ -24,7 +25,13 @@ const formatBadgeColor = {
 export default function TournamentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canScore, canManageTournaments } = useRole();
+  const { canScore, canManageTournaments, isAdmin } = useRole();
+  const user = useAuthStore(s => s.user);
+  const isSuperAdmin = isAdmin && user?.email === 'kameshwaran26@gmail.com';
+
+  // Match 1 unlock time: 27 Jun 2026 05:45 AM IST (= 00:15 UTC)
+  const MATCH1_UNLOCK = new Date('2026-06-27T00:15:00Z');
+  const match1TimeLocked = !isSuperAdmin && Date.now() < MATCH1_UNLOCK.getTime();
 
   const [tournament, setTournament] = useState(null);
   const [matches, setMatches] = useState([]);
@@ -254,6 +261,7 @@ export default function TournamentDetail() {
           matches={matches}
           onStart={canScore ? openToss : null}
           seriesTotal={tournament.series_matches || undefined}
+          match1UnlockAt={match1TimeLocked ? MATCH1_UNLOCK : null}
         />
       </section>
 

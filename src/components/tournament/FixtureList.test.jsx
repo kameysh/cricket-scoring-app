@@ -20,6 +20,10 @@ function render_(props) {
 }
 
 const MATCH = { id: 'm1', status: 'completed', team1_name: 'A', team2_name: 'B' };
+const UPCOMING = { id: 'm1', status: 'upcoming', team1_name: 'Lion Kings', team2_name: 'Apex Avengers' };
+
+const FUTURE = new Date(Date.now() + 60 * 60 * 1000);   // 1 hour from now
+const PAST   = new Date(Date.now() - 60 * 60 * 1000);   // 1 hour ago
 
 describe('FixtureList', () => {
   it('shows empty state when no matches and no seriesTotal', () => {
@@ -52,5 +56,34 @@ describe('FixtureList', () => {
     render_({ matches: [MATCH] });
     expect(screen.getByTestId('match-card')).toBeInTheDocument();
     expect(screen.queryByText(/deleted/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('FixtureList — match 1 time lock', () => {
+  it('shows lock + unlock time on match 1 when match1UnlockAt is in the future', () => {
+    render_({ matches: [UPCOMING], onStart: vi.fn(), match1UnlockAt: FUTURE });
+    expect(screen.getByText(/Unlocks/i)).toBeInTheDocument();
+    expect(screen.queryByText('Start')).not.toBeInTheDocument();
+  });
+
+  it('shows Start button on match 1 when match1UnlockAt is in the past', () => {
+    render_({ matches: [UPCOMING], onStart: vi.fn(), match1UnlockAt: PAST });
+    expect(screen.getByText('Start')).toBeInTheDocument();
+    expect(screen.queryByText(/Unlocks/i)).not.toBeInTheDocument();
+  });
+
+  it('shows Start button on match 1 when match1UnlockAt is null (super admin bypass)', () => {
+    render_({ matches: [UPCOMING], onStart: vi.fn(), match1UnlockAt: null });
+    expect(screen.getByText('Start')).toBeInTheDocument();
+    expect(screen.queryByText(/Unlocks/i)).not.toBeInTheDocument();
+  });
+
+  it('does not apply time lock to match 2+', () => {
+    const m2 = { id: 'm2', status: 'upcoming', team1_name: 'A', team2_name: 'B' };
+    render_({ matches: [{ ...UPCOMING, status: 'completed' }, m2], onStart: vi.fn(), match1UnlockAt: FUTURE, seriesTotal: 2 });
+    // match 2 is locked by prev-match logic (match 1 not done in seriesTotal mode),
+    // but the "Unlocks" label only appears for match 1
+    const lockLabels = screen.queryAllByText(/Unlocks/i);
+    expect(lockLabels).toHaveLength(0);
   });
 });

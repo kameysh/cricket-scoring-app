@@ -541,6 +541,7 @@ For realtime to work, each table must have Replication enabled:
 | `AuctionRoom.jsx` | Clicking Deal showed a 2-3s "Generating animated GIF…" loading screen before the sold card modal appeared — GIF encoding (45 canvas frames) blocked the UI on deal | `openSoldCard` no longer auto-starts GIF generation; modal opens instantly with player/price data; GIF generates only when user taps "Share GIF" (`onGenerateGif` prop); progress shown in button text while encoding |
 | `AuctioneerControls.jsx` | Deal button could be tapped accidentally — one click executed the deal immediately with no confirmation | Two-step confirm: first tap arms button (turns red, pulses, shows "✅ Confirm Deal?"); second tap within 3s fires the deal; auto-resets after 3s; resets on player change |
 | `AuctionRoom.jsx` | Any admin could delete an auction — should be super admin only | Delete trash button now gated on `isSuperAdmin` (`isAdmin && user?.email === 'kameshwaran26@gmail.com'`); regular admins no longer see it |
+| `FixtureList.jsx` + `TournamentDetail.jsx` | Match 01 needed a time-based lock until 27 Jun 2026 05:45 AM IST, bypassed only for super admin | `FixtureList` accepts `match1UnlockAt` prop (Date); shows lock icon + "Unlocks DD Mon, H:MM AM IST" when future; `TournamentDetail` passes `MATCH1_UNLOCK = new Date('2026-06-27T00:15:00Z')` unless `isSuperAdmin`, in which case passes `null` so Start is always visible |
 | `ActivePlayerSpotlight.jsx` + `AuctionRoom.jsx` | Player card only showed photo/name — no career stats, no way to navigate to full profile | `AuctionRoom` fetches `getCareerStats(player_id)` on every new active player; passes `careerStats` + `onViewProfile` to spotlight; card now shows RUNS/WKTS/MATCHES strip + "View Profile →" button matching the Players carousel card exactly |
 | `AuctionRoom.jsx` + `auctionService.js` + `teamService.js` + `Teams.jsx` + `036_team_source_auction.sql` | After auction completion, team rosters only existed inside the auction — no way to use them for match/tournament setup | `handleComplete()` now calls `createTeamsFromAuction(id)` after marking completed: creates a global `teams` row per `auction_team` (name = team name, `source_auction_id` links back to auction), then `setTeamPlayers` with all sold players. Teams appear immediately in `/teams` page with "🏷️ AuctionName" badge and in match/tournament setup dropdowns. |
 | `BudgetBars.jsx` + `auctionService.js` | BudgetBars showed only team name — captain's photo not visible | `listAuctionTeams` now does a secondary query `players WHERE user_id IN (captainUserIds)` and attaches `captainPlayer: { photo_url, name }` to each team; `BudgetBars` renders a 32px circular avatar left of the team name — real photo if available, initials fallback otherwise. |
@@ -573,7 +574,7 @@ Test mocks updated in `playerService.test.js` (fluent chain with `.neq`/`.gt` su
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**48 test files, 686 tests — all passing:**
+**48 test files, 690 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -604,7 +605,7 @@ Test mocks updated in `playerService.test.js` (fluent chain with `.neq`/`.gt` su
 | `src/services/playerService.test.js` (extended) | getSeriesMatchIds — empty when no tournaments, returns match IDs across all series tournaments; getPlayerSeriesStats — null when no data, aggregates all stat fields, MAX for best bowling figures |
 | `src/pages/Series.test.jsx` | Empty state when no series; renders series cards; shows add form on New click; creates series on submit (calls addSeries); prompts ConfirmDialog on delete |
 | `src/pages/SeriesDetail.test.jsx` | Shows series name; shows season list with count; shows empty stats message when no data; passes aggregated stats array to TournamentLeaderboard; shows not-found when series is null |
-| `src/components/tournament/FixtureList.test.jsx` | Empty state when no matches (with and without seriesTotal); tombstones only shown when real matches exist alongside gaps; no tombstones when all slots filled; no tombstones without seriesTotal |
+| `src/components/tournament/FixtureList.test.jsx` | Empty state when no matches (with and without seriesTotal); tombstones only shown when real matches exist alongside gaps; no tombstones when all slots filled; no tombstones without seriesTotal; **time lock** — future `match1UnlockAt` shows lock+label, past shows Start, null (super admin bypass) shows Start, lock does not apply to match 2+ |
 | `src/stores/themeStore.test.js` | applyTheme: adds dark class, removes dark class, respects system light/dark preference |
 | `src/services/partnershipService.test.js` | computePartnerships: empty input, single unbroken partnership, wide not counted as ball, broken partnership on wicket, sort by runs desc, multiple wickets |
 | `src/services/pushService.test.js` | isPushSupported: returns false when serviceWorker absent, returns false when VAPID key not set |
