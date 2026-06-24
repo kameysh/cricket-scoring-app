@@ -3,7 +3,6 @@ import { Search, Trash2, Check } from 'lucide-react';
 import * as playerService from '../../services/playerService';
 import * as auctionService from '../../services/auctionService';
 import PlayerAvatar from '../player/PlayerAvatar';
-import { displayName } from '../../lib/cricketUtils';
 import PlayerName from '../shared/PlayerName';
 import toast from 'react-hot-toast';
 
@@ -101,7 +100,7 @@ export default function PlayerPoolManager({ auctionId, poolPlayers, captainUserI
   const available = allPlayers.filter(p =>
     !poolIds.has(p.id) &&
     !captainPIds.has(p.id) &&
-    (!search || displayName(p).toLowerCase().includes(search.toLowerCase()) ||
+    (!search || p.name?.toLowerCase().includes(search.toLowerCase()) ||
       p.role?.toLowerCase().includes(search.toLowerCase()))
   );
 

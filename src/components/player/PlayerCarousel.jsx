@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import * as playerService from '../../services/playerService';
-import { computeBadges, displayName } from '../../lib/cricketUtils';
+import { computeBadges } from '../../lib/cricketUtils';
 
 const ROLE_LABELS = {
   batsman:       'Batsman',

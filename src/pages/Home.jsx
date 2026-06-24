@@ -14,7 +14,7 @@ import ConfirmDialog from '../components/shared/ConfirmDialog';
 import PlayerAvatar from '../components/player/PlayerAvatar';
 import { useRole } from '../hooks/useRole';
 import { useAuthStore } from '../stores/authStore';
-import { formatOvers, displayName } from '../lib/cricketUtils';
+import { formatOvers } from '../lib/cricketUtils';
 import { supabase } from '../lib/supabase';
 
 export default function Home() {
@@ -345,14 +345,14 @@ export default function Home() {
                 icon={<BarChart2 size={15} className="text-amber-500" />}
                 label="Top Scorer"
                 value={topScorer ? topScorer.bat_runs : '—'}
-                sub={topScorer?.players ? displayName(topScorer.players) : null}
+                sub={topScorer?.players?.name ?? null}
                 onClick={topScorer?.players?.id ? () => navigate(`/players/${topScorer.players.id}`) : undefined}
               />
               <StatPill
                 icon={<Zap size={15} className="text-purple-500" />}
                 label="Top Wickets"
                 value={topWickets ? topWickets.bowl_wickets : '—'}
-                sub={topWickets?.players ? displayName(topWickets.players) : null}
+                sub={topWickets?.players?.name ?? null}
                 onClick={topWickets?.players?.id ? () => navigate(`/players/${topWickets.players.id}`) : undefined}
               />
             </div>
@@ -516,14 +516,14 @@ export function MatchScoreCard({ match, matchNumber, stats, onDelete, onNavigate
             {team1Batters.map(b => (
               <div key={b.player_id} className="flex items-center gap-1.5">
                 <PlayerAvatar name={b.players?.name || ''} size={20} />
-                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{displayName(b.players) || '—'}</span>
+                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{b.players?.name || '—'}</span>
                 <span className="text-xs font-bold text-ink-900 dark:text-white tabular-nums">{b.runs ?? '—'}</span>
               </div>
             ))}
             {team1TopBowl && (
               <div className="flex items-center gap-1.5 mt-0.5">
                 <PlayerAvatar name={team1TopBowl.players?.name || ''} size={20} />
-                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{displayName(team1TopBowl.players) || '—'}</span>
+                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{team1TopBowl.players?.name || '—'}</span>
                 <span className="text-xs font-bold text-brand-green tabular-nums">
                   {team1TopBowl.wickets}/{team1TopBowl.runs_conceded || 0}
                 </span>
@@ -537,14 +537,14 @@ export function MatchScoreCard({ match, matchNumber, stats, onDelete, onNavigate
             {team2Batters.map(b => (
               <div key={b.player_id} className="flex items-center gap-1.5">
                 <PlayerAvatar name={b.players?.name || ''} size={20} />
-                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{displayName(b.players) || '—'}</span>
+                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{b.players?.name || '—'}</span>
                 <span className="text-xs font-bold text-ink-900 dark:text-white tabular-nums">{b.runs ?? '—'}</span>
               </div>
             ))}
             {team2TopBowl && (
               <div className="flex items-center gap-1.5 mt-0.5">
                 <PlayerAvatar name={team2TopBowl.players?.name || ''} size={20} />
-                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{displayName(team2TopBowl.players) || '—'}</span>
+                <span className="text-xs text-ink-700 dark:text-ink-200 truncate flex-1">{team2TopBowl.players?.name || '—'}</span>
                 <span className="text-xs font-bold text-brand-green tabular-nums">
                   {team2TopBowl.wickets}/{team2TopBowl.runs_conceded || 0}
                 </span>

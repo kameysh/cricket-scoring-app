@@ -3,7 +3,6 @@ import { Swords } from 'lucide-react';
 import BottomSheet from '../shared/BottomSheet';
 import PlayerAvatar from './PlayerAvatar';
 import { getPlayerVsPlayer } from '../../services/playerService';
-import { displayName } from '../../lib/cricketUtils';
 import PlayerName from '../shared/PlayerName';
 
 function StatRow({ label, p1Val, p2Val, lowerIsBetter = false }) {

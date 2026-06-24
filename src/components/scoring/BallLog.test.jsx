@@ -104,4 +104,28 @@ describe('BallLog popover', () => {
     fireEvent.click(overlay);
     expect(document.querySelector('.fixed.inset-0.z-50')).toBeNull();
   });
+
+  it('shows player.name not nickname in popover when joined object has both', () => {
+    const d = delivery({
+      batsman: { name: 'Yuvaraj Singh', nickname: 'Yuvi' },
+      bowler:  { name: 'Ravi Kumar',    nickname: 'Ravi K' },
+    });
+    render(<BallLog deliveries={[d]} />);
+    fireEvent.click(screen.getByRole('button', { name: '•' }));
+    expect(screen.getByText('Yuvaraj Singh')).toBeInTheDocument();
+    expect(screen.queryByText('Yuvi')).not.toBeInTheDocument();
+    expect(screen.getByText('Ravi Kumar')).toBeInTheDocument();
+    expect(screen.queryByText('Ravi K')).not.toBeInTheDocument();
+  });
+
+  it('resolveName fallback uses player.name not nickname from matchPlayers', () => {
+    const matchPlayers = [
+      { players: { id: 'b1', name: 'Suresh Raina', nickname: 'Chinna Thala' } },
+    ];
+    const d = delivery({ batsman: null, bowler: null });
+    render(<BallLog deliveries={[d]} matchPlayers={matchPlayers} />);
+    fireEvent.click(screen.getByRole('button', { name: '•' }));
+    expect(screen.getByText(/Suresh Raina/)).toBeInTheDocument();
+    expect(screen.queryByText(/Chinna Thala/)).not.toBeInTheDocument();
+  });
 });

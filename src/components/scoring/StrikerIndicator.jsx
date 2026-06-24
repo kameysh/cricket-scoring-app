@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Repeat, LogOut } from 'lucide-react';
 import PlayerLink from '../player/PlayerLink';
-import { calcStrikeRate, fmt, displayName } from '../../lib/cricketUtils';
+import { calcStrikeRate, fmt } from '../../lib/cricketUtils';
 
 function BatsmanRow({ playerId, name, isStriker, card, onRetire }) {
   const [expanded, setExpanded] = useState(false);
@@ -45,12 +45,12 @@ export default function StrikerIndicator({ striker, nonStriker, strikerCard, non
   return (
     <div className="card p-3">
       <BatsmanRow
-        playerId={striker?.id} name={displayName(striker)} isStriker
+        playerId={striker?.id} name={striker?.name} isStriker
         card={strikerCard} onRetire={() => onRetire(striker?.id)}
       />
       {nonStriker && (
         <BatsmanRow
-          playerId={nonStriker.id} name={displayName(nonStriker)} isStriker={false}
+          playerId={nonStriker.id} name={nonStriker.name} isStriker={false}
           card={nonStrikerCard} onRetire={() => onRetire(nonStriker.id)}
         />
       )}

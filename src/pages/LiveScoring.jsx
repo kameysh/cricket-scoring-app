@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { calcStrikeRate, calcEconomy, formatOvers, fmt, displayName } from '../lib/cricketUtils';
+import { calcStrikeRate, calcEconomy, formatOvers, fmt } from '../lib/cricketUtils';
 import { supabase } from '../lib/supabase';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -466,7 +466,7 @@ export default function LiveScoring() {
   useEffect(() => {
     if (!deliveries.length) return;
     const fired = milestonesRef.current;
-    const getName = pid => displayName(matchPlayers.find(mp => mp.players?.id === pid)?.players) || 'Player';
+    const getName = pid => matchPlayers.find(mp => mp.players?.id === pid)?.players?.name || 'Player';
     const batRuns = {};
     const bowlWkts = {};
     for (const d of deliveries) {
@@ -853,7 +853,7 @@ export default function LiveScoring() {
                 className="field-input !py-2 text-sm"
               >
                 <option value="">Striker</option>
-                {battingTeamPlayers.filter(p => p.id !== nonStriker).map(p => <option key={p.id} value={p.id}>{displayName(p)}</option>)}
+                {battingTeamPlayers.filter(p => p.id !== nonStriker).map(p => <option key={p.id} value={p.id}>{p?.name}</option>)}
               </select>
               <select
                 onChange={e => {
@@ -867,7 +867,7 @@ export default function LiveScoring() {
                 className="field-input !py-2 text-sm"
               >
                 <option value="">Non-striker</option>
-                {battingTeamPlayers.filter(p => p.id !== striker).map(p => <option key={p.id} value={p.id}>{displayName(p)}</option>)}
+                {battingTeamPlayers.filter(p => p.id !== striker).map(p => <option key={p.id} value={p.id}>{p?.name}</option>)}
               </select>
             </div>
           </div>
@@ -893,7 +893,7 @@ export default function LiveScoring() {
         {bowlerObj ? (
           <div className="card p-3 flex items-center justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <span className="text-sm">Bowler: <strong>{displayName(bowlerObj)}</strong></span>
+              <span className="text-sm">Bowler: <strong>{bowlerObj?.name}</strong></span>
               {currentOverStats && (
                 <span className="text-xs text-gray-500 ml-2">
                   {currentOverStats.legal_balls}/6 balls · {currentOverStats.runs_conceded}R

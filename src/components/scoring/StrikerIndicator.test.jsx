@@ -74,3 +74,15 @@ describe('StrikerIndicator', () => {
     expect(grid.textContent).toContain('6s');
   });
 });
+
+describe('StrikerIndicator — primary name, not nickname', () => {
+  it('shows player.name even when nickname is set on striker', () => {
+    const s = { id: 's1', name: 'Yuvaraj Singh', nickname: 'Yuvi' };
+    const ns = { id: 'ns1', name: 'Ravi Kumar', nickname: 'Ravi K' };
+    render(<StrikerIndicator striker={s} nonStriker={ns} strikerCard={null} nonStrikerCard={null} onSwap={vi.fn()} onRetire={vi.fn()} />);
+    expect(screen.getByText('Yuvaraj Singh')).toBeInTheDocument();
+    expect(screen.queryByText('Yuvi')).not.toBeInTheDocument();
+    expect(screen.getByText('Ravi Kumar')).toBeInTheDocument();
+    expect(screen.queryByText('Ravi K')).not.toBeInTheDocument();
+  });
+});

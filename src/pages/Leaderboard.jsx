@@ -8,7 +8,6 @@ import * as seriesService from '../services/seriesService';
 import { getTopPartnerships } from '../services/partnershipService';
 import PlayerAvatar from '../components/player/PlayerAvatar';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
-import { displayName } from '../lib/cricketUtils';
 import EmptyState from '../components/shared/EmptyState';
 import PlayerName from '../components/shared/PlayerName';
 
@@ -382,9 +381,9 @@ export default function Leaderboard() {
                 <RankBadge rank={i + 1} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{displayName(p.player1) || '—'}</span>
+                    <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{p.player1?.name || '—'}</span>
                     <Link2 size={12} className="text-ink-300 shrink-0" />
-                    <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{displayName(p.player2) || 'Unrecorded'}</span>
+                    <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{p.player2?.name || 'Unrecorded'}</span>
                   </div>
                   <p className="text-xs text-ink-400 mt-0.5 truncate">
                     {p.team1} vs {p.team2} · {p.broken ? 'Broken' : 'Unbroken'}

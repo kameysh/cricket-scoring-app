@@ -208,4 +208,25 @@ describe('Scorecard — realtime delivery name resolution from playersMap', () =
     expect(screen.queryByText('p-1')).toBeNull();
     expect(screen.getAllByText('Kamesh').length).toBeGreaterThanOrEqual(1);
   });
+
+  it('shows player.name not nickname when playersMap entry has a nickname', async () => {
+    const playerWithNick = {
+      player_id: 'p-1', is_captain: false, team: 1,
+      players: { id: 'p-1', name: 'Kamesh Waran', nickname: 'ThunderBolt', photo_url: null, role: 'batsman' },
+    };
+    setupMocks({ matchPlayers: [playerWithNick] });
+    await renderScorecard();
+
+    const handler = channelHandlers[`scorecard:deliveries:match-1`]?.['INSERT:deliveries'];
+    const realtimeDelivery = {
+      id: 'd-rt2', innings_id: 'inn-1',
+      batsman_id: 'p-1', bowler_id: 'p-1',
+      runs_off_bat: 1, extra_type: null, extra_runs: 0,
+      is_wicket: false, is_legal_delivery: true, over_number: 0, ball_number: 1,
+    };
+    await act(async () => { handler({ new: realtimeDelivery }); });
+
+    expect(screen.queryByText('ThunderBolt')).toBeNull();
+    expect(screen.getAllByText('Kamesh Waran').length).toBeGreaterThanOrEqual(1);
+  });
 });

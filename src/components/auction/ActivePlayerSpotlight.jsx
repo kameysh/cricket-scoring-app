@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { displayName } from '../../lib/cricketUtils';
 
 const ROLE_COLORS = {
   batsman:       'bg-blue-500/20 text-blue-200',
@@ -138,7 +137,7 @@ export default function ActivePlayerSpotlight({ player, leadingTeam, careerStats
                 className="rounded-full bg-white/20 flex items-center justify-center text-white font-extrabold shadow-lg"
                 style={{ width: 90, height: 90, fontSize: 34 }}
               >
-                {(displayName(p) || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                {(p?.name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
               </div>
             </div>
           )}
@@ -146,7 +145,7 @@ export default function ActivePlayerSpotlight({ player, leadingTeam, careerStats
           {/* Bottom info */}
           <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 space-y-1.5">
             <p className="text-white font-extrabold text-xl leading-tight drop-shadow-md">
-              {displayName(p) || '—'}
+              {p?.name || '—'}
             </p>
             {styleStr && (
               <p className="text-white/55 text-[11px] capitalize">{styleStr}</p>
@@ -204,7 +203,7 @@ export default function ActivePlayerSpotlight({ player, leadingTeam, careerStats
           {/* Header */}
           <div className="px-4 pt-4 pb-2.5 border-b border-white/10 flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <p className="text-white font-extrabold text-base leading-tight truncate">{displayName(p) || '—'}</p>
+              <p className="text-white font-extrabold text-base leading-tight truncate">{p?.name || '—'}</p>
               {p?.role && (
                 <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${ROLE_COLORS[p.role] ?? 'bg-white/20 text-white'}`}>
                   {ROLE_LABEL[p.role] ?? p.role}

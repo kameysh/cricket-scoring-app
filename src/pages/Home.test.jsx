@@ -189,6 +189,28 @@ describe('MatchScoreCard — navigation', () => {
   });
 });
 
+describe('MatchScoreCard — primary name always shown (not nickname)', () => {
+  it('shows player.name even when nickname is set', () => {
+    const statsWithNickname = {
+      innings: [
+        { id: 'inn1', match_id: 'm1', batting_team: 1, total_runs: 50, total_wickets: 2, total_overs: 9 },
+      ],
+      cardMap: {
+        inn1: {
+          batting: [{ player_id: 'p1', runs: 30, balls: 20, players: { name: 'Yuvaraj Singh', nickname: 'Yuvi' } }],
+          bowling: [{ player_id: 'p2', wickets: 2, runs_conceded: 15, legal_balls: 12, players: { name: 'Ravi Bowler', nickname: 'Ravi' } }],
+        },
+      },
+    };
+    const match = { id: 'm1', team1_name: 'SK', team2_name: 'RCB', status: 'completed', winning_team_name: 'SK', result_summary: 'SK won' };
+    render(<MatchScoreCard match={match} stats={statsWithNickname} onNavigate={() => {}} />);
+    expect(screen.getByText('Yuvaraj Singh')).toBeInTheDocument();
+    expect(screen.queryByText('Yuvi')).not.toBeInTheDocument();
+    expect(screen.getByText('Ravi Bowler')).toBeInTheDocument();
+    expect(screen.queryByText('Ravi')).not.toBeInTheDocument();
+  });
+});
+
 describe('MatchScoreCard — delete button', () => {
   it('does not render delete button when onDelete is not provided', () => {
     renderCard({ onDelete: undefined });

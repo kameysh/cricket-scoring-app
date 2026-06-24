@@ -5,7 +5,7 @@ import * as matchService from '../services/matchService';
 import { supabase } from '../lib/supabase';
 import PlayerLink from '../components/player/PlayerLink';
 import PlayerAvatar from '../components/player/PlayerAvatar';
-import { calcStrikeRate, calcEconomy, formatOvers, fmt, displayName } from '../lib/cricketUtils';
+import { calcStrikeRate, calcEconomy, formatOvers, fmt } from '../lib/cricketUtils';
 import MomentumGraph from '../components/match/MomentumGraph';
 import HighlightsFeed from '../components/match/HighlightsFeed';
 import OverByOverTable from '../components/match/OverByOverTable';
@@ -20,7 +20,7 @@ function buildStatsFromDeliveries(deliveries, playersMap = {}) {
     if (!pid) continue;
     if (!batMap.has(pid)) {
       batOrder.push(pid);
-      batMap.set(pid, { name: displayName(d.batsman) || displayName(playersMap[pid]) || pid, runs: 0, balls: 0, ones: 0, twos: 0, threes: 0, fours: 0, sixes: 0, dots: 0 });
+      batMap.set(pid, { name: d.batsman?.name || playersMap[pid]?.name || pid, runs: 0, balls: 0, ones: 0, twos: 0, threes: 0, fours: 0, sixes: 0, dots: 0 });
     }
     const s = batMap.get(pid);
     if (d.extra_type !== 'wide') {
@@ -44,8 +44,8 @@ function buildStatsFromDeliveries(deliveries, playersMap = {}) {
     if (!outId || dismissalMap.has(outId)) continue;
     dismissalMap.set(outId, {
       type: d.wicket_type,
-      bowlerName: displayName(d.bowler) || displayName(playersMap[d.bowler_id]) || '',
-      fielderName: displayName(d.fielder) || displayName(playersMap[d.fielder_id]) || '',
+      bowlerName: d.bowler?.name || playersMap[d.bowler_id]?.name || '',
+      fielderName: d.fielder?.name || playersMap[d.fielder_id]?.name || '',
       bowlerId: d.bowler_id,
       fielderId: d.fielder_id,
     });
@@ -59,7 +59,7 @@ function buildStatsFromDeliveries(deliveries, playersMap = {}) {
     if (!pid) continue;
     if (!bowlMap.has(pid)) {
       bowlOrder.push(pid);
-      bowlMap.set(pid, { name: displayName(d.bowler) || displayName(playersMap[pid]) || pid, legal_balls: 0, runs: 0, wickets: 0, wides: 0, no_balls: 0, maiden_overs: new Set() });
+      bowlMap.set(pid, { name: d.bowler?.name || playersMap[pid]?.name || pid, legal_balls: 0, runs: 0, wickets: 0, wides: 0, no_balls: 0, maiden_overs: new Set() });
     }
     const s = bowlMap.get(pid);
     if (d.is_legal_delivery) s.legal_balls += 1;
@@ -392,7 +392,7 @@ export default function Scorecard() {
           <span className="text-cricket-gold text-lg">★</span>
           <div>
             <p className="text-[11px] font-semibold text-cricket-gold uppercase tracking-wider">Man of the Match</p>
-            <PlayerLink id={match.man_of_match.id} name={displayName(match.man_of_match)} className="font-bold text-ink-900 dark:text-white" />
+            <PlayerLink id={match.man_of_match.id} name={match.man_of_match.name} className="font-bold text-ink-900 dark:text-white" />
           </div>
         </div>
       )}
