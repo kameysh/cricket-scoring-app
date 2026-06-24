@@ -296,12 +296,23 @@ export default function Home() {
           {activePromo && (
             <section>
               <div className="rounded-2xl overflow-hidden shadow-sm border border-ink-100 dark:border-white/10">
-                <img
-                  src={activePromo.banner_url}
-                  alt={activePromo.tournament_name || 'Tournament'}
-                  className="w-full object-cover"
-                  style={{ maxHeight: 220 }}
-                />
+                <div className="relative" style={{ aspectRatio: '16/9' }}>
+                  <img
+                    src={activePromo.banner_url}
+                    alt={activePromo.tournament_name || 'Tournament'}
+                    className="w-full h-full object-contain"
+                  />
+                  {/* Upcoming Event tag */}
+                  <div className="absolute top-3 left-3">
+                    <span className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-brand-green text-white shadow-lg animate-pulse">
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                      </span>
+                      UPCOMING EVENT
+                    </span>
+                  </div>
+                </div>
                 {(activePromo.tournament_name || activePromo.team1_name) && (
                   <div className="px-4 py-3 bg-white dark:bg-ink-800 space-y-1">
                     {activePromo.tournament_name && (
