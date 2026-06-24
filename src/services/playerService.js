@@ -30,19 +30,18 @@ export async function getPlayerMatchCounts() {
 // Computed live from scorecards — never drifts from actual data unlike RPC counters.
 export async function getPlayerInningsCounts() {
   const [bat, bowl] = await Promise.all([
-    supabase.from('batting_scorecards').select('player_id, status'),
-    supabase.from('bowling_scorecards').select('player_id, legal_balls'),
+    // Push filters into DB so we don't fetch rows we immediately discard in JS
+    supabase.from('batting_scorecards').select('player_id').neq('status', 'yet_to_bat'),
+    supabase.from('bowling_scorecards').select('player_id').gt('legal_balls', 0),
   ]);
 
   const batInnings = {};
   for (const row of bat.data || []) {
-    if (row.status === 'yet_to_bat') continue;
     batInnings[row.player_id] = (batInnings[row.player_id] || 0) + 1;
   }
 
   const bowlInnings = {};
   for (const row of bowl.data || []) {
-    if ((row.legal_balls || 0) === 0) continue;
     bowlInnings[row.player_id] = (bowlInnings[row.player_id] || 0) + 1;
   }
 
@@ -189,20 +188,20 @@ export async function getMatchHistory(playerId, limit = 50, offset = 0) {
   const matchIds = mpRows.map(r => r.match_id);
   if (matchIds.length === 0) return [];
 
-  const { data: matches, error: mErr } = await supabase
-    .from('matches')
-    .select('*, venues(name,city), tournaments(name)')
-    .in('id', matchIds)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
-  if (mErr) throw mErr;
+  // Fetch matches and innings in parallel — both depend only on matchIds
+  const [matchesRes, inningsRes] = await Promise.all([
+    supabase.from('matches')
+      .select('*, venues(name,city), tournaments(name)')
+      .in('id', matchIds)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1),
+    supabase.from('innings')
+      .select('id, match_id, innings_number')
+      .in('match_id', matchIds),
+  ]);
+  if (matchesRes.error) throw matchesRes.error;
 
-  const innings = await supabase
-    .from('innings')
-    .select('id, match_id, innings_number')
-    .in('match_id', matchIds);
-
-  const inningsIds = (innings.data || []).map(i => i.id);
+  const inningsIds = (inningsRes.data || []).map(i => i.id);
 
   const [batting, bowling, fielding] = await Promise.all([
     supabase.from('batting_scorecards').select('*').eq('player_id', playerId).in('innings_id', inningsIds),
@@ -210,11 +209,18 @@ export async function getMatchHistory(playerId, limit = 50, offset = 0) {
     supabase.from('fielding_scorecards').select('*').eq('player_id', playerId).in('innings_id', inningsIds),
   ]);
 
-  return matches.map(match => {
-    const matchInnings = (innings.data || []).filter(i => i.match_id === match.id).map(i => i.id);
-    const bat = (batting.data || []).find(b => matchInnings.includes(b.innings_id));
-    const bowl = (bowling.data || []).find(b => matchInnings.includes(b.innings_id));
-    const field = (fielding.data || []).find(b => matchInnings.includes(b.innings_id));
+  // Pre-build innings lookup so match mapping is O(1) not O(n²)
+  const inningsByMatch = new Map();
+  for (const i of inningsRes.data || []) {
+    if (!inningsByMatch.has(i.match_id)) inningsByMatch.set(i.match_id, new Set());
+    inningsByMatch.get(i.match_id).add(i.id);
+  }
+
+  return (matchesRes.data || []).map(match => {
+    const inningsSet = inningsByMatch.get(match.id) || new Set();
+    const bat   = (batting.data  || []).find(b => inningsSet.has(b.innings_id));
+    const bowl  = (bowling.data  || []).find(b => inningsSet.has(b.innings_id));
+    const field = (fielding.data || []).find(b => inningsSet.has(b.innings_id));
     return { match, batting: bat, bowling: bowl, fielding: field };
   });
 }

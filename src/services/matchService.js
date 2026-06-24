@@ -207,23 +207,24 @@ export async function deleteAllMatches() {
 
 export async function autoAssignManOfMatch(matchId) {
   try {
-    const [allInnings, allPlayers] = await Promise.all([
+    // Fetch innings, match_players, and match details in parallel
+    const [allInnings, allPlayers, match] = await Promise.all([
       getInnings(matchId),
       getMatchPlayers(matchId),
+      getMatch(matchId),
     ]);
-    const allBatting = [], allBowling = [], allFielding = [];
-    await Promise.all(allInnings.map(async inn => {
-      const cards = await getScorecards(inn.id);
-      allBatting.push(...cards.batting);
-      allBowling.push(...cards.bowling);
-      allFielding.push(...(cards.fielding || []));
-    }));
-    const match = await getMatch(matchId);
+    const inningsIds = allInnings.map(i => i.id);
+    // Batch all 3 scorecard types in 3 queries total (was 3 × N innings queries)
+    const [batRes, bowlRes, fieldRes] = await Promise.all([
+      supabase.from('batting_scorecards').select('*, players!player_id(name,nickname)').in('innings_id', inningsIds).order('batting_position'),
+      supabase.from('bowling_scorecards').select('*, players!player_id(name,nickname)').in('innings_id', inningsIds),
+      supabase.from('fielding_scorecards').select('*, players!player_id(name,nickname)').in('innings_id', inningsIds),
+    ]);
     const winningTeam = match.winning_team_name === match.team1_name ? 1
       : match.winning_team_name === match.team2_name ? 2 : null;
     const playerTeams = new Map(allPlayers.map(mp => [mp.player_id, mp.team]));
     const uniqueIds = [...new Set(allPlayers.map(mp => mp.player_id))];
-    const bestId = pickMotm(uniqueIds, allBatting, allBowling, allFielding, playerTeams, winningTeam);
+    const bestId = pickMotm(uniqueIds, batRes.data || [], bowlRes.data || [], fieldRes.data || [], playerTeams, winningTeam);
     if (bestId) await updateMatch(matchId, { man_of_match_id: bestId });
   } catch { /* non-critical */ }
 }
@@ -241,21 +242,26 @@ export async function autoAssignManOfSeries(tournamentId) {
     .eq('status', 'completed');
   if (!tourMatches?.length) return;
 
-  const allBatting = [], allBowling = [], allFielding = [];
-  const allPlayerIds = new Set();
+  const matchIds = tourMatches.map(m => m.id);
 
-  await Promise.all(tourMatches.map(async m => {
-    const [innings, mps] = await Promise.all([getInnings(m.id), getMatchPlayers(m.id)]);
-    mps.forEach(mp => allPlayerIds.add(mp.player_id));
-    await Promise.all(innings.map(async inn => {
-      const cards = await getScorecards(inn.id);
-      allBatting.push(...cards.batting);
-      allBowling.push(...cards.bowling);
-      allFielding.push(...(cards.fielding || []));
-    }));
-  }));
+  // 2 queries instead of N×2: all innings + all match_players for every match at once
+  const [inningsRes, mpsRes] = await Promise.all([
+    supabase.from('innings').select('id').in('match_id', matchIds),
+    supabase.from('match_players').select('player_id').in('match_id', matchIds),
+  ]);
 
-  const bestId = pickMotm([...allPlayerIds], allBatting, allBowling, allFielding, new Map(), null);
+  const inningsIds = (inningsRes.data || []).map(i => i.id);
+  if (!inningsIds.length) return;
+  const allPlayerIds = new Set((mpsRes.data || []).map(mp => mp.player_id));
+
+  // 3 queries instead of N×innings×3: all scorecards for every innings at once
+  const [batRes, bowlRes, fieldRes] = await Promise.all([
+    supabase.from('batting_scorecards').select('*').in('innings_id', inningsIds),
+    supabase.from('bowling_scorecards').select('*').in('innings_id', inningsIds),
+    supabase.from('fielding_scorecards').select('*').in('innings_id', inningsIds),
+  ]);
+
+  const bestId = pickMotm([...allPlayerIds], batRes.data || [], bowlRes.data || [], fieldRes.data || [], new Map(), null);
   if (bestId) {
     const { error } = await supabase.from('tournaments').update({ man_of_series_id: bestId }).eq('id', tournamentId);
     if (error) throw error;

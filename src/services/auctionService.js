@@ -170,32 +170,22 @@ async function activatePlayer(auctionPlayerRowId) {
 }
 
 export async function drawNextPlayer(auctionId) {
-  // 1. Try random pool player
-  const { data: poolPlayers } = await supabase
-    .from('auction_players')
-    .select('id')
-    .eq('auction_id', auctionId)
-    .eq('status', 'pool');
+  // Fetch pool and held simultaneously — pool takes priority if both have results
+  const [poolRes, heldRes] = await Promise.all([
+    supabase.from('auction_players').select('id').eq('auction_id', auctionId).eq('status', 'pool'),
+    supabase.from('auction_players').select('id').eq('auction_id', auctionId).eq('status', 'held').order('held_at', { ascending: true }).limit(1),
+  ]);
 
-  if (poolPlayers && poolPlayers.length > 0) {
-    const pick = poolPlayers[Math.floor(Math.random() * poolPlayers.length)];
+  if (poolRes.data?.length > 0) {
+    const pick = poolRes.data[Math.floor(Math.random() * poolRes.data.length)];
     return activatePlayer(pick.id);
   }
 
-  // 2. Fall back to held queue (FIFO by held_at)
-  const { data: heldPlayers } = await supabase
-    .from('auction_players')
-    .select('id')
-    .eq('auction_id', auctionId)
-    .eq('status', 'held')
-    .order('held_at', { ascending: true })
-    .limit(1);
-
-  if (heldPlayers && heldPlayers.length > 0) {
-    return activatePlayer(heldPlayers[0].id);
+  if (heldRes.data?.length > 0) {
+    return activatePlayer(heldRes.data[0].id);
   }
 
-  // 3. Both queues empty — complete auction
+  // Both queues empty — complete auction
   await updateAuctionStatus(auctionId, 'completed');
   return null;
 }
@@ -206,26 +196,34 @@ export async function drawNextPlayer(auctionId) {
 // or the captain's player is not in the auction pool.
 export async function autosellCaptains(auctionId) {
   const teams = await listAuctionTeams(auctionId);
-  const sold = [];
+  const teamsWithCaptain = teams.filter(t => t.captain_id);
+  if (!teamsWithCaptain.length) return [];
 
-  for (const team of teams) {
-    if (!team.captain_id) continue;
+  // Batch fetch all captain player profiles in one query (was 1 query per team)
+  const captainUserIds = teamsWithCaptain.map(t => t.captain_id);
+  const { data: playerRows } = await supabase
+    .from('players')
+    .select('id, user_id')
+    .in('user_id', captainUserIds);
+  const playerByUserId = new Map((playerRows || []).map(p => [p.user_id, p]));
 
-    // Resolve captain user → player profile
-    const { data: player } = await supabase
-      .from('players')
-      .select('id')
-      .eq('user_id', team.captain_id)
-      .maybeSingle();
-    if (!player) continue;
+  // Batch fetch all existing auction_player rows for those players in one query
+  const playerIds = (playerRows || []).map(p => p.id);
+  const { data: apRows } = playerIds.length
+    ? await supabase
+        .from('auction_players')
+        .select('id, player_id, base_price, status, player:player_id(name)')
+        .eq('auction_id', auctionId)
+        .in('player_id', playerIds)
+    : { data: [] };
+  const apByPlayerId = new Map((apRows || []).map(ap => [ap.player_id, ap]));
 
-    // Find their auction_player row — any status (may already be held/sold from a retry)
-    let { data: ap } = await supabase
-      .from('auction_players')
-      .select('id, base_price, status, player:player_id(name)')
-      .eq('auction_id', auctionId)
-      .eq('player_id', player.id)
-      .maybeSingle();
+  // Process each team in parallel — writes are per-team so can't be bulk-batched
+  const results = await Promise.all(teamsWithCaptain.map(async team => {
+    const player = playerByUserId.get(team.captain_id);
+    if (!player) return null;
+
+    let ap = apByPlayerId.get(player.id);
 
     // Captain wasn't added to the pool yet — add them automatically at base_price 100
     if (!ap) {
@@ -240,32 +238,28 @@ export async function autosellCaptains(auctionId) {
     }
 
     // Already sold (e.g. autosell called twice) — skip gracefully
-    if (ap.status === 'sold') continue;
+    if (ap.status === 'sold') return null;
 
     const price = ap.base_price ?? 100;
 
-    // Mark sold
-    const { error: sellErr } = await supabase
-      .from('auction_players')
-      .update({
+    // Mark sold + deduct budget in parallel
+    const [sellRes, budgetRes] = await Promise.all([
+      supabase.from('auction_players').update({
         status: 'sold',
         sold_to_team_id: team.id,
         sold_price: price,
         current_bid: price,
         leading_team_id: team.id,
-      })
-      .eq('id', ap.id);
-    if (sellErr) throw sellErr;
+      }).eq('id', ap.id),
+      supabase.from('auction_teams').update({
+        budget_remaining: Math.max(0, (team.budget_remaining ?? 0) - price),
+      }).eq('id', team.id),
+    ]);
+    if (sellRes.error) throw sellRes.error;
+    if (budgetRes.error) throw budgetRes.error;
 
-    // Deduct from team purse
-    const { error: budgetErr } = await supabase
-      .from('auction_teams')
-      .update({ budget_remaining: Math.max(0, (team.budget_remaining ?? 0) - price) })
-      .eq('id', team.id);
-    if (budgetErr) throw budgetErr;
-
-    // Log it in bid history so the UI shows a record
-    await supabase.from('auction_bids').insert({
+    // Log bid history (fire-and-forget — UI only)
+    supabase.from('auction_bids').insert({
       auction_id: auctionId,
       auction_player_id: ap.id,
       auction_team_id: team.id,
@@ -273,10 +267,10 @@ export async function autosellCaptains(auctionId) {
       bid_type: 'captain_autosell',
     });
 
-    sold.push({ teamName: team.name, playerName: ap.player?.name, price });
-  }
+    return { teamName: team.name, playerName: ap.player?.name, price };
+  }));
 
-  return sold;
+  return results.filter(Boolean);
 }
 
 export async function dealPlayer(auctionPlayerRowId) {

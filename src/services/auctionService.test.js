@@ -254,59 +254,76 @@ describe('undoLastBid', () => {
   });
 });
 
-describe('autosellCaptains', () => {
-  it('returns empty array when no teams have a captain assigned', async () => {
-    // listAuctionTeams returns teams with no captain_id
-    chain.then = (resolve) => Promise.resolve({
-      data: [{ id: 't1', name: 'Super Kings', captain_id: null, budget_remaining: 5000 }],
-      error: null,
-    }).then(resolve);
+// Returns a minimal fluent chain that resolves via .then()
+function makeTableChain(data) {
+  const c = {};
+  ['select', 'eq', 'in', 'order', 'limit', 'neq'].forEach(m => { c[m] = vi.fn().mockReturnValue(c); });
+  c.update = vi.fn().mockReturnValue(c);
+  c.insert = vi.fn().mockReturnValue(c);
+  c.delete = vi.fn().mockReturnValue(c);
+  c.single = vi.fn().mockResolvedValue({ data, error: null });
+  c.maybeSingle = vi.fn().mockResolvedValue({ data, error: null });
+  c.then = (resolve) => Promise.resolve({ data, error: null }).then(resolve);
+  return c;
+}
 
+describe('autosellCaptains', () => {
+  const TEAM_NO_CAPTAIN = [{ id: 't1', name: 'Super Kings', captain_id: null, budget_remaining: 5000 }];
+  const TEAM_WITH_CAPTAIN = [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }];
+
+  it('returns empty array when no teams have a captain assigned', async () => {
+    supabase.from.mockImplementation(table => makeTableChain(
+      table === 'auction_teams' ? TEAM_NO_CAPTAIN : []
+    ));
     const result = await autosellCaptains('a1');
     expect(result).toEqual([]);
-    // players table should NOT have been queried
     expect(supabase.from).not.toHaveBeenCalledWith('players');
   });
 
   it('skips gracefully when captain has no player profile', async () => {
-    let callCount = 0;
-    chain.then = (resolve) => {
-      callCount++;
-      // listAuctionTeams
-      return Promise.resolve({
-        data: [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }],
-        error: null,
-      }).then(resolve);
-    };
-    // captain's player lookup returns null (no profile)
-    chain.maybeSingle.mockResolvedValue({ data: null, error: null });
-
+    supabase.from.mockImplementation(table => makeTableChain(
+      table === 'auction_teams' ? TEAM_WITH_CAPTAIN :
+      table === 'players' ? [] : // batch returns no player for this user_id
+      []
+    ));
     const result = await autosellCaptains('a1');
     expect(result).toEqual([]);
   });
 
   it('auto-adds captain to pool then sells them when not yet in pool', async () => {
-    chain.then = (resolve) => Promise.resolve({
-      data: [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }],
-      error: null,
-    }).then(resolve);
-
-    chain.maybeSingle
-      .mockResolvedValueOnce({ data: { id: 'p1' }, error: null })  // players lookup succeeds
-      .mockResolvedValueOnce({ data: null, error: null });           // auction_players not found
-
-    // insert (auto-add to pool) returns the new row
-    chain.single.mockResolvedValueOnce({
-      data: { id: 'ap-new', base_price: 100, status: 'pool', player: { name: 'Ravi' } },
-      error: null,
-    });
-
     let soldUpdate = null;
-    chain.update.mockImplementation((fields) => {
-      if (fields.status === 'sold') soldUpdate = fields;
-      return chain;
+    let budgetUpdate = null;
+    supabase.from.mockImplementation(table => {
+      const c = makeTableChain(
+        table === 'auction_teams' ? TEAM_WITH_CAPTAIN :
+        table === 'players' ? [{ id: 'p1', user_id: 'u1' }] :
+        [] // auction_players batch fetch returns empty (not in pool yet)
+      );
+      if (table === 'auction_players') {
+        // insert → select → single returns new ap row
+        c.insert = vi.fn().mockReturnValue({
+          ...c,
+          select: vi.fn().mockReturnValue({
+            ...c,
+            single: vi.fn().mockResolvedValue({
+              data: { id: 'ap-new', base_price: 100, status: 'pool', player: { name: 'Ravi' } },
+              error: null,
+            }),
+          }),
+        });
+        c.update = vi.fn().mockImplementation(fields => {
+          if (fields.status === 'sold') soldUpdate = fields;
+          return c;
+        });
+      }
+      if (table === 'auction_teams') {
+        c.update = vi.fn().mockImplementation(fields => {
+          if ('budget_remaining' in fields) budgetUpdate = fields;
+          return c;
+        });
+      }
+      return c;
     });
-    chain.insert.mockReturnValue(chain);
 
     const result = await autosellCaptains('a1');
     expect(result).toHaveLength(1);
@@ -317,44 +334,40 @@ describe('autosellCaptains', () => {
   });
 
   it('skips captain already sold (idempotent on retry)', async () => {
-    chain.then = (resolve) => Promise.resolve({
-      data: [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }],
-      error: null,
-    }).then(resolve);
-
-    chain.maybeSingle
-      .mockResolvedValueOnce({ data: { id: 'p1' }, error: null })
-      .mockResolvedValueOnce({
-        data: { id: 'ap1', base_price: 500, status: 'sold', player: { name: 'Ravi' } },
-        error: null,
-      });
-
+    supabase.from.mockImplementation(table => makeTableChain(
+      table === 'auction_teams' ? TEAM_WITH_CAPTAIN :
+      table === 'players' ? [{ id: 'p1', user_id: 'u1' }] :
+      table === 'auction_players' ? [{ id: 'ap1', base_price: 500, status: 'sold', player: { name: 'Ravi' }, player_id: 'p1' }] :
+      []
+    ));
     const result = await autosellCaptains('a1');
     expect(result).toEqual([]);
   });
 
   it('marks captain as sold and deducts from team purse', async () => {
-    chain.then = (resolve) => Promise.resolve({
-      data: [{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000 }],
-      error: null,
-    }).then(resolve);
-
-    chain.maybeSingle
-      .mockResolvedValueOnce({ data: { id: 'p1' }, error: null })   // players lookup
-      .mockResolvedValueOnce({
-        data: { id: 'ap1', base_price: 500, status: 'pool', player: { name: 'Ravi' } },
-        error: null,
-      }); // auction_players
-
     let soldUpdate = null;
     let budgetUpdate = null;
-    chain.update.mockImplementation((fields) => {
-      if (fields.status === 'sold') soldUpdate = fields;
-      if ('budget_remaining' in fields) budgetUpdate = fields;
-      return chain;
+    supabase.from.mockImplementation(table => {
+      const c = makeTableChain(
+        table === 'auction_teams' ? TEAM_WITH_CAPTAIN :
+        table === 'players' ? [{ id: 'p1', user_id: 'u1' }] :
+        table === 'auction_players' ? [{ id: 'ap1', base_price: 500, status: 'pool', player: { name: 'Ravi' }, player_id: 'p1' }] :
+        []
+      );
+      if (table === 'auction_players') {
+        c.update = vi.fn().mockImplementation(fields => {
+          if (fields.status === 'sold') soldUpdate = fields;
+          return c;
+        });
+      }
+      if (table === 'auction_teams') {
+        c.update = vi.fn().mockImplementation(fields => {
+          if ('budget_remaining' in fields) budgetUpdate = fields;
+          return c;
+        });
+      }
+      return c;
     });
-    // insert bid returns ok
-    chain.insert.mockReturnValue(chain);
 
     const result = await autosellCaptains('a1');
     expect(result).toHaveLength(1);
@@ -363,7 +376,7 @@ describe('autosellCaptains', () => {
     expect(soldUpdate?.sold_price).toBe(500);
     expect(soldUpdate?.sold_to_team_id).toBe('t1');
     expect(soldUpdate?.status).toBe('sold');
-    expect(budgetUpdate?.budget_remaining).toBe(4500); // 5000 - 500
+    expect(budgetUpdate?.budget_remaining).toBe(4500);
   });
 });
 
