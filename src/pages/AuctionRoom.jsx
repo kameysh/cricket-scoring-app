@@ -311,7 +311,7 @@ async function shareExport(url, mimeType, playerName) {
   toast.success(ext === 'gif' ? 'GIF downloaded' : 'Card downloaded');
 }
 
-function SoldCardModal({ data, exportUrl, exportMimeType, recording, recordingProgress, onClose }) {
+function SoldCardModal({ data, exportUrl, exportMimeType, recording, recordingProgress, onClose, onGenerateGif }) {
   const particles = useMemo(() =>
     Array.from({ length: 70 }, (_, i) => ({
       id: i,
@@ -439,13 +439,16 @@ function SoldCardModal({ data, exportUrl, exportMimeType, recording, recordingPr
           {/* Actions */}
           <div className="flex gap-3 px-6 pb-6">
             <button
-              onClick={() => exportUrl && shareExport(exportUrl, exportMimeType ?? 'image/png', data.player?.name)}
-              disabled={!exportUrl || recording}
+              onClick={() => {
+                if (exportUrl) shareExport(exportUrl, exportMimeType ?? 'image/png', data.player?.name);
+                else if (!recording) onGenerateGif?.();
+              }}
+              disabled={recording}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm text-white disabled:opacity-40"
               style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
             >
               <Share2 size={16} />
-              {shareLabel}
+              {recording ? `Generating… ${pct}%` : exportUrl ? shareLabel : 'Share GIF'}
             </button>
             {exportUrl && (
               <a
@@ -535,6 +538,7 @@ export default function AuctionRoom() {
   const [activeCareerStats, setActiveCareerStats] = useState(null);
   const [playerSheetOpen, setPlayerSheetOpen] = useState(false);
   const [soldCardData, setSoldCardData] = useState(null);   // { player, teamName, basePrice, soldPrice }
+  const soldCardDataRef = useRef(null); // mirror for use inside async callbacks
   const soldCardGenRef = useRef(0); // incremented per openSoldCard call; stale GIF results are ignored
   const [exportUrl, setExportUrl] = useState(null);
   const [exportMimeType, setExportMimeType] = useState(null);
@@ -556,17 +560,25 @@ export default function AuctionRoom() {
     const genId = ++soldCardGenRef.current;
 
     setSoldCardData(data);
+    soldCardDataRef.current = data;
     setExportUrl(null);
     setExportMimeType(null);
+    setRecordingCard(false);
+    setRecordingProgress(0);
+  }
+
+  function startGifGeneration() {
+    const data = soldCardDataRef.current;
+    if (!data || recordingCard) return;
+    const genId = soldCardGenRef.current;
     setRecordingCard(true);
     setRecordingProgress(0);
 
-    // Generate animated GIF; fall back to Satori PNG if gifenc fails
     generateSoldCardGif(data, p => {
       if (soldCardGenRef.current === genId) setRecordingProgress(p);
     })
       .then(blob => {
-        if (soldCardGenRef.current !== genId) return; // a newer deal started — discard this GIF
+        if (soldCardGenRef.current !== genId) return;
         setExportUrl(URL.createObjectURL(blob));
         setExportMimeType('image/gif');
         setRecordingCard(false);
@@ -1265,6 +1277,7 @@ export default function AuctionRoom() {
           recording={recordingCard}
           recordingProgress={recordingProgress}
           onClose={() => setSoldCardData(null)}
+          onGenerateGif={startGifGeneration}
         />
 
         {/* 🔨 SOLD! overlay */}

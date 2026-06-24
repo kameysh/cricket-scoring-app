@@ -453,12 +453,28 @@ describe('AuctionRoom — SoldCardModal', () => {
     expect(screen.queryByText('Final Price')).not.toBeInTheDocument();
   });
 
+  it('single tap on Deal arms the button but does NOT execute the deal', async () => {
+    const { dealPlayer } = await import('../services/auctionService');
+    vi.mocked(dealPlayer).mockResolvedValue({});
+
+    renderRoom({}, { isAdmin: true, userId: 'admin-uid' });
+    fireEvent.click(screen.getByTestId('deal-btn'));
+
+    // Button should show confirm state, not fire the deal
+    await waitFor(() => expect(screen.getByText('✅ Confirm Deal?')).toBeInTheDocument());
+    expect(dealPlayer).not.toHaveBeenCalled();
+    expect(screen.queryByText('Bought by')).not.toBeInTheDocument();
+  });
+
   it('opens sold card modal with correct data after Deal is clicked', async () => {
     const { dealPlayer } = await import('../services/auctionService');
     vi.mocked(generateAuctionSoldCard).mockClear();
     vi.mocked(dealPlayer).mockResolvedValue({});
 
     renderRoom({}, { isAdmin: true, userId: 'admin-uid' });
+    // First click arms the button; second click confirms the deal
+    fireEvent.click(screen.getByTestId('deal-btn'));
+    await waitFor(() => expect(screen.getByText('✅ Confirm Deal?')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('deal-btn'));
 
     await waitFor(() => {
@@ -483,6 +499,8 @@ describe('AuctionRoom — SoldCardModal', () => {
     };
     renderRoom({ players: [activeWithUserId] }, { isAdmin: true, userId: 'admin-uid' });
     fireEvent.click(screen.getByTestId('deal-btn'));
+    await waitFor(() => expect(screen.getByText('✅ Confirm Deal?')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('deal-btn'));
 
     await waitFor(() => expect(screen.getByText('Bought by')).toBeInTheDocument());
     // Captain badge should be visible
@@ -500,14 +518,14 @@ describe('AuctionRoom — SoldCardModal', () => {
     };
     renderRoom({ players: [activeNonCaptain] }, { isAdmin: true, userId: 'admin-uid' });
     fireEvent.click(screen.getByTestId('deal-btn'));
+    await waitFor(() => expect(screen.getByText('✅ Confirm Deal?')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('deal-btn'));
 
     await waitFor(() => expect(screen.getByText('Bought by')).toBeInTheDocument());
     expect(screen.queryByText('C')).not.toBeInTheDocument();
   });
 
-  it('tapping a sold player in the list calls generateAuctionSoldCard with correct data', async () => {
-    vi.mocked(generateAuctionSoldCard).mockClear();
-
+  it('tapping a sold player in the list opens the SoldCardModal immediately (no blocking generation)', async () => {
     const soldPlayer = {
       id: 'ap2', player_id: 'p2', status: 'sold', base_price: 150, current_bid: 500,
       sold_price: 500, sold_to_team_id: 'at2', leading_team_id: 'at2',
@@ -526,12 +544,11 @@ describe('AuctionRoom — SoldCardModal', () => {
     await waitFor(() => expect(screen.getByText('Karthik')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Karthik'));
 
-    // generateAuctionSoldCard should be called with the right data
-    await waitFor(() => {
-      expect(generateAuctionSoldCard).toHaveBeenCalledWith(
-        expect.objectContaining({ teamName: 'Back Street', basePrice: 150, soldPrice: 500 })
-      );
-    });
+    // Modal should appear immediately with player data — no GIF generation blocking it
+    await waitFor(() => expect(screen.getByText('Bought by')).toBeInTheDocument());
+    expect(screen.getByText('Final Price')).toBeInTheDocument();
+    // GIF generation has NOT been triggered yet (only happens on "Share GIF" tap)
+    expect(generateAuctionSoldCard).not.toHaveBeenCalled();
   });
 });
 

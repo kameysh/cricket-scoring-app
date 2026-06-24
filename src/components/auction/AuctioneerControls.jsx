@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 const haptic = (ms = 12) => navigator.vibrate?.(ms);
 
@@ -26,6 +26,28 @@ export default function AuctioneerControls({
   const [raiseTeamId, setRaiseTeamId] = useState('');
   const effectiveRaiseTeamId = raiseTeamId || activePlayer?.leading_team_id || teams[0]?.id || '';
   const raiseTeam = teams.find(t => t.id === effectiveRaiseTeamId);
+
+  // Deal confirm state — first tap arms it, second tap fires, auto-resets after 3s
+  const [dealArmed, setDealArmed] = useState(false);
+  const dealTimerRef = useRef(null);
+
+  function handleDealClick() {
+    if (!dealArmed) {
+      setDealArmed(true);
+      haptic(20);
+      dealTimerRef.current = setTimeout(() => setDealArmed(false), 3000);
+    } else {
+      clearTimeout(dealTimerRef.current);
+      setDealArmed(false);
+      onDeal();
+    }
+  }
+
+  // Reset armed state when active player changes
+  useEffect(() => {
+    setDealArmed(false);
+    clearTimeout(dealTimerRef.current);
+  }, [activePlayer?.id]);
 
   // Multi-tap state: { [inc]: count }
   const [chipCounts, setChipCounts] = useState({});
@@ -217,11 +239,15 @@ export default function AuctioneerControls({
         <div className="flex gap-2">
           <button
             data-testid="deal-btn"
-            onClick={onDeal}
+            onClick={handleDealClick}
             disabled={loading || !hasBid}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-brand-green text-white hover:opacity-90 disabled:opacity-40"
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40 ${
+              dealArmed
+                ? 'bg-red-500 text-white animate-pulse scale-105'
+                : 'bg-brand-green text-white hover:opacity-90'
+            }`}
           >
-            🔨 Deal
+            {dealArmed ? '✅ Confirm Deal?' : '🔨 Deal'}
           </button>
           <button
             data-testid="hold-btn"
