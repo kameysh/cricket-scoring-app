@@ -472,6 +472,39 @@ describe('AuctionRoom — SoldCardModal', () => {
     expect(screen.getByText('Final Price')).toBeInTheDocument();
   });
 
+  it('shows (C) captain badge when sold player is the team captain', async () => {
+    const { dealPlayer } = await import('../services/auctionService');
+    vi.mocked(dealPlayer).mockResolvedValue({});
+
+    // TEAM1 has captain_id: 'captain-uid'; ACTIVE_PLAYER.player.user_id must match
+    const activeWithUserId = {
+      ...ACTIVE_PLAYER,
+      player: { ...ACTIVE_PLAYER.player, user_id: 'captain-uid' },
+    };
+    renderRoom({ players: [activeWithUserId] }, { isAdmin: true, userId: 'admin-uid' });
+    fireEvent.click(screen.getByTestId('deal-btn'));
+
+    await waitFor(() => expect(screen.getByText('Bought by')).toBeInTheDocument());
+    // Captain badge should be visible
+    expect(screen.getByText('⭐ Captain')).toBeInTheDocument();
+  });
+
+  it('does not show (C) badge when sold player is not the captain', async () => {
+    const { dealPlayer } = await import('../services/auctionService');
+    vi.mocked(dealPlayer).mockResolvedValue({});
+
+    // player has a different user_id — not the captain
+    const activeNonCaptain = {
+      ...ACTIVE_PLAYER,
+      player: { ...ACTIVE_PLAYER.player, user_id: 'some-other-uid' },
+    };
+    renderRoom({ players: [activeNonCaptain] }, { isAdmin: true, userId: 'admin-uid' });
+    fireEvent.click(screen.getByTestId('deal-btn'));
+
+    await waitFor(() => expect(screen.getByText('Bought by')).toBeInTheDocument());
+    expect(screen.queryByText('C')).not.toBeInTheDocument();
+  });
+
   it('tapping a sold player in the list calls generateAuctionSoldCard with correct data', async () => {
     vi.mocked(generateAuctionSoldCard).mockClear();
 

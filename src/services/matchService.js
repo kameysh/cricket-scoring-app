@@ -184,12 +184,12 @@ export async function completeMatch(matchId, payload) {
   return updateMatch(matchId, { status: 'completed', ...payload });
 }
 
-export async function startUpcomingMatch(matchId, tossWinner, tossDecision) {
+export async function startUpcomingMatch(matchId, tossWinner, tossDecision, rules = {}) {
   const battingTeam =
     (tossWinner === 'team1' && tossDecision === 'bat') ||
     (tossWinner === 'team2' && tossDecision === 'field')
       ? 1 : 2;
-  await updateMatch(matchId, { toss_winner: tossWinner, toss_decision: tossDecision });
+  await updateMatch(matchId, { toss_winner: tossWinner, toss_decision: tossDecision, ...rules });
   await startMatch(matchId);
   await createInnings(matchId, 1, battingTeam);
 }

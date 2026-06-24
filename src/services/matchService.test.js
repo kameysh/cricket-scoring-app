@@ -1,13 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../lib/supabase', () => ({
   supabase: {
     rpc: vi.fn(),
     from: vi.fn(),
+    auth: { getSession: vi.fn().mockResolvedValue({ data: { session: null } }) },
+    functions: { invoke: vi.fn().mockResolvedValue({}) },
   },
 }));
 
-import { incrementMatchesPlayed, addSubPlayer, getMatchNumber, createSuperOverInnings } from './matchService';
+import { incrementMatchesPlayed, addSubPlayer, getMatchNumber, createSuperOverInnings, startUpcomingMatch } from './matchService';
 import { supabase } from '../lib/supabase';
 
 describe('incrementMatchesPlayed', () => {
@@ -169,5 +171,89 @@ describe('createSuperOverInnings', () => {
   it('throws when supabase returns an error', async () => {
     mockInsertChain({ data: null, error: { message: 'insert failed' } });
     await expect(createSuperOverInnings('match-1', 3, 2, null)).rejects.toMatchObject({ message: 'insert failed' });
+  });
+});
+
+describe('startUpcomingMatch', () => {
+  let matchUpdatePayloads;
+  let inningsInsert;
+
+  beforeEach(() => {
+    matchUpdatePayloads = [];
+    inningsInsert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({ data: { id: 'inn-1' }, error: null }),
+      }),
+    });
+
+    supabase.from.mockImplementation((table) => {
+      const single = vi.fn().mockResolvedValue({
+        data: { id: 'match-1', tournament_id: null, team1_name: 'A', team2_name: 'B' },
+        error: null,
+      });
+      const select = vi.fn().mockReturnValue({ single });
+      const eqInner = vi.fn().mockReturnValue({ select, single });
+      const eq = vi.fn().mockReturnValue({ select, single, eq: eqInner });
+
+      if (table === 'matches') {
+        const update = vi.fn().mockImplementation((payload) => {
+          matchUpdatePayloads.push(payload);
+          return { eq };
+        });
+        return { update, select: vi.fn().mockReturnValue({ eq }) };
+      }
+      if (table === 'innings') {
+        return { insert: inningsInsert };
+      }
+      return { update: vi.fn().mockReturnValue({ eq }) };
+    });
+  });
+
+  it('saves toss_winner and toss_decision to the match', async () => {
+    await startUpcomingMatch('match-1', 'team1', 'bat');
+    expect(matchUpdatePayloads[0]).toMatchObject({ toss_winner: 'team1', toss_decision: 'bat' });
+  });
+
+  it('sets battingTeam=1 when toss winner chooses to bat', async () => {
+    await startUpcomingMatch('match-1', 'team1', 'bat');
+    expect(inningsInsert).toHaveBeenCalledWith(expect.objectContaining({ batting_team: 1, innings_number: 1 }));
+  });
+
+  it('sets battingTeam=2 when toss winner chooses to field', async () => {
+    await startUpcomingMatch('match-1', 'team1', 'field');
+    expect(inningsInsert).toHaveBeenCalledWith(expect.objectContaining({ batting_team: 2 }));
+  });
+
+  it('sets battingTeam=2 when team2 wins and bats', async () => {
+    await startUpcomingMatch('match-1', 'team2', 'bat');
+    expect(inningsInsert).toHaveBeenCalledWith(expect.objectContaining({ batting_team: 2 }));
+  });
+
+  it('merges all three rule flags into the updateMatch payload', async () => {
+    const rules = { last_man_standing: true, super_over_enabled: true, free_hit_on_no_ball: true };
+    await startUpcomingMatch('match-1', 'team1', 'bat', rules);
+    expect(matchUpdatePayloads[0]).toMatchObject({
+      last_man_standing: true,
+      super_over_enabled: true,
+      free_hit_on_no_ball: true,
+    });
+  });
+
+  it('sends no rule keys when rules param is omitted', async () => {
+    await startUpcomingMatch('match-1', 'team1', 'bat');
+    expect(matchUpdatePayloads[0]).not.toHaveProperty('last_man_standing');
+    expect(matchUpdatePayloads[0]).not.toHaveProperty('super_over_enabled');
+    expect(matchUpdatePayloads[0]).not.toHaveProperty('free_hit_on_no_ball');
+  });
+
+  it('merges only the provided rule flag (partial rules)', async () => {
+    await startUpcomingMatch('match-1', 'team1', 'bat', { free_hit_on_no_ball: true });
+    expect(matchUpdatePayloads[0]).toMatchObject({ free_hit_on_no_ball: true });
+    expect(matchUpdatePayloads[0]).not.toHaveProperty('last_man_standing');
+  });
+
+  it('sets match status to live after saving toss data', async () => {
+    await startUpcomingMatch('match-1', 'team1', 'bat');
+    expect(matchUpdatePayloads[1]).toMatchObject({ status: 'live' });
   });
 });

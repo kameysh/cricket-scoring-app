@@ -81,7 +81,7 @@ export default function AuctioneerControls({
       <div className="flex gap-2">
         <button
           onClick={onNextPlayer}
-          disabled={loading || !!activePlayer}
+          disabled={loading || !!activePlayer || !isLive}
           className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-40"
         >
           🎲 Next Player

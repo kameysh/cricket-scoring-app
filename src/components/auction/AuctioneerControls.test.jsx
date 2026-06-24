@@ -197,6 +197,40 @@ describe('AuctioneerControls — default bid increments', () => {
   });
 });
 
+describe('AuctioneerControls — Next Player pause/resume gate', () => {
+  it('Next Player is enabled when auction is live and no active player', () => {
+    renderControls({ activePlayer: null, auctionStatus: 'live' });
+    expect(screen.getByText('🎲 Next Player')).not.toBeDisabled();
+  });
+
+  it('Next Player is disabled when auction is paused', () => {
+    renderControls({ activePlayer: null, auctionStatus: 'paused' });
+    expect(screen.getByText('🎲 Next Player')).toBeDisabled();
+  });
+
+  it('Next Player is disabled when a player is already active (even if live)', () => {
+    renderControls({ activePlayer: ACTIVE_PLAYER, auctionStatus: 'live' });
+    expect(screen.getByText('🎲 Next Player')).toBeDisabled();
+  });
+
+  it('Next Player is disabled when loading', () => {
+    renderControls({ activePlayer: null, auctionStatus: 'live', loading: true });
+    expect(screen.getByText('🎲 Next Player')).toBeDisabled();
+  });
+
+  it('Resume button shown when paused', () => {
+    renderControls({ activePlayer: null, auctionStatus: 'paused' });
+    expect(screen.getByText('Resume')).toBeInTheDocument();
+    expect(screen.queryByText('Pause')).not.toBeInTheDocument();
+  });
+
+  it('Pause button shown when live', () => {
+    renderControls({ activePlayer: null, auctionStatus: 'live' });
+    expect(screen.getByText('Pause')).toBeInTheDocument();
+    expect(screen.queryByText('Resume')).not.toBeInTheDocument();
+  });
+});
+
 describe('AuctioneerControls — undo bid', () => {
   it('shows Undo Last Bid when current_bid is set', () => {
     renderControls();

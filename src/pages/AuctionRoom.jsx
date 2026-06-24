@@ -387,7 +387,12 @@ function SoldCardModal({ data, exportUrl, exportMimeType, recording, recordingPr
                 <PlayerAvatar name={data.player?.name} photoUrl={data.player?.photo_url} size={96} />
               </div>
             </div>
-            <p className="text-white font-black text-xl text-center leading-tight mt-1">{data.player?.name}</p>
+            <div className="flex flex-col items-center gap-1 mt-1">
+              <p className="text-white font-black text-xl text-center leading-tight">{data.player?.name}</p>
+              {data.isCaptain && (
+                <span className="text-[11px] font-black px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 tracking-widest uppercase">⭐ Captain</span>
+              )}
+            </div>
             <p className="text-emerald-400 text-xs font-semibold uppercase tracking-widest mt-0.5 capitalize">{data.player?.role}</p>
           </div>
 
@@ -538,11 +543,13 @@ export default function AuctionRoom() {
 
   function openSoldCard(ap) {
     const soldTeam = teams.find(t => t.id === ap.sold_to_team_id);
+    const isCaptain = !!(soldTeam?.captain_id && ap.player?.user_id && soldTeam.captain_id === ap.player.user_id);
     const data = {
       player: ap.player,
       teamName: soldTeam?.name ?? '—',
       basePrice: ap.base_price,
       soldPrice: ap.sold_price ?? ap.base_price,
+      isCaptain,
     };
 
     // Stamp this generation — any previous in-flight GIF that finishes later will be ignored

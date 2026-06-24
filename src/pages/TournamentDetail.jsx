@@ -38,6 +38,7 @@ export default function TournamentDetail() {
   const [tossWinner, setTossWinner] = useState('');
   const [tossDecision, setTossDecision] = useState('');
   const [starting, setStarting] = useState(false);
+  const [rules, setRules] = useState({ last_man_standing: false, super_over_enabled: false, free_hit_on_no_ball: false });
 
   useEffect(() => {
     tournamentService.getTournament(id).then(setTournament);
@@ -65,6 +66,7 @@ export default function TournamentDetail() {
     setStartMatchId(matchId);
     setTossWinner('');
     setTossDecision('');
+    setRules({ last_man_standing: false, super_over_enabled: false, free_hit_on_no_ball: false });
   }
 
   async function handleStartMatch() {
@@ -75,7 +77,7 @@ export default function TournamentDetail() {
     setStarting(true);
     const matchIdToStart = startMatchId;
     try {
-      await matchService.startUpcomingMatch(matchIdToStart, tossWinner, tossDecision);
+      await matchService.startUpcomingMatch(matchIdToStart, tossWinner, tossDecision, rules);
       setStartMatchId(null);
       navigate(`/matches/${matchIdToStart}`);
     } catch (e) {
@@ -308,6 +310,25 @@ export default function TournamentDetail() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="space-y-2.5 pt-1 border-t border-ink-100 dark:border-white/10">
+              <p className="text-xs font-semibold text-ink-500 uppercase tracking-wider pt-1">Match Rules</p>
+              {[
+                { key: 'last_man_standing', label: 'Last man standing' },
+                { key: 'super_over_enabled', label: 'Enable super over on tie' },
+                { key: 'free_hit_on_no_ball', label: 'Free hit on no ball' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2.5 text-sm text-ink-700 dark:text-ink-100">
+                  <input
+                    type="checkbox"
+                    checked={rules[key]}
+                    onChange={e => setRules(r => ({ ...r, [key]: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-cricket-green"
+                  />
+                  {label}
+                </label>
+              ))}
             </div>
 
             <button
