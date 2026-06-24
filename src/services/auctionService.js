@@ -84,8 +84,22 @@ export async function listAuctionTeams(auctionId) {
     .eq('auction_id', auctionId)
     .order('id', { ascending: true });
   if (error) throw error;
-  // Normalise: if name missing (legacy row), fall back to team_id string so UI never shows blank
-  return (data ?? []).map(t => ({ ...t, name: t.name || t.team_id || 'Team' }));
+  const teams = (data ?? []).map(t => ({ ...t, name: t.name || t.team_id || 'Team' }));
+
+  // Attach captain photo_url by resolving captain_id (user_id) → players row
+  const captainUserIds = teams.map(t => t.captain_id).filter(Boolean);
+  if (captainUserIds.length) {
+    const { data: playerRows } = await supabase
+      .from('players')
+      .select('user_id, photo_url, name')
+      .in('user_id', captainUserIds);
+    const photoByUserId = new Map((playerRows || []).map(p => [p.user_id, p]));
+    return teams.map(t => ({
+      ...t,
+      captainPlayer: t.captain_id ? (photoByUserId.get(t.captain_id) ?? null) : null,
+    }));
+  }
+  return teams;
 }
 
 export async function updateAuctionTeamCaptain(auctionTeamId, captainUserId) {

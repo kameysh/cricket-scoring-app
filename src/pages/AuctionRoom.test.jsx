@@ -109,6 +109,36 @@ describe('AuctionRoom — BudgetBars', () => {
     // 800/1000 = 80%
     expect(bar.style.width).toBe('80%');
   });
+
+  it('shows captain photo when captainPlayer has photo_url', () => {
+    const teams = [
+      { ...TEAM1, captainPlayer: { name: 'Ravi', photo_url: 'https://example.com/ravi.jpg' } },
+      { ...TEAM2, captainPlayer: null },
+    ];
+    renderRoom({ teams }, { isAdmin: false, userId: 'viewer-uid' });
+    const img = screen.getByAltText('Ravi');
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute('src', 'https://example.com/ravi.jpg');
+  });
+
+  it('shows initials avatar when captainPlayer has no photo_url', () => {
+    const teams = [
+      { ...TEAM1, captainPlayer: { name: 'Zara Patel', photo_url: null } },
+      { ...TEAM2, captainPlayer: null },
+    ];
+    renderRoom({ teams }, { isAdmin: false, userId: 'viewer-uid' });
+    expect(screen.getByText('ZP')).toBeInTheDocument();
+  });
+
+  it('falls back to team name initials when captainPlayer is null', () => {
+    const teams = [
+      { ...TEAM1, captainPlayer: null },
+      { ...TEAM2, captainPlayer: null },
+    ];
+    renderRoom({ teams }, { isAdmin: false, userId: 'viewer-uid' });
+    // "Super Kings" → "SK"
+    expect(screen.getByText('SK')).toBeInTheDocument();
+  });
 });
 
 describe('AuctionRoom — PassIndicator', () => {

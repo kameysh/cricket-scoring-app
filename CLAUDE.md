@@ -538,6 +538,7 @@ For realtime to work, each table must have Replication enabled:
 | `AuctionRoom.jsx` | Dead `BidLog` import (component is never rendered — `BidLogStrip` is the actual inline renderer) | Import removed. |
 | `ActivePlayerSpotlight.jsx` + `AuctionRoom.jsx` | Player card only showed photo/name — no career stats, no way to navigate to full profile | `AuctionRoom` fetches `getCareerStats(player_id)` on every new active player; passes `careerStats` + `onViewProfile` to spotlight; card now shows RUNS/WKTS/MATCHES strip + "View Profile →" button matching the Players carousel card exactly |
 | `AuctionRoom.jsx` + `auctionService.js` + `teamService.js` + `Teams.jsx` + `036_team_source_auction.sql` | After auction completion, team rosters only existed inside the auction — no way to use them for match/tournament setup | `handleComplete()` now calls `createTeamsFromAuction(id)` after marking completed: creates a global `teams` row per `auction_team` (name = team name, `source_auction_id` links back to auction), then `setTeamPlayers` with all sold players. Teams appear immediately in `/teams` page with "🏷️ AuctionName" badge and in match/tournament setup dropdowns. |
+| `BudgetBars.jsx` + `auctionService.js` | BudgetBars showed only team name — captain's photo not visible | `listAuctionTeams` now does a secondary query `players WHERE user_id IN (captainUserIds)` and attaches `captainPlayer: { photo_url, name }` to each team; `BudgetBars` renders a 32px circular avatar left of the team name — real photo if available, initials fallback otherwise. |
 
 ---
 
@@ -554,7 +555,7 @@ Six N+1 / sequential-query patterns eliminated — all in the data access layer,
 | `drawNextPlayer` | `auctionService.js` | Sequential: pool query → if empty → held query | Both fetched in parallel with `Promise.all`; pool takes priority if non-empty |
 | `autosellCaptains` | `auctionService.js` | N teams × 7 queries (player lookup, ap lookup, insert, update×2, budget, bid) | 2 batch reads up front (players + auction_players); per-team writes parallelised (`sell` + `budget` in `Promise.all`); bid insert fire-and-forget |
 
-Test mocks updated in `playerService.test.js` (fluent chain with `.neq`/`.gt` support) and `auctionService.test.js` (table-specific `supabase.from` mocks for batch query patterns). All 645 tests pass.
+Test mocks updated in `playerService.test.js` (fluent chain with `.neq`/`.gt` support) and `auctionService.test.js` (table-specific `supabase.from` mocks for batch query patterns). All 651 tests pass.
 
 ---
 
@@ -564,7 +565,7 @@ Test mocks updated in `playerService.test.js` (fluent chain with `.neq`/`.gt` su
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**46 test files, 645 tests — all passing:**
+**46 test files, 651 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
@@ -600,8 +601,8 @@ Test mocks updated in `playerService.test.js` (fluent chain with `.neq`/`.gt` su
 | `src/pages/PrevOverSummary.test.jsx` | PrevOverSummary: hidden in over 1, hidden when no deliveries for prev over, shows label/runs/score snapshot, wicket count, correct 1-based over label |
 | `src/components/shared/BottomNav.test.jsx` (extended) | Tab order verified; Appearance row shown with 3 theme buttons; setTheme called on click |
 | `src/pages/Leaderboard.test.jsx` | Renders Batting tab by default; switches to Partnerships tab without crash; switches to MVP tab without crash |
-| `src/services/auctionService.test.js` | createAuction status=draft; addAuctionTeam sets budget_remaining; placeBid throws on over-budget; placeBid resets pass flags; dealPlayer calls RPC; dealPlayer throws on error; signalPass updates correct column; signalPass throws on invalid column; holdPlayer sets held_at; drawNextPlayer completes auction when queues empty; getBidsForPlayer — returns ordered bids, empty array on null, throws on DB error; **deleteAuction** — deletes linked global teams first, then auction; throws on teams delete error without touching auction; throws on auction delete error |
-| `src/pages/AuctionRoom.test.jsx` | Admin sees AuctioneerControls only; captain sees CaptainControls only; viewer sees neither; BudgetBars render per team; budget bar width reflects proportion; PassIndicator hidden/shown; Hold button animates when both passing; bid button disabled over budget; bid button enabled within budget; Pass button shows Passing state; waiting message when no active player; admin sees delete button; non-admin does not; sold count chip visible; **SoldCardModal** — shows "Bought by" and "Final Price" |
+| `src/services/auctionService.test.js` | createAuction status=draft; addAuctionTeam sets budget_remaining; placeBid throws on over-budget; placeBid resets pass flags; dealPlayer calls RPC; dealPlayer throws on error; signalPass updates correct column; signalPass throws on invalid column; holdPlayer sets held_at; drawNextPlayer completes auction when queues empty; getBidsForPlayer — returns ordered bids, empty array on null, throws on DB error; **deleteAuction** — deletes linked global teams first, then auction; throws on teams delete error without touching auction; throws on auction delete error; **listAuctionTeams** — attaches captainPlayer with photo_url, null when no profile, skips player lookup when no captain |
+| `src/pages/AuctionRoom.test.jsx` | Admin sees AuctioneerControls only; captain sees CaptainControls only; viewer sees neither; BudgetBars render per team; budget bar width reflects proportion; **BudgetBars captain avatar** — photo shown when captainPlayer has photo_url, initials shown when no photo, team name initials when captainPlayer is null; PassIndicator hidden/shown; Hold button animates when both passing; bid button disabled over budget; bid button enabled within budget; Pass button shows Passing state; waiting message when no active player; admin sees delete button; non-admin does not; sold count chip visible; **SoldCardModal** — shows "Bought by" and "Final Price" |
 | `src/stores/auctionStore.test.js` (extended) | **loadAuction silent mode** — sets isLoading true→false on normal load; never sets isLoading when silent=true; **_refreshBids** — replaces bids list with fresh service data; does not throw or mutate bids when service throws |
 | `src/components/auction/PlayerDrawAnimation.test.jsx` | Shows "Drawing…" on render; pool count displayed; transitions to "Player Selected!" after full animation (step-wise fake timer advances); "Opening bidding…" shown post-reveal; winner base price shown; onComplete called after 1s post-reveal; single-player pool works; onComplete not called prematurely when winner is null |
 

@@ -56,6 +56,49 @@ beforeEach(() => {
   supabase.rpc.mockResolvedValue({ error: mockError });
 });
 
+describe('listAuctionTeams', () => {
+  it('attaches captainPlayer with photo_url when captain has a player profile', async () => {
+    supabase.from.mockImplementation(table => {
+      if (table === 'auction_teams') {
+        return makeTableChain([{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000, players_bought: 0 }]);
+      }
+      if (table === 'players') {
+        return makeTableChain([{ user_id: 'u1', photo_url: 'https://example.com/photo.jpg', name: 'Ravi' }]);
+      }
+      return makeTableChain([]);
+    });
+    const { listAuctionTeams: list } = await import('./auctionService');
+    const teams = await list('a1');
+    expect(teams[0].captainPlayer?.photo_url).toBe('https://example.com/photo.jpg');
+    expect(teams[0].captainPlayer?.name).toBe('Ravi');
+  });
+
+  it('sets captainPlayer to null when captain has no player profile', async () => {
+    supabase.from.mockImplementation(table => {
+      if (table === 'auction_teams') {
+        return makeTableChain([{ id: 't1', name: 'Super Kings', captain_id: 'u1', budget_remaining: 5000, players_bought: 0 }]);
+      }
+      return makeTableChain([]); // players returns empty
+    });
+    const { listAuctionTeams: list } = await import('./auctionService');
+    const teams = await list('a1');
+    expect(teams[0].captainPlayer).toBeNull();
+  });
+
+  it('skips player lookup when no team has a captain', async () => {
+    supabase.from.mockImplementation(table => {
+      if (table === 'auction_teams') {
+        return makeTableChain([{ id: 't1', name: 'Super Kings', captain_id: null, budget_remaining: 5000, players_bought: 0 }]);
+      }
+      return makeTableChain([]);
+    });
+    const { listAuctionTeams: list } = await import('./auctionService');
+    const teams = await list('a1');
+    expect(supabase.from).not.toHaveBeenCalledWith('players');
+    expect(teams[0].captainPlayer).toBeUndefined();
+  });
+});
+
 describe('createAuction', () => {
   it('returns row with status draft', async () => {
     mockData = { id: 'a1', name: 'Test Auction', status: 'draft', budget_per_team: 1000 };
