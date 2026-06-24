@@ -541,13 +541,30 @@ For realtime to work, each table must have Replication enabled:
 
 ---
 
+## DB Query Performance (June 2026)
+
+Six N+1 / sequential-query patterns eliminated — all in the data access layer, no UI changes:
+
+| Function | File | Before | After |
+|----------|------|--------|-------|
+| `getPlayerInningsCounts` | `playerService.js` | Fetched all rows, filtered `yet_to_bat` / `0 legal_balls` in JS | `.neq('status','yet_to_bat')` + `.gt('legal_balls',0)` pushed into DB; parallel `Promise.all` |
+| `getMatchHistory` | `playerService.js` | Sequential: matches then innings; O(n²) `filter+includes` per match | Parallel `Promise.all([matches, innings])`; `Map<matchId, Set<inningsId>>` for O(1) lookups |
+| `autoAssignManOfMatch` | `matchService.js` | 3 `getScorecards()` calls × N innings (3N queries) | 1 parallel `Promise.all` of 3 batch `.in('innings_id', ids)` queries; innings/players/match also fetched in parallel |
+| `autoAssignManOfSeries` | `matchService.js` | Two-level N+1: N matches × 2 queries + N innings × 3 queries | 5 flat queries total: 2 batch in parallel (innings + match_players), then 3 batch scorecards in parallel |
+| `drawNextPlayer` | `auctionService.js` | Sequential: pool query → if empty → held query | Both fetched in parallel with `Promise.all`; pool takes priority if non-empty |
+| `autosellCaptains` | `auctionService.js` | N teams × 7 queries (player lookup, ap lookup, insert, update×2, budget, bid) | 2 batch reads up front (players + auction_players); per-team writes parallelised (`sell` + `budget` in `Promise.all`); bid insert fire-and-forget |
+
+Test mocks updated in `playerService.test.js` (fluent chain with `.neq`/`.gt` support) and `auctionService.test.js` (table-specific `supabase.from` mocks for batch query patterns). All 645 tests pass.
+
+---
+
 ## Test Suite
 
 **Stack:** Vitest + jsdom + @testing-library/react + @testing-library/user-event + @testing-library/jest-dom  
 **Run:** `npm test` (one-shot) · `npm run test:watch` (watch mode)  
 **Setup:** `vite.config.js` test block, `src/test-setup.js` (imports jest-dom matchers)
 
-**43 test files, 645 tests — all passing:**
+**46 test files, 645 tests — all passing:**
 
 | File | What's tested |
 |------|---------------|
