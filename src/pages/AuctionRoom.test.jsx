@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 vi.mock('../hooks/useAuctionRoom', () => ({ useAuctionRoom: vi.fn(() => ({ isRealtimeLive: true })) }));
 vi.mock('../hooks/useRole', () => ({ useRole: vi.fn() }));
 vi.mock('../stores/auctionStore', () => ({ useAuctionStore: vi.fn() }));
+vi.mock('../stores/authStore', () => ({ useAuthStore: vi.fn(sel => sel({ user: { email: 'other@example.com' } })) }));
 vi.mock('../services/auctionService');
 
 // computeMinReserve must return a Promise; set up a global default before each test
@@ -21,6 +22,7 @@ vi.mock('../lib/generateShareCard', () => ({
 import { useRole } from '../hooks/useRole';
 import { useAuctionRoom } from '../hooks/useAuctionRoom';
 import { useAuctionStore } from '../stores/auctionStore';
+import { useAuthStore } from '../stores/authStore';
 import { generateAuctionSoldCard } from '../lib/generateShareCard';
 import AuctionRoom from './AuctionRoom';
 
@@ -61,12 +63,13 @@ const BASE_STORE = {
   _clearSoldFlash: vi.fn(),
 };
 
-function renderRoom(storeOverrides = {}, roleOverrides = {}) {
+function renderRoom(storeOverrides = {}, roleOverrides = {}, email = 'other@example.com') {
   vi.mocked(useAuctionStore).mockReturnValue({ ...BASE_STORE, ...storeOverrides });
   vi.mocked(useRole).mockReturnValue({
     isAdmin: false, userId: 'other-uid', canScore: false,
     ...roleOverrides,
   });
+  vi.mocked(useAuthStore).mockImplementation(sel => sel({ user: { email } }));
   return render(
     <MemoryRouter initialEntries={['/auctions/a1']}>
       <Routes>
@@ -206,22 +209,23 @@ describe('AuctionRoom — no active player', () => {
 });
 
 describe('AuctionRoom — delete button', () => {
-  it('admin sees delete button', () => {
-    renderRoom({}, { isAdmin: true, userId: 'admin-uid' });
-    // Trash icon rendered as SVG; check via aria or nearby text
-    // ConfirmDialog trigger button wraps Trash2 icon
-    const deleteBtns = screen.getAllByRole('button');
-    // The delete button is a small icon-only button; confirm dialog text appears on open
-    // Just verify it's rendered by checking the Trash2 icon is in the DOM via its parent
-    expect(deleteBtns.length).toBeGreaterThan(2);
+  it('super admin sees delete button', () => {
+    renderRoom({}, { isAdmin: true, userId: 'admin-uid' }, 'kameshwaran26@gmail.com');
+    // Click the trash button to open the confirm dialog — confirms it exists
+    const buttons = screen.getAllByRole('button');
+    const trashBtn = buttons.find(b => b.classList.contains('text-red-500'));
+    expect(trashBtn).toBeTruthy();
+  });
+
+  it('regular admin does NOT see delete button', () => {
+    renderRoom({}, { isAdmin: true, userId: 'admin-uid' }, 'otheradmin@example.com');
+    // Open confirm dialog would show this text — if it's absent the button doesn't exist
+    expect(screen.queryByText(/permanently delete/i)).not.toBeInTheDocument();
   });
 
   it('non-admin does not see delete button', () => {
     renderRoom({}, { isAdmin: false, userId: 'viewer-uid' });
-    // Viewer has no Trash button
-    // BudgetBars + ActivePlayer + Pool/Held/Sold — but no red icon-only button
-    const redButtons = screen.queryAllByRole('button', { name: /delete/i });
-    expect(redButtons).toHaveLength(0);
+    expect(screen.queryByText(/permanently delete/i)).not.toBeInTheDocument();
   });
 });
 

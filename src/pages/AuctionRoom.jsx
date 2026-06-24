@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useAuctionStore } from '../stores/auctionStore';
 import { useAuctionRoom } from '../hooks/useAuctionRoom';
 import { useRole } from '../hooks/useRole';
+import { useAuthStore } from '../stores/authStore';
 import * as auctionService from '../services/auctionService';
 import * as playerService from '../services/playerService';
 import { generateAuctionSoldCard } from '../lib/generateShareCard';
@@ -526,6 +527,8 @@ export default function AuctionRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isAdmin, userId } = useRole();
+  const user = useAuthStore(s => s.user);
+  const isSuperAdmin = isAdmin && user?.email === 'kameshwaran26@gmail.com';
   const [actionLoading, setActionLoading] = useState(false);
   const [heldSheetOpen, setHeldSheetOpen] = useState(false);
   const [poolSheetOpen, setPoolSheetOpen] = useState(false);
@@ -962,7 +965,7 @@ export default function AuctionRoom() {
         <span className={`inline-block w-1.5 h-1.5 rounded-full ${isRealtimeLive ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`} />
         {isRealtimeLive ? 'Live' : 'Sync…'}
       </span>
-      {isAdmin && (
+      {isSuperAdmin && (
         <button onClick={() => setDeleteConfirmOpen(true)} className="p-2 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-500 shrink-0">
           <Trash2 size={16} />
         </button>
