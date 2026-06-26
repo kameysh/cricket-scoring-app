@@ -17,14 +17,16 @@ import PlayerAvatar from '../player/PlayerAvatar';
  *   match            – { team1_name, team2_name }
  *   matchPlayers     – match_players rows with .players join (all, incl. inactive)
  *   allPlayers       – full player pool from playerService.listPlayers
- *   onSwap           – (outMatchPlayerId, inPlayerId, team) => Promise<void>
+ *   onSwap           – (outMatchPlayerId, inPlayerId, team, { injured }) => Promise<void>
  *   onSwapBack       – (subMatchPlayerId, originalMatchPlayerId) => Promise<void>
+ *   tournamentMatch  – boolean; when true, an "Injured" toggle is shown in step 2
  */
-export default function PlayerSubSheet({ open, onClose, match, matchPlayers, allPlayers, onSwap, onSwapBack }) {
+export default function PlayerSubSheet({ open, onClose, match, matchPlayers, allPlayers, onSwap, onSwapBack, tournamentMatch = false }) {
   const [selectedTeam, setSelectedTeam] = useState(1);
   const [outgoing, setOutgoing] = useState(null); // match_players row being subbed out
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
+  const [injured, setInjured] = useState(false);
 
   const teamName = t => t === 1 ? match?.team1_name : match?.team2_name;
 
@@ -52,20 +54,23 @@ export default function PlayerSubSheet({ open, onClose, match, matchPlayers, all
     setSelectedTeam(t);
     setOutgoing(null);
     setSearch('');
+    setInjured(false);
   }
 
   function handleSelectOutgoing(mp) {
     setOutgoing(mp);
     setSearch('');
+    setInjured(false); // always start a fresh sub with the injury toggle off
   }
 
   async function handleSwapIn(inPlayer) {
     if (!outgoing || busy) return;
     setBusy(true);
     try {
-      await onSwap(outgoing.id, inPlayer.id, selectedTeam);
+      await onSwap(outgoing.id, inPlayer.id, selectedTeam, { injured });
       setOutgoing(null);
       setSearch('');
+      setInjured(false);
     } finally {
       setBusy(false);
     }
@@ -84,7 +89,7 @@ export default function PlayerSubSheet({ open, onClose, match, matchPlayers, all
   const step = outgoing ? 2 : 1;
 
   return (
-    <BottomSheet open={open} onClose={() => { setOutgoing(null); onClose(); }} title="Player Sub" heightClass="max-h-[80vh]">
+    <BottomSheet open={open} onClose={() => { setOutgoing(null); setInjured(false); onClose(); }} title="Player Sub" heightClass="max-h-[80vh]">
 
       {/* Team tabs */}
       <div className="flex gap-2 mb-4">
@@ -165,7 +170,7 @@ export default function PlayerSubSheet({ open, onClose, match, matchPlayers, all
         <>
           {/* ── Step 2: pick who comes in ── */}
           <div className="flex items-center gap-2 mb-4">
-            <button type="button" onClick={() => setOutgoing(null)}
+            <button type="button" onClick={() => { setOutgoing(null); setInjured(false); }}
               className="text-xs text-ink-400 hover:text-ink-700 dark:hover:text-white">
               ← Back
             </button>
@@ -176,6 +181,24 @@ export default function PlayerSubSheet({ open, onClose, match, matchPlayers, all
               <span className="text-xs text-ink-400 shrink-0">going out</span>
             </div>
           </div>
+
+          {/* Injured toggle — tournament matches only. Off = tactical swap, On = injury (tagged on scorecard). */}
+          {tournamentMatch && (
+            <button type="button" onClick={() => setInjured(v => !v)}
+              className={`w-full flex items-center justify-between gap-2 mb-3 px-3 py-2.5 rounded-xl border transition-colors ${
+                injured
+                  ? 'bg-red-50 dark:bg-red-500/10 border-red-300 dark:border-red-500/40'
+                  : 'bg-ink-50 dark:bg-white/5 border-ink-100 dark:border-white/10'
+              }`}>
+              <span className="flex items-center gap-2 text-sm font-medium text-ink-700 dark:text-ink-200">
+                <span className={`inline-block w-2 h-2 rounded-full ${injured ? 'bg-red-500' : 'bg-ink-300 dark:bg-white/30'}`} />
+                Subbing out due to injury
+              </span>
+              <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${injured ? 'bg-red-500' : 'bg-ink-300 dark:bg-white/20'}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${injured ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </span>
+            </button>
+          )}
 
           <p className="text-xs font-semibold text-ink-500 dark:text-ink-400 mb-2">
             Select replacement:

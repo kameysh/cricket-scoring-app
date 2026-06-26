@@ -143,6 +143,30 @@ describe('setPlayerActive', () => {
   });
 });
 
+describe('setPlayerInjured', () => {
+  function mockUpdate(result) {
+    const eq = vi.fn().mockResolvedValue(result);
+    const update = vi.fn().mockReturnValue({ eq });
+    supabase.from.mockReturnValue({ update });
+    return { update, eq };
+  }
+
+  it('updates is_injured on the given match_players row', async () => {
+    const { update, eq } = mockUpdate({ error: null });
+    const { setPlayerInjured } = await import('./matchService');
+    await setPlayerInjured('mp-9', true);
+    expect(supabase.from).toHaveBeenCalledWith('match_players');
+    expect(update).toHaveBeenCalledWith({ is_injured: true });
+    expect(eq).toHaveBeenCalledWith('id', 'mp-9');
+  });
+
+  it('throws when supabase returns an error', async () => {
+    mockUpdate({ error: { message: 'injure failed' } });
+    const { setPlayerInjured } = await import('./matchService');
+    await expect(setPlayerInjured('mp-9', false)).rejects.toMatchObject({ message: 'injure failed' });
+  });
+});
+
 describe('createSuperOverInnings', () => {
   function mockInsertChain(result) {
     const single = vi.fn().mockResolvedValue(result);

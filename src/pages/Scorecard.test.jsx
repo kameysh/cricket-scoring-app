@@ -230,3 +230,46 @@ describe('Scorecard — realtime delivery name resolution from playersMap', () =
     expect(screen.getAllByText('Kamesh Waran').length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('Scorecard — injured / substitute tags', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Injured original (mp-out) + replacement (mp-in) linked via subbed_out_player_id.
+  // Both have a delivery so they appear in the batting list.
+  const INJURED_ORIG = {
+    id: 'mp-out', player_id: 'p-out', is_captain: false, team: 1, is_active: false, is_injured: true,
+    players: { id: 'p-out', name: 'Hurt Hero', photo_url: null, role: 'batsman' },
+  };
+  const REPLACEMENT = {
+    id: 'mp-in', player_id: 'p-in', is_captain: false, team: 1, is_substitute: true, is_active: true,
+    subbed_out_player_id: 'mp-out',
+    players: { id: 'p-in', name: 'Fresh Legs', photo_url: null, role: 'batsman' },
+  };
+  const PLAIN = {
+    id: 'mp-plain', player_id: 'p-plain', is_captain: false, team: 1,
+    players: { id: 'p-plain', name: 'Normal Guy', photo_url: null, role: 'batsman' },
+  };
+
+  const deliveries = [
+    { id: 'd-out', innings_id: 'inn-1', batsman_id: 'p-out', batsman: { id: 'p-out', name: 'Hurt Hero' }, runs_off_bat: 4, extra_type: null, extra_runs: 0, is_wicket: false, is_legal_delivery: true, over_number: 0, ball_number: 1 },
+    { id: 'd-in', innings_id: 'inn-1', batsman_id: 'p-in', batsman: { id: 'p-in', name: 'Fresh Legs' }, runs_off_bat: 2, extra_type: null, extra_runs: 0, is_wicket: false, is_legal_delivery: true, over_number: 0, ball_number: 2 },
+    { id: 'd-pl', innings_id: 'inn-1', batsman_id: 'p-plain', batsman: { id: 'p-plain', name: 'Normal Guy' }, runs_off_bat: 1, extra_type: null, extra_runs: 0, is_wicket: false, is_legal_delivery: true, over_number: 0, ball_number: 3 },
+  ];
+
+  it('shows "Injured" on the injured player and "Sub in for X" on the replacement', async () => {
+    setupMocks({ match: { ...MATCH_LIVE, status: 'completed' }, deliveries, matchPlayers: [INJURED_ORIG, REPLACEMENT, PLAIN] });
+    await renderScorecard();
+
+    expect(screen.getByText('Injured')).toBeInTheDocument();
+    expect(screen.getByText('Sub in for Hurt Hero')).toBeInTheDocument();
+  });
+
+  it('shows no injury/sub tag for a normal player', async () => {
+    setupMocks({ match: { ...MATCH_LIVE, status: 'completed' }, deliveries: [deliveries[2]], matchPlayers: [PLAIN] });
+    await renderScorecard();
+
+    expect(screen.getByText('Normal Guy')).toBeInTheDocument();
+    expect(screen.queryByText('Injured')).toBeNull();
+    expect(screen.queryByText(/Sub in for/)).toBeNull();
+  });
+});

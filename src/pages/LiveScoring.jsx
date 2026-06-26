@@ -746,10 +746,10 @@ export default function LiveScoring() {
     setSubOpen(true);
   }
 
-  async function handleSwapPlayer(outMatchPlayerId, inPlayerId, team) {
+  async function handleSwapPlayer(outMatchPlayerId, inPlayerId, team, opts = {}) {
     try {
-      await store.swapPlayer(outMatchPlayerId, inPlayerId, team);
-      toast.success('Player swapped');
+      await store.swapPlayer(outMatchPlayerId, inPlayerId, team, opts);
+      toast.success(opts.injured ? 'Injured player replaced' : 'Player swapped');
     } catch (err) {
       toast.error(err.message || 'Failed to swap player');
     }
@@ -1099,6 +1099,7 @@ export default function LiveScoring() {
         allPlayers={allPlayers}
         onSwap={handleSwapPlayer}
         onSwapBack={handleSwapBack}
+        tournamentMatch={!!match?.tournament_id}
       />
 
       <BottomSheet open={superOverOpen} onClose={() => {}} title="Match Tied — Super Over!" heightClass="h-auto">

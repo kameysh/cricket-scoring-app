@@ -121,6 +121,14 @@ function PlayerBadges({ pid, playerMeta }) {
       {meta.isWicketKeeper && (
         <span className="ml-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1 py-0.5 rounded">(WK)</span>
       )}
+      {meta.isInjured && (
+        <span className="ml-1 text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-1 py-0.5 rounded">Injured</span>
+      )}
+      {meta.isSubstitute && (
+        <span className="ml-1 text-[10px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/30 px-1 py-0.5 rounded">
+          {meta.subbedInForName ? `Sub in for ${meta.subbedInForName}` : 'Sub'}
+        </span>
+      )}
     </>
   );
 }
@@ -293,11 +301,15 @@ export default function Scorecard() {
     matchService.getMatchPlayers(id).then(rows => {
       const meta = new Map();
       const pMap = {};
+      const mpById = new Map(rows.map(r => [r.id, r]));
       for (const row of rows) {
         meta.set(row.player_id, {
           isCaptain: row.is_captain === true,
           isWicketKeeper: row.players?.role === 'wicket_keeper',
           team: row.team,
+          isInjured: row.is_injured === true,
+          isSubstitute: row.is_substitute === true,
+          subbedInForName: mpById.get(row.subbed_out_player_id)?.players?.name ?? null,
         });
         if (row.players) pMap[row.player_id] = { ...row.players, team: row.team };
       }

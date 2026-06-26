@@ -78,6 +78,14 @@ export async function setPlayerActive(matchPlayerId, isActive) {
   if (error) throw error;
 }
 
+export async function setPlayerInjured(matchPlayerId, isInjured) {
+  const { error } = await supabase
+    .from('match_players')
+    .update({ is_injured: isInjured })
+    .eq('id', matchPlayerId);
+  if (error) throw error;
+}
+
 export async function getMatchPlayers(matchId) {
   const { data, error } = await supabase
     .from('match_players')

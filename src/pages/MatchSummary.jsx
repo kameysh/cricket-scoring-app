@@ -173,6 +173,8 @@ function ScorecardInnings({ innings, deliveries, playerMeta, playersMap, matchPl
                 <span className="text-sm font-semibold text-ink-900 dark:text-white">{s.name}</span>
                 {meta?.isCaptain && <span className="text-[10px] font-bold text-amber-600 ml-0.5">(C)</span>}
                 {meta?.isWicketKeeper && <span className="text-[10px] font-bold text-sky-600 ml-0.5">(Wk)</span>}
+                {meta?.isInjured && <span className="text-[10px] font-bold text-red-600 ml-0.5">Injured</span>}
+                {meta?.isSubstitute && <span className="text-[10px] font-bold text-sky-600 ml-0.5">{meta.subbedInForName ? `Sub in for ${meta.subbedInForName}` : 'Sub'}</span>}
                 {pid === motmId && <span className="text-[11px] text-cricket-gold ml-0.5">★</span>}
               </div>
               <p className="text-[11px] text-ink-400 mt-0.5 truncate">{dismissalText(dis)}</p>
@@ -233,12 +235,15 @@ function ScorecardInnings({ innings, deliveries, playerMeta, playersMap, matchPl
           const s = bowlMap.get(pid);
           const maidens = maidenMap.get(pid) || 0;
           const p = playersMap[pid];
+          const bMeta = playerMeta?.get(pid);
           const econ = s.legal_balls > 0 ? fmt(calcEconomy(s.runs, s.legal_balls)) : '-';
           return (
             <div key={pid} className="flex items-center gap-2.5 py-2.5 border-b border-ink-50 dark:border-white/5">
               <div className="shrink-0"><PlayerAvatar name={s.name} photoUrl={p?.photo_url} size={30} /></div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 flex items-center gap-0.5 flex-wrap">
                 <span className="text-sm font-medium text-ink-900 dark:text-white">{s.name}</span>
+                {bMeta?.isInjured && <span className="text-[10px] font-bold text-red-600 ml-0.5">Injured</span>}
+                {bMeta?.isSubstitute && <span className="text-[10px] font-bold text-sky-600 ml-0.5">{bMeta.subbedInForName ? `Sub in for ${bMeta.subbedInForName}` : 'Sub'}</span>}
               </div>
               <div className="flex items-center shrink-0">
                 <div className="w-8 text-right text-xs text-ink-700 dark:text-ink-300">{formatOvers(s.legal_balls)}</div>
@@ -295,8 +300,16 @@ export default function MatchSummary() {
       setMatchPlayers(mps);
       const meta = new Map();
       const pMap = {};
+      const mpById = new Map(mps.map(r => [r.id, r]));
       for (const row of mps) {
-        meta.set(row.player_id, { isCaptain: row.is_captain === true, isWicketKeeper: row.players?.role === 'wicket_keeper', team: row.team });
+        meta.set(row.player_id, {
+          isCaptain: row.is_captain === true,
+          isWicketKeeper: row.players?.role === 'wicket_keeper',
+          team: row.team,
+          isInjured: row.is_injured === true,
+          isSubstitute: row.is_substitute === true,
+          subbedInForName: mpById.get(row.subbed_out_player_id)?.players?.name ?? null,
+        });
         if (row.players) pMap[row.player_id] = { ...row.players, team: row.team };
       }
       setPlayerMeta(meta);

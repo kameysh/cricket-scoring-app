@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../services/matchService', () => ({
   addSubPlayer: vi.fn(),
   setPlayerActive: vi.fn(),
+  setPlayerInjured: vi.fn(),
   createSuperOverInnings: vi.fn(),
   // stub everything else the store references at module level
   getMatch: vi.fn(),
@@ -91,6 +92,29 @@ describe('matchStore.swapPlayer', () => {
     expect(matchPlayers.find(mp => mp.id === 'mp-stay').is_active).toBe(true);
     expect(matchPlayers.find(mp => mp.id === 'mp-sub')).toBeTruthy();
   });
+
+  it('does NOT mark injured for a plain tactical swap (injured omitted)', async () => {
+    const newMp = { id: 'mp-sub', player_id: 'p-in', team: 1, is_substitute: true, is_active: true, subbed_out_player_id: 'mp-out' };
+    matchService.addSubPlayer.mockResolvedValue(newMp);
+    matchService.setPlayerActive.mockResolvedValue();
+
+    await useMatchStore.getState().swapPlayer('mp-out', 'p-in', 1);
+
+    expect(matchService.setPlayerInjured).not.toHaveBeenCalled();
+    expect(useMatchStore.getState().matchPlayers.find(mp => mp.id === 'mp-out').is_injured).toBeFalsy();
+  });
+
+  it('marks outgoing player injured when { injured: true } is passed', async () => {
+    const newMp = { id: 'mp-sub', player_id: 'p-in', team: 1, is_substitute: true, is_active: true, subbed_out_player_id: 'mp-out' };
+    matchService.addSubPlayer.mockResolvedValue(newMp);
+    matchService.setPlayerActive.mockResolvedValue();
+    matchService.setPlayerInjured.mockResolvedValue();
+
+    await useMatchStore.getState().swapPlayer('mp-out', 'p-in', 1, { injured: true });
+
+    expect(matchService.setPlayerInjured).toHaveBeenCalledWith('mp-out', true);
+    expect(useMatchStore.getState().matchPlayers.find(mp => mp.id === 'mp-out').is_injured).toBe(true);
+  });
 });
 
 // ── swapBack ──────────────────────────────────────────────────────────────────
@@ -99,6 +123,7 @@ describe('matchStore.swapBack', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     matchService.setPlayerActive.mockResolvedValue();
+    matchService.setPlayerInjured.mockResolvedValue();
   });
 
   it('finds the linked sub via subbed_out_player_id — not any active sub', async () => {
@@ -150,6 +175,35 @@ describe('matchStore.swapBack', () => {
     const { matchPlayers } = useMatchStore.getState();
     expect(matchPlayers.find(mp => mp.id === 'mp-orig').is_active).toBe(true);
     expect(matchPlayers.find(mp => mp.id === 'mp-sub').is_active).toBe(false);
+  });
+
+  it('clears the injured flag when an injured player is swapped back in', async () => {
+    seedStore({
+      match: MATCH,
+      matchPlayers: [
+        { id: 'mp-orig', player_id: 'p-orig', team: 1, is_active: false, is_injured: true },
+        { id: 'mp-sub', player_id: 'p-sub', team: 1, is_substitute: true, is_active: true, subbed_out_player_id: 'mp-orig' },
+      ],
+    });
+
+    await useMatchStore.getState().swapBack('mp-orig');
+
+    expect(matchService.setPlayerInjured).toHaveBeenCalledWith('mp-orig', false);
+    expect(useMatchStore.getState().matchPlayers.find(mp => mp.id === 'mp-orig').is_injured).toBe(false);
+  });
+
+  it('does NOT call setPlayerInjured for a tactical (non-injured) swap-back', async () => {
+    seedStore({
+      match: MATCH,
+      matchPlayers: [
+        { id: 'mp-orig', player_id: 'p-orig', team: 1, is_active: false }, // never injured
+        { id: 'mp-sub', player_id: 'p-sub', team: 1, is_substitute: true, is_active: true, subbed_out_player_id: 'mp-orig' },
+      ],
+    });
+
+    await useMatchStore.getState().swapBack('mp-orig');
+
+    expect(matchService.setPlayerInjured).not.toHaveBeenCalled();
   });
 });
 

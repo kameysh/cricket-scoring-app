@@ -305,15 +305,16 @@ export const useMatchStore = create((set, get) => ({
 
   // Swap outgoing player (bench them) and add the incoming sub.
   // Sequential: insert sub first so if it fails the outgoing player stays active.
-  async swapPlayer(outMatchPlayerId, inPlayerId, team) {
+  async swapPlayer(outMatchPlayerId, inPlayerId, team, { injured = false } = {}) {
     const { match } = get();
     if (!match) return;
     const newMp = await matchService.addSubPlayer(match.id, inPlayerId, team, outMatchPlayerId);
     await matchService.setPlayerActive(outMatchPlayerId, false);
+    if (injured) await matchService.setPlayerInjured(outMatchPlayerId, true);
     set(s => ({
       matchPlayers: [
         ...s.matchPlayers.map(mp =>
-          mp.id === outMatchPlayerId ? { ...mp, is_active: false } : mp
+          mp.id === outMatchPlayerId ? { ...mp, is_active: false, is_injured: injured ? true : mp.is_injured } : mp
         ),
         newMp,
       ],
@@ -322,20 +323,24 @@ export const useMatchStore = create((set, get) => ({
   },
 
   // Swap back: find the sub linked to this benched player, deactivate sub, re-activate original.
+  // A returning player is no longer injured, so clear the injured flag too.
   async swapBack(benchedMatchPlayerId) {
     const { matchPlayers } = get();
     const sub = matchPlayers.find(
       mp => mp.subbed_out_player_id === benchedMatchPlayerId && mp.is_active !== false
     );
     if (!sub) throw new Error('No active sub found for this player');
+    const benched = matchPlayers.find(mp => mp.id === benchedMatchPlayerId);
     await Promise.all([
       matchService.setPlayerActive(sub.id, false),
       matchService.setPlayerActive(benchedMatchPlayerId, true),
+      // Only clear injury if it was actually set — avoids a redundant write on tactical swap-backs
+      ...(benched?.is_injured ? [matchService.setPlayerInjured(benchedMatchPlayerId, false)] : []),
     ]);
     set(s => ({
       matchPlayers: s.matchPlayers.map(mp => {
         if (mp.id === sub.id) return { ...mp, is_active: false };
-        if (mp.id === benchedMatchPlayerId) return { ...mp, is_active: true };
+        if (mp.id === benchedMatchPlayerId) return { ...mp, is_active: true, is_injured: false };
         return mp;
       }),
     }));
