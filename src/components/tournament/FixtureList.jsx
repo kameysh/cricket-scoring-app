@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { Play, Trash2, Lock } from 'lucide-react';
 import MatchCard from '../match/MatchCard';
+import { matchDateValue } from '../../lib/cricketUtils';
 
 const DONE_STATUSES = ['completed', 'no_result', 'abandoned'];
 
@@ -19,7 +20,7 @@ function UpcomingFixtureCard({ match, onStart, matchNumber, locked, prevMatchNum
     <div className={`card overflow-hidden ${isLocked ? 'opacity-60' : ''}`}>
       <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-ink-100 dark:border-white/5">
         <span className="text-[11px] font-semibold tracking-widest text-ink-400 uppercase">{numLabel}Upcoming</span>
-        <span className="text-[11px] text-ink-400">{match.created_at && format(new Date(match.created_at), 'dd MMM yyyy')}</span>
+        <span className="text-[11px] text-ink-400">{matchDateValue(match) && format(matchDateValue(match), 'dd MMM yyyy')}</span>
       </div>
 
       <div className="flex items-center gap-3 px-4 py-3">

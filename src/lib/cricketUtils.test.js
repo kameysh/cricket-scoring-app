@@ -9,7 +9,7 @@ import {
   round, fmt,
   computeBadges, calcMotmScore, calcMotmDetail, pickMotm, calcMotmBreakdown,
   calcMvpScore, calcMvpBreakdown, buildScorecardsFromDeliveries,
-  displayName,
+  displayName, matchDateValue,
 } from './cricketUtils';
 
 // ── displayName ────────────────────────────────────────────────────────────────
@@ -32,6 +32,26 @@ describe('displayName', () => {
   });
   it('returns empty string for undefined', () => {
     expect(displayName(undefined)).toBe('');
+  });
+});
+
+// ── matchDateValue ─────────────────────────────────────────────────────────────
+
+describe('matchDateValue', () => {
+  it('prefers match_date over created_at', () => {
+    const d = matchDateValue({ match_date: '2026-06-27', created_at: '2026-06-25T10:00:00Z' });
+    // parsed in LOCAL time (T00:00:00, no Z) — so the calendar date is exactly 27 Jun
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(5);   // June (0-indexed)
+    expect(d.getDate()).toBe(27);
+  });
+  it('falls back to created_at when match_date is null', () => {
+    const d = matchDateValue({ match_date: null, created_at: '2026-06-25T10:00:00Z' });
+    expect(d).toEqual(new Date('2026-06-25T10:00:00Z'));
+  });
+  it('returns null when neither date is present', () => {
+    expect(matchDateValue({})).toBeNull();
+    expect(matchDateValue(null)).toBeNull();
   });
 });
 

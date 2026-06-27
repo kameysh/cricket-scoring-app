@@ -361,6 +361,45 @@ export async function getHeadToHeadAll(batsmanId, inningsIds) {
     .sort((a, b) => b.balls - a.balls);
 }
 
+// Bowling head-to-head: the player AS A BOWLER vs each batsman they bowled to.
+// Mirror of getHeadToHeadAll from the bowler's side — shows wickets TAKEN (e.g.
+// Santosh's 7 wkts split Naveen×4 / Sarath×2 / Sujith×1), not dismissals suffered.
+export async function getBowlingHeadToHeadAll(bowlerId, inningsIds) {
+  let query = supabase
+    .from('deliveries')
+    .select('batsman_id, batsman:players!batsman_id(id,name,nickname), runs_off_bat, extra_type, extra_runs, total_runs_on_delivery, is_wicket, wicket_type, is_legal_delivery, innings_id')
+    .eq('bowler_id', bowlerId);
+  if (inningsIds?.length) query = query.in('innings_id', inningsIds);
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const batMap = new Map();
+  for (const d of data || []) {
+    if (!d.batsman_id) continue;
+    if (!batMap.has(d.batsman_id)) {
+      batMap.set(d.batsman_id, {
+        batsmanId: d.batsman_id,
+        batsmanName: d.batsman?.name || 'Unknown',
+        balls: 0, runs: 0, wickets: 0, dots: 0, fours: 0, sixes: 0,
+      });
+    }
+    const e = batMap.get(d.batsman_id);
+    if (d.is_legal_delivery) e.balls += 1;
+    // Runs conceded by the bowler — byes / leg-byes don't count against them
+    const isBye = d.extra_type === 'bye' || d.extra_type === 'leg_bye';
+    e.runs += isBye ? 0 : (d.total_runs_on_delivery ?? ((d.runs_off_bat || 0) + (d.extra_runs || 0)));
+    const r = d.runs_off_bat ?? 0;
+    if (r === 0 && d.is_legal_delivery && d.extra_type !== 'wide' && d.extra_type !== 'no_ball') e.dots += 1;
+    if (r === 4) e.fours += 1;
+    if (r === 6) e.sixes += 1;
+    if (d.is_wicket && ['bowled', 'caught', 'lbw', 'stumped', 'hit_wicket'].includes(d.wicket_type)) e.wickets += 1;
+  }
+
+  return Array.from(batMap.values())
+    .map(e => ({ ...e, econ: e.balls > 0 ? (e.runs / e.balls) * 6 : 0, dotPct: e.balls > 0 ? (e.dots / e.balls) * 100 : 0 }))
+    .sort((a, b) => b.wickets - a.wickets || b.balls - a.balls);
+}
+
 export async function getPlayerVsPlayer(p1Id, p2Id) {
   // Fetch all deliveries then filter wides in JS — Supabase .neq('extra_type','wide')
   // uses SQL != which excludes NULL rows (normal balls), same pattern as getHeadToHeadAll.

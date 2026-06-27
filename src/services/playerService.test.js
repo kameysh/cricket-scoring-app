@@ -197,3 +197,48 @@ describe('getPlayerSeriesStats', () => {
     expect(result.field_catches).toBe(3);
   });
 });
+
+describe('getBowlingHeadToHeadAll', () => {
+  function mockDeliveries(rows, capture) {
+    const chain = {
+      select: vi.fn(() => chain),
+      eq: vi.fn(() => chain),
+      in: vi.fn((col, val) => { capture && capture.push([col, val]); return chain; }),
+      then: (r) => Promise.resolve({ data: rows, error: null }).then(r),
+    };
+    supabase.from.mockReturnValue(chain);
+  }
+
+  it('aggregates wickets/runs/balls per batsman from the bowler side', async () => {
+    const { getBowlingHeadToHeadAll } = await import('./playerService');
+    mockDeliveries([
+      { batsman_id: 'naveen', batsman: { name: 'Naveen' }, runs_off_bat: 0, extra_type: 'none', total_runs_on_delivery: 0, is_wicket: true,  wicket_type: 'bowled', is_legal_delivery: true },
+      { batsman_id: 'naveen', batsman: { name: 'Naveen' }, runs_off_bat: 4, extra_type: 'none', total_runs_on_delivery: 4, is_wicket: false, wicket_type: null,     is_legal_delivery: true },
+      { batsman_id: 'naveen', batsman: { name: 'Naveen' }, runs_off_bat: 0, extra_type: 'wide', extra_runs: 1, total_runs_on_delivery: 1, is_wicket: false, is_legal_delivery: false }, // wide: +1 run, not a ball
+      { batsman_id: 'sarath', batsman: { name: 'Sarath' }, runs_off_bat: 1, extra_type: 'none', total_runs_on_delivery: 1, is_wicket: true,  wicket_type: 'caught', is_legal_delivery: true },
+    ]);
+    const res = await getBowlingHeadToHeadAll('santosh', null);
+    const naveen = res.find(r => r.batsmanId === 'naveen');
+    const sarath = res.find(r => r.batsmanId === 'sarath');
+    expect(naveen).toMatchObject({ batsmanName: 'Naveen', balls: 2, runs: 5, wickets: 1 }); // 2 legal, 0+4+1(wide)=5, 1 wkt
+    expect(sarath).toMatchObject({ batsmanName: 'Sarath', balls: 1, runs: 1, wickets: 1 });
+    expect(res[0].batsmanId).toBe('naveen'); // tie on wickets → more balls first
+  });
+
+  it('excludes byes/leg-byes from runs conceded', async () => {
+    const { getBowlingHeadToHeadAll } = await import('./playerService');
+    mockDeliveries([
+      { batsman_id: 'b1', batsman: { name: 'B1' }, runs_off_bat: 0, extra_type: 'bye', extra_runs: 4, total_runs_on_delivery: 4, is_wicket: false, is_legal_delivery: true },
+    ]);
+    const res = await getBowlingHeadToHeadAll('x', null);
+    expect(res[0].runs).toBe(0); // 4 byes do not count against the bowler
+  });
+
+  it('filters by inningsIds when provided', async () => {
+    const { getBowlingHeadToHeadAll } = await import('./playerService');
+    const calls = [];
+    mockDeliveries([], calls);
+    await getBowlingHeadToHeadAll('x', ['i1', 'i2']);
+    expect(calls).toContainEqual(['innings_id', ['i1', 'i2']]);
+  });
+});

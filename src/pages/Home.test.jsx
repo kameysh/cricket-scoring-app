@@ -275,6 +275,7 @@ vi.mock('../services/promoService', () => ({
 vi.mock('../lib/cricketUtils', () => ({
   formatOvers: (balls) => `${Math.floor(balls / 6)}.${balls % 6}`,
   displayName: (p) => p?.nickname?.trim() || p?.name || '',
+  matchDateValue: (m) => (m?.match_date ? new Date(`${m.match_date}T00:00:00`) : (m?.created_at ? new Date(m.created_at) : null)),
 }));
 
 import * as matchService from '../services/matchService';

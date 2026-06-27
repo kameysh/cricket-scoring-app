@@ -8,6 +8,16 @@ export function displayName(player) {
   return player.nickname?.trim() || player.name || '';
 }
 
+// The date to display for a match: the actual play date (`match_date`, a YYYY-MM-DD
+// string parsed in LOCAL time to avoid an off-by-one in timezones behind UTC) when
+// set, else `created_at` (the row-creation timestamp). Returns a Date or null.
+export function matchDateValue(match) {
+  if (!match) return null;
+  if (match.match_date) return new Date(`${match.match_date}T00:00:00`);
+  if (match.created_at) return new Date(match.created_at);
+  return null;
+}
+
 export function formatOvers(legalBalls) {
   if (!legalBalls) return '0.0';
   const overs = Math.floor(legalBalls / 6);

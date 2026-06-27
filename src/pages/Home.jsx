@@ -14,7 +14,7 @@ import ConfirmDialog from '../components/shared/ConfirmDialog';
 import PlayerAvatar from '../components/player/PlayerAvatar';
 import { useRole } from '../hooks/useRole';
 import { useAuthStore } from '../stores/authStore';
-import { formatOvers } from '../lib/cricketUtils';
+import { formatOvers, matchDateValue } from '../lib/cricketUtils';
 import { supabase } from '../lib/supabase';
 
 export default function Home() {
@@ -558,7 +558,7 @@ export function MatchScoreCard({ match, matchNumber, stats, onDelete, onNavigate
       <div className="px-4 py-2 border-t border-ink-100 dark:border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-ink-400">
-            {match.created_at && format(new Date(match.created_at), 'dd MMM yyyy')}
+            {matchDateValue(match) && format(matchDateValue(match), 'dd MMM yyyy')}
           </span>
           {match.venues?.name && (
             <span className="text-[11px] text-ink-300">· {match.venues.name}</span>

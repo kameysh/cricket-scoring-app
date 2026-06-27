@@ -101,7 +101,10 @@ export async function startMatch(matchId) {
   if (match.tournament_id) {
     await supabase.from('tournaments').update({ status: 'ongoing' }).eq('id', match.tournament_id).eq('status', 'upcoming');
   }
-  const result = await updateMatch(matchId, { status: 'live' });
+  const payload = { status: 'live' };
+  // Capture the real play date the first time a match goes live (local date, user's tz)
+  if (!match.match_date) payload.match_date = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const result = await updateMatch(matchId, payload);
   // Fire-and-forget push notification — never blocks or throws
   sendPushNotification({
     title: '🏏 Match is Live!',
@@ -329,21 +332,25 @@ export async function getH2HTopPerformers(matchIds) {
   const inningsIds = (inningsRows || []).map(i => i.id);
   if (!inningsIds.length) return { topBatsmen: [], topBowlers: [] };
 
+  // NB: scorecard columns are `runs` / `wickets` (the `bat_`/`bowl_` prefixes belong
+  // to player_career_stats). Disambiguate the batting_scorecards → players FK (3 refs).
   const [bat, bowl] = await Promise.all([
-    supabase.from('batting_scorecards').select('player_id, bat_runs, players(name, nickname, photo_url)').in('innings_id', inningsIds).limit(200),
-    supabase.from('bowling_scorecards').select('player_id, bowl_wickets, players(name, nickname, photo_url)').in('innings_id', inningsIds).limit(200),
+    supabase.from('batting_scorecards').select('player_id, runs, players!player_id(name, nickname, photo_url)').in('innings_id', inningsIds).limit(200),
+    supabase.from('bowling_scorecards').select('player_id, wickets, players(name, nickname, photo_url)').in('innings_id', inningsIds).limit(200),
   ]);
+  if (bat.error) throw bat.error;
+  if (bowl.error) throw bowl.error;
 
   const batMap = new Map();
   for (const r of bat.data || []) {
     const e = batMap.get(r.player_id) || { player: r.players, runs: 0 };
-    e.runs += r.bat_runs || 0;
+    e.runs += r.runs || 0;
     batMap.set(r.player_id, e);
   }
   const bowlMap = new Map();
   for (const r of bowl.data || []) {
     const e = bowlMap.get(r.player_id) || { player: r.players, wickets: 0 };
-    e.wickets += r.bowl_wickets || 0;
+    e.wickets += r.wickets || 0;
     bowlMap.set(r.player_id, e);
   }
   return {

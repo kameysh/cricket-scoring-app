@@ -4,6 +4,7 @@ import { ChevronLeft, ArrowLeftRight, Trophy, Activity } from 'lucide-react';
 import * as matchService from '../services/matchService';
 import * as teamService from '../services/teamService';
 import PlayerAvatar from '../components/player/PlayerAvatar';
+import { matchDateValue } from '../lib/cricketUtils';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 
 function formatDate(ts) {
@@ -226,7 +227,7 @@ export default function HeadToHead() {
                     const isTie = m.result_type === 'tie';
                     return (
                       <div key={m.id} className="flex items-center justify-between text-xs py-1 border-b border-ink-50 dark:border-white/5 last:border-0">
-                        <span className="text-ink-400">{formatDate(m.created_at)}</span>
+                        <span className="text-ink-400">{formatDate(matchDateValue(m))}</span>
                         <span className="font-medium text-ink-800 dark:text-ink-100">
                           {isTie ? 'Tied' : <>{winner} <span className="text-ink-400">beat</span> {loser}</>}
                           {m.winning_margin && !isTie && (

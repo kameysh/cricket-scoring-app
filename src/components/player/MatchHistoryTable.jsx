@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { calcStrikeRate, fmt } from '../../lib/cricketUtils';
+import { calcStrikeRate, fmt, matchDateValue } from '../../lib/cricketUtils';
 
 function resultBadge(match, playerTeam) {
   if (match.status !== 'completed') return null;
@@ -34,7 +34,7 @@ export default function MatchHistoryTable({ history }) {
             className="w-full text-left card p-3 space-y-1.5"
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-400">{match.created_at && format(new Date(match.created_at), 'dd MMM yyyy')}</span>
+              <span className="text-xs text-gray-400">{matchDateValue(match) && format(matchDateValue(match), 'dd MMM yyyy')}</span>
               {resultBadge(match, batting?.team || bowling?.team)}
             </div>
             <div className="font-medium text-sm text-gray-900 dark:text-white">

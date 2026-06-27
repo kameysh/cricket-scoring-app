@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Trash2 } from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
+import { matchDateValue } from '../../lib/cricketUtils';
 
 const statusColors = {
   upcoming: 'bg-gray-100 text-gray-700',
@@ -35,7 +36,7 @@ export default function MatchCard({ match, onDelete, matchNumber }) {
               {match.status.replace('_', ' ').toUpperCase()}
             </span>
           </div>
-          <span className="text-xs text-gray-400">{match.created_at && format(new Date(match.created_at), 'dd MMM yyyy')}</span>
+          <span className="text-xs text-gray-400">{matchDateValue(match) && format(matchDateValue(match), 'dd MMM yyyy')}</span>
         </div>
         <div className="font-semibold text-gray-900 dark:text-white">
           {match.team1_name} vs {match.team2_name}

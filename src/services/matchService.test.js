@@ -280,6 +280,13 @@ describe('startUpcomingMatch', () => {
     await startUpcomingMatch('match-1', 'team1', 'bat');
     expect(matchUpdatePayloads[1]).toMatchObject({ status: 'live' });
   });
+
+  it('captures match_date (today, YYYY-MM-DD) on first start', async () => {
+    await startUpcomingMatch('match-1', 'team1', 'bat');
+    const today = new Date().toLocaleDateString('en-CA');
+    expect(matchUpdatePayloads[1]).toMatchObject({ status: 'live', match_date: today });
+    expect(matchUpdatePayloads[1].match_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
 });
 
 describe('getSeriesPlayerMotmBreakdown', () => {
@@ -331,5 +338,50 @@ describe('getSeriesPlayerMotmBreakdown', () => {
     });
     const res = await getSeriesPlayerMotmBreakdown('tour-1', 'p1');
     expect(res).toEqual({ total: 0, groups: [], matches: 1 });
+  });
+});
+
+describe('getH2HTopPerformers', () => {
+  function q(result) {
+    const obj = { select: vi.fn(() => obj), in: vi.fn(() => obj), limit: vi.fn(() => obj), then: (r) => Promise.resolve(result).then(r) };
+    return obj;
+  }
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns empty when no matchIds', async () => {
+    const { getH2HTopPerformers } = await import('./matchService');
+    expect(await getH2HTopPerformers([])).toEqual({ topBatsmen: [], topBowlers: [] });
+  });
+
+  it('aggregates top batsmen by runs and bowlers by wickets (correct scorecard columns)', async () => {
+    supabase.from.mockImplementation(table => {
+      if (table === 'innings') return q({ data: [{ id: 'i1' }, { id: 'i2' }], error: null });
+      if (table === 'batting_scorecards') return q({ data: [
+        { player_id: 'p1', runs: 40, players: { name: 'Alpha' } },
+        { player_id: 'p1', runs: 20, players: { name: 'Alpha' } },  // same player, 2 innings
+        { player_id: 'p2', runs: 35, players: { name: 'Bravo' } },
+      ], error: null });
+      if (table === 'bowling_scorecards') return q({ data: [
+        { player_id: 'b1', wickets: 3, players: { name: 'Charlie' } },
+        { player_id: 'b1', wickets: 2, players: { name: 'Charlie' } },
+        { player_id: 'b2', wickets: 1, players: { name: 'Delta' } },
+      ], error: null });
+      return q({ data: [], error: null });
+    });
+    const { getH2HTopPerformers } = await import('./matchService');
+    const res = await getH2HTopPerformers(['m1']);
+    expect(res.topBatsmen[0]).toMatchObject({ runs: 60 });            // p1: 40 + 20
+    expect(res.topBatsmen[0].player).toEqual({ name: 'Alpha' });
+    expect(res.topBowlers[0]).toMatchObject({ wickets: 5 });          // b1: 3 + 2
+  });
+
+  it('throws when the scorecard query errors (no longer swallowed)', async () => {
+    supabase.from.mockImplementation(table => {
+      if (table === 'innings') return q({ data: [{ id: 'i1' }], error: null });
+      if (table === 'batting_scorecards') return q({ data: null, error: { message: 'bad column' } });
+      return q({ data: [], error: null });
+    });
+    const { getH2HTopPerformers } = await import('./matchService');
+    await expect(getH2HTopPerformers(['m1'])).rejects.toMatchObject({ message: 'bad column' });
   });
 });
