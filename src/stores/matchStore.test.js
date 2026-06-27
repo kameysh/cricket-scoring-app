@@ -298,3 +298,52 @@ describe('matchStore.startSuperOverInnings', () => {
     expect(useMatchStore.getState().keeper).toBe('k-team1');
   });
 });
+
+// ── setTotalOvers ───────────────────────────────────────────────────────────────
+
+describe('matchStore.setTotalOvers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    matchService.updateMatch.mockImplementation(async (_id, payload) => ({ ...MATCH, total_overs: 8, ...payload }));
+  });
+
+  function seed(total_legal_balls, extra = {}) {
+    useMatchStore.setState({
+      match: { ...MATCH, total_overs: 8 },
+      currentInnings: { id: 'i1', total_legal_balls, is_super_over: false, ...extra },
+    });
+  }
+
+  it('increases overs and updates the store match', async () => {
+    seed(30); // 5.0 bowled
+    const updated = await useMatchStore.getState().setTotalOvers(10);
+    expect(matchService.updateMatch).toHaveBeenCalledWith('match-1', { total_overs: 10 });
+    expect(updated.total_overs).toBe(10);
+    expect(useMatchStore.getState().match.total_overs).toBe(10);
+  });
+
+  it('allows reducing to exactly the completed-over count (balls = N*6)', async () => {
+    seed(30); // exactly 5.0 → minimum 5 overs
+    await useMatchStore.getState().setTotalOvers(5);
+    expect(matchService.updateMatch).toHaveBeenCalledWith('match-1', { total_overs: 5 });
+  });
+
+  it('rejects reducing below the over already in progress (5.1 → 5)', async () => {
+    seed(31); // 5.1 bowled → minimum 6 overs
+    await expect(useMatchStore.getState().setTotalOvers(5)).rejects.toMatchObject({ code: 'OVERS_TOO_LOW', minOvers: 6 });
+    expect(matchService.updateMatch).not.toHaveBeenCalled();
+  });
+
+  it('refuses to change overs during a super over', async () => {
+    seed(0, { is_super_over: true });
+    await expect(useMatchStore.getState().setTotalOvers(2)).rejects.toThrow(/super over/i);
+    expect(matchService.updateMatch).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-integer / less-than-1 values', async () => {
+    seed(0);
+    await expect(useMatchStore.getState().setTotalOvers(0)).rejects.toThrow();
+    await expect(useMatchStore.getState().setTotalOvers(3.5)).rejects.toThrow();
+    expect(matchService.updateMatch).not.toHaveBeenCalled();
+  });
+});

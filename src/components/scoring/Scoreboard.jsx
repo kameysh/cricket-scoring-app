@@ -1,6 +1,7 @@
+import { Pencil } from 'lucide-react';
 import { formatOvers, calcCRR, calcRRR, fmt } from '../../lib/cricketUtils';
 
-export default function Scoreboard({ match, innings, battingTeamName, matchNumber }) {
+export default function Scoreboard({ match, innings, battingTeamName, matchNumber, onEditOvers }) {
   if (!innings) return null;
   const overs = formatOvers(innings.total_legal_balls);
   const crr = calcCRR(innings.total_runs, innings.total_legal_balls);
@@ -28,7 +29,17 @@ export default function Scoreboard({ match, innings, battingTeamName, matchNumbe
         <span className="text-2xl font-bold tabular-nums">{innings.total_runs}/{innings.total_wickets}</span>
       </div>
       <div className="flex items-center justify-between text-xs text-white/85 mt-1">
-        <span>Overs: {overs}/{innings.is_super_over ? 1 : match.total_overs}</span>
+        {onEditOvers && !innings.is_super_over ? (
+          <button
+            onClick={onEditOvers}
+            className="inline-flex items-center gap-1 underline decoration-dotted decoration-white/50 underline-offset-2 hover:text-white"
+          >
+            Overs: {overs}/{match.total_overs}
+            <Pencil size={11} className="opacity-80" />
+          </button>
+        ) : (
+          <span>Overs: {overs}/{innings.is_super_over ? 1 : match.total_overs}</span>
+        )}
         <span>CRR: {fmt(crr)}</span>
         {rrrInfo && <span>Need {rrrInfo.needed} off {rrrInfo.ballsRemaining} — RRR {fmt(rrrInfo.rrr)}</span>}
       </div>

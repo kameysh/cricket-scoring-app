@@ -294,6 +294,8 @@ export default function LiveScoring() {
   const [subOpen, setSubOpen] = useState(false);
   const [allPlayers, setAllPlayers] = useState([]);
   const [matchNumber, setMatchNumber] = useState(null);
+  const [oversEditOpen, setOversEditOpen] = useState(false);
+  const [oversDraft, setOversDraft] = useState(0);
   const endingMatchRef = useRef(false);
   const winHandledRef = useRef(false);
   const milestonesRef = useRef(new Set());
@@ -793,6 +795,21 @@ export default function LiveScoring() {
     }
   }
 
+  function openOversEdit() {
+    setOversDraft(match.total_overs);
+    setOversEditOpen(true);
+  }
+
+  async function handleSaveOvers() {
+    try {
+      await store.setTotalOvers(oversDraft);
+      toast.success(`Match set to ${oversDraft} over${oversDraft === 1 ? '' : 's'}`);
+      setOversEditOpen(false);
+    } catch (e) {
+      toast.error(e.message || 'Could not change overs');
+    }
+  }
+
   async function handleStartSuperOver() {
     // Keep superOverOpen=true (BallInputPanel stays disabled) until new innings is ready
     // Capture batting_team before endInnings clears currentInnings
@@ -832,7 +849,7 @@ export default function LiveScoring() {
           Abandon
         </button>
       </div>
-      <Scoreboard match={match} innings={currentInnings} battingTeamName={battingTeamName} matchNumber={matchNumber} />
+      <Scoreboard match={match} innings={currentInnings} battingTeamName={battingTeamName} matchNumber={matchNumber} onEditOvers={currentInnings?.is_super_over ? undefined : openOversEdit} />
       <PowerplayBanner match={match} innings={currentInnings} />
       <FreehitBanner active={freeHit} />
 
@@ -1089,6 +1106,44 @@ export default function LiveScoring() {
             </button>
           </div>
         </div>
+      </BottomSheet>
+
+      <BottomSheet open={oversEditOpen} onClose={() => setOversEditOpen(false)} title="Adjust Overs" heightClass="h-auto">
+        {(() => {
+          const bowled = currentInnings?.total_legal_balls ?? 0;
+          const minOvers = Math.max(1, Math.ceil(bowled / 6));
+          const midOver = bowled % 6 !== 0;
+          return (
+            <div className="space-y-4 pb-2">
+              <p className="text-sm text-center text-ink-600 dark:text-ink-300">
+                Set the total overs for this match. You can't go below the overs already bowled this innings.
+              </p>
+              <div className="flex items-center justify-center gap-6">
+                <button
+                  onClick={() => setOversDraft(o => Math.max(minOvers, o - 1))}
+                  disabled={oversDraft <= minOvers}
+                  className="w-12 h-12 rounded-full border border-ink-200 dark:border-white/15 text-2xl font-bold text-ink-700 dark:text-ink-200 disabled:opacity-30"
+                >−</button>
+                <div className="text-center w-20">
+                  <p className="text-4xl font-bold tabular-nums text-ink-900 dark:text-white">{oversDraft}</p>
+                  <p className="text-[11px] text-ink-400 uppercase tracking-wide">overs</p>
+                </div>
+                <button
+                  onClick={() => setOversDraft(o => o + 1)}
+                  className="w-12 h-12 rounded-full border border-ink-200 dark:border-white/15 text-2xl font-bold text-ink-700 dark:text-ink-200"
+                >+</button>
+              </div>
+              <p className="text-xs text-center text-ink-400">
+                Bowled so far: {formatOvers(bowled)} ov · minimum {minOvers} {minOvers === 1 ? 'over' : 'overs'}
+                {oversDraft <= minOvers && midOver && <><br />Undo the current over's balls to reduce further.</>}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setOversEditOpen(false)} className="py-3 rounded-xl border border-ink-200 dark:border-white/10 text-sm font-semibold text-ink-700 dark:text-ink-200">Cancel</button>
+                <button onClick={handleSaveOvers} disabled={oversDraft === match.total_overs} className="py-3 rounded-xl bg-brand-green text-white text-sm font-semibold disabled:opacity-40">Save</button>
+              </div>
+            </div>
+          );
+        })()}
       </BottomSheet>
 
       <PlayerSubSheet

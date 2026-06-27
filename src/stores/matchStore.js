@@ -276,6 +276,30 @@ export const useMatchStore = create((set, get) => ({
     return updated;
   },
 
+  // Change the match over-limit mid-game (e.g. an 8-over match agreed down to 7/5).
+  // Guard: you cannot reduce below the overs already bowled in the CURRENT innings —
+  // any ball into over N+1 (total_legal_balls > N*6) blocks setting the limit to N.
+  // Undo that ball to bring the count back to N.0, then the reduction is allowed.
+  // Throws an Error tagged { code:'OVERS_TOO_LOW', minOvers } so the UI can react.
+  async setTotalOvers(newOvers) {
+    const { match, currentInnings } = get();
+    if (!match) throw new Error('No match loaded');
+    if (currentInnings?.is_super_over) throw new Error('Cannot change overs during a super over');
+    const n = Number(newOvers);
+    if (!Number.isInteger(n) || n < 1) throw new Error('Overs must be a whole number of at least 1');
+    const ballsBowled = currentInnings?.total_legal_balls ?? 0;
+    const minOvers = Math.max(1, Math.ceil(ballsBowled / 6));
+    if (n < minOvers) {
+      const err = new Error(`Already bowled ${Math.floor(ballsBowled / 6)}.${ballsBowled % 6} overs — undo the last ball to reduce to ${n}`);
+      err.code = 'OVERS_TOO_LOW';
+      err.minOvers = minOvers;
+      throw err;
+    }
+    const updated = await matchService.updateMatch(match.id, { total_overs: n });
+    set({ match: updated });
+    return updated;
+  },
+
   setOnline(isOnline) {
     set({ isOnline });
   },

@@ -7,7 +7,7 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-import { getPlayerMatchCounts, getPlayerInningsCounts, getPlayerSeriesStats, getSeriesMatchIds } from './playerService';
+import { getPlayerMatchCounts, getPlayerInningsCounts, getPlayerSeriesStats, getSeriesMatchIds, getMatchHistory } from './playerService';
 import { supabase } from '../lib/supabase';
 
 function mockFrom(data) {
@@ -195,6 +195,37 @@ describe('getPlayerSeriesStats', () => {
     expect(result.bowl_wickets).toBe(5);
     expect(result.bowl_best_wickets).toBe(3); // better figures
     expect(result.field_catches).toBe(3);
+  });
+});
+
+describe('getMatchHistory', () => {
+  function thenable(data) {
+    const c = {};
+    ['select', 'eq', 'in', 'order', 'range'].forEach(m => { c[m] = vi.fn(() => c); });
+    c.then = (res) => Promise.resolve({ data, error: null }).then(res);
+    return c;
+  }
+
+  it('attaches playerTeam from match_players (not the unreliable scorecard team)', async () => {
+    supabase.from.mockImplementation(table => {
+      switch (table) {
+        case 'match_players': return thenable([{ match_id: 'm1', team: 2 }]);
+        case 'matches': return thenable([{ id: 'm1', status: 'completed', team1_name: 'A', team2_name: 'B', winning_team_name: 'B', created_at: '2026-01-01' }]);
+        case 'innings': return thenable([{ id: 'i1', match_id: 'm1', innings_number: 1 }]);
+        case 'batting_scorecards': return thenable([{ innings_id: 'i1', player_id: 'p1', runs: 13, balls_faced: 7, team: null }]); // scorecard team null
+        default: return thenable([]);
+      }
+    });
+    const res = await getMatchHistory('p1');
+    expect(res).toHaveLength(1);
+    expect(res[0].playerTeam).toBe(2);      // resolved from match_players
+    expect(res[0].batting.team).toBeNull(); // scorecard team genuinely null
+  });
+
+  it('returns empty array when the player has no matches', async () => {
+    supabase.from.mockImplementation(() => thenable([]));
+    const res = await getMatchHistory('p1');
+    expect(res).toEqual([]);
   });
 });
 

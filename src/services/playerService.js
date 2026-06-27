@@ -182,11 +182,15 @@ export async function getPlayerTournaments(playerId) {
 export async function getMatchHistory(playerId, limit = 50, offset = 0) {
   const { data: mpRows, error } = await supabase
     .from('match_players')
-    .select('match_id')
+    .select('match_id, team')
     .eq('player_id', playerId);
   if (error) throw error;
   const matchIds = mpRows.map(r => r.match_id);
   if (matchIds.length === 0) return [];
+  // Authoritative player team per match (the scorecard `team` column is unreliable —
+  // recomputeInnings writes it back as null after an undo, so the result badge must
+  // not depend on it). match_players.team is always set to 1 or 2.
+  const teamByMatch = new Map(mpRows.map(r => [r.match_id, r.team]));
 
   // Fetch matches and innings in parallel — both depend only on matchIds
   const [matchesRes, inningsRes] = await Promise.all([
@@ -221,7 +225,7 @@ export async function getMatchHistory(playerId, limit = 50, offset = 0) {
     const bat   = (batting.data  || []).find(b => inningsSet.has(b.innings_id));
     const bowl  = (bowling.data  || []).find(b => inningsSet.has(b.innings_id));
     const field = (fielding.data || []).find(b => inningsSet.has(b.innings_id));
-    return { match, batting: bat, bowling: bowl, fielding: field };
+    return { match, batting: bat, bowling: bowl, fielding: field, playerTeam: teamByMatch.get(match.id) ?? null };
   });
 }
 

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import Scoreboard from './Scoreboard';
 
 const MATCH = { id: 'm1', total_overs: 5, team1_name: 'Super Kings', team2_name: 'Back Street Boyz' };
@@ -65,6 +65,27 @@ describe('Scoreboard — regular innings', () => {
   it('does NOT show RRR for innings 1', () => {
     render(<Scoreboard match={MATCH} innings={regularInnings1} battingTeamName="Super Kings" />);
     expect(screen.queryByText(/RRR/)).toBeNull();
+  });
+});
+
+describe('Scoreboard — editable overs', () => {
+  it('renders the overs as a button that calls onEditOvers when the callback is provided', () => {
+    const onEditOvers = vi.fn();
+    render(<Scoreboard match={MATCH} innings={regularInnings1} battingTeamName="Super Kings" onEditOvers={onEditOvers} />);
+    const btn = screen.getByRole('button', { name: /Overs: 3\.0\/5/ });
+    fireEvent.click(btn);
+    expect(onEditOvers).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders plain overs text (no button) when onEditOvers is not provided', () => {
+    render(<Scoreboard match={MATCH} innings={regularInnings1} battingTeamName="Super Kings" />);
+    expect(screen.queryByRole('button', { name: /Overs/ })).toBeNull();
+    expect(screen.getByText(/Overs: 3\.0\/5/)).toBeTruthy();
+  });
+
+  it('does NOT make overs editable during a super over even if onEditOvers is provided', () => {
+    render(<Scoreboard match={MATCH} innings={soInnings1} battingTeamName="Back Street Boyz" onEditOvers={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Overs/ })).toBeNull();
   });
 });
 

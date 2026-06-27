@@ -25,8 +25,11 @@ export default function MatchHistoryTable({ history }) {
 
   return (
     <div className="space-y-2">
-      {history.map(({ match, batting, bowling, fielding }) => {
+      {history.map(({ match, batting, bowling, fielding, playerTeam }) => {
         const fieldingTotal = (fielding?.catches || 0) + (fielding?.stumpings || 0) + (fielding?.run_outs || 0);
+        // Prefer the authoritative match_players team; fall back to the (unreliable)
+        // scorecard team only if it's somehow missing.
+        const team = playerTeam || batting?.team || bowling?.team;
         return (
           <button
             key={match.id}
@@ -35,7 +38,7 @@ export default function MatchHistoryTable({ history }) {
           >
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">{matchDateValue(match) && format(matchDateValue(match), 'dd MMM yyyy')}</span>
-              {resultBadge(match, batting?.team || bowling?.team)}
+              {resultBadge(match, team)}
             </div>
             <div className="font-medium text-sm text-gray-900 dark:text-white">
               {match.team1_name} vs {match.team2_name}
