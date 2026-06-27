@@ -127,7 +127,7 @@ describe('getSeriesMatchIds', () => {
         eq: vi.fn().mockReturnThis(),
         in: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
-      if (table === 'tournaments') chain.eq = vi.fn().mockResolvedValue({ data: [], error: null });
+      if (table === 'tournaments') chain.then = (r) => Promise.resolve({ data: [], error: null }).then(r);
       return chain;
     });
     const result = await getSeriesMatchIds('s1');
@@ -136,9 +136,9 @@ describe('getSeriesMatchIds', () => {
 
   it('returns match IDs from all series tournaments', async () => {
     supabase.from.mockImplementation(table => {
-      const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn(), in: vi.fn() };
+      const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), in: vi.fn() };
       if (table === 'tournaments') {
-        chain.eq = vi.fn().mockResolvedValue({ data: [{ id: 't1' }, { id: 't2' }], error: null });
+        chain.then = (r) => Promise.resolve({ data: [{ id: 't1' }, { id: 't2' }], error: null }).then(r);
       } else {
         chain.select = vi.fn().mockReturnThis();
         chain.in = vi.fn().mockResolvedValue({ data: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }], error: null });
@@ -153,9 +153,9 @@ describe('getSeriesMatchIds', () => {
 describe('getPlayerSeriesStats', () => {
   it('returns null when player has no stats in series tournaments', async () => {
     supabase.from.mockImplementation(table => {
-      const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn(), in: vi.fn() };
+      const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), in: vi.fn() };
       if (table === 'tournaments') {
-        chain.eq = vi.fn().mockResolvedValue({ data: [{ id: 't1' }], error: null });
+        chain.then = (r) => Promise.resolve({ data: [{ id: 't1' }], error: null }).then(r);
       } else {
         chain.select = vi.fn().mockReturnThis();
         chain.eq = vi.fn().mockReturnThis();
@@ -169,9 +169,9 @@ describe('getPlayerSeriesStats', () => {
 
   it('aggregates stats across multiple tournament rows', async () => {
     supabase.from.mockImplementation(table => {
-      const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn(), in: vi.fn() };
+      const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), in: vi.fn() };
       if (table === 'tournaments') {
-        chain.eq = vi.fn().mockResolvedValue({ data: [{ id: 't1' }, { id: 't2' }], error: null });
+        chain.then = (r) => Promise.resolve({ data: [{ id: 't1' }, { id: 't2' }], error: null }).then(r);
       } else {
         chain.select = vi.fn().mockReturnThis();
         chain.eq = vi.fn().mockReturnThis();

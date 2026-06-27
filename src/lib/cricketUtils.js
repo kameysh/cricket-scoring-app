@@ -66,6 +66,7 @@ export function calcBowlingStrikeRate(legalBalls, wickets) {
 }
 
 export function formatBestFigures(wickets, runs) {
+  if (wickets == null || runs == null) return '—';
   return `${wickets}/${runs}`;
 }
 

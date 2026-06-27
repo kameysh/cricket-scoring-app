@@ -129,6 +129,11 @@ describe('calcBowlingStrikeRate', () => {
 describe('formatBestFigures', () => {
   it('formats as W/R', () => expect(formatBestFigures(3, 25)).toBe('3/25'));
   it('handles zero wickets', () => expect(formatBestFigures(0, 10)).toBe('0/10'));
+  it('returns — when figures are missing (not "undefined/undefined")', () => {
+    expect(formatBestFigures(undefined, undefined)).toBe('—');
+    expect(formatBestFigures(null, null)).toBe('—');
+    expect(formatBestFigures(3, undefined)).toBe('—');
+  });
 });
 
 // ── calcWinByWickets / calcWinByRuns ──────────────────────────────────────────

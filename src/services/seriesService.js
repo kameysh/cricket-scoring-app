@@ -50,6 +50,7 @@ export async function getSeriesTournaments(seriesId) {
     .from('tournaments')
     .select('id, name, status, start_date, end_date')
     .eq('series_id', seriesId)
+    .eq('is_deleted', false)   // exclude soft-deleted tournaments (deleteTournament sets is_deleted)
     .order('start_date', { ascending: true, nullsFirst: false });
   if (error) throw error;
   return data || [];
@@ -60,7 +61,8 @@ export async function getSeriesPlayerStats(seriesId) {
   const { data: tournaments, error: tErr } = await supabase
     .from('tournaments')
     .select('id')
-    .eq('series_id', seriesId);
+    .eq('series_id', seriesId)
+    .eq('is_deleted', false);   // don't aggregate stats from soft-deleted tournaments
   if (tErr) throw tErr;
 
   const ids = (tournaments || []).map(t => t.id);
@@ -84,7 +86,8 @@ export async function getSeriesPlayerStats(seriesId) {
         bat_fours: 0, bat_sixes: 0, bat_fifties: 0, bat_hundreds: 0, bat_thirties: 0,
         bat_highest_score: 0,
         bowl_wickets: 0, bowl_runs: 0, bowl_legal_balls: 0, bowl_maidens: 0,
-        bowl_five_wicket_hauls: 0,
+        bowl_five_wicket_hauls: 0, bowl_matches: 0,
+        bowl_best_wickets: 0, bowl_best_runs: 0,
         field_catches: 0, field_stumpings: 0, field_run_outs: 0,
         bat_matches: 0,
       });
@@ -105,6 +108,12 @@ export async function getSeriesPlayerStats(seriesId) {
     s.bowl_legal_balls     += row.bowl_legal_balls     || 0;
     s.bowl_maidens         += row.bowl_maidens         || 0;
     s.bowl_five_wicket_hauls += row.bowl_five_wicket_hauls || 0;
+    s.bowl_matches         += row.bowl_matches         || 0;
+    // Best bowling across the series: most wickets, ties broken by fewest runs
+    const bw = row.bowl_best_wickets || 0, br = row.bowl_best_runs || 0;
+    if (bw > s.bowl_best_wickets || (bw === s.bowl_best_wickets && bw > 0 && br < s.bowl_best_runs)) {
+      s.bowl_best_wickets = bw; s.bowl_best_runs = br;
+    }
     s.field_catches        += row.field_catches        || 0;
     s.field_stumpings      += row.field_stumpings      || 0;
     s.field_run_outs       += row.field_run_outs       || 0;

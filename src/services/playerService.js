@@ -254,7 +254,7 @@ export async function getDuckHunterCount(playerId) {
 // Returns match IDs for all matches in a series (via its tournaments)
 export async function getSeriesMatchIds(seriesId) {
   const { data: tournaments, error: tErr } = await supabase
-    .from('tournaments').select('id').eq('series_id', seriesId);
+    .from('tournaments').select('id').eq('series_id', seriesId).eq('is_deleted', false);
   if (tErr) throw tErr;
   const tIds = (tournaments || []).map(t => t.id);
   if (!tIds.length) return [];
@@ -267,7 +267,7 @@ export async function getSeriesMatchIds(seriesId) {
 // Aggregate player_tournament_stats for one player across all tournaments in a series
 export async function getPlayerSeriesStats(playerId, seriesId) {
   const { data: tournaments, error: tErr } = await supabase
-    .from('tournaments').select('id').eq('series_id', seriesId);
+    .from('tournaments').select('id').eq('series_id', seriesId).eq('is_deleted', false);
   if (tErr) throw tErr;
   const tIds = (tournaments || []).map(t => t.id);
   if (!tIds.length) return null;

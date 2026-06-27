@@ -74,7 +74,7 @@ export default function TournamentLeaderboard({ batting, bowling, fielding }) {
             </tr></thead>
             <tbody>
               {battingRows.map((r, i) => (
-                <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800">
+                <tr key={r.player_id ?? r.id} className="border-b border-gray-100 dark:border-gray-800">
                   <td className="py-2">{i + 1}</td>
                   <td className="py-2"><PlayerLink id={r.player_id} name={r.players?.name} /></td>
                   <td className="py-2 px-1 text-center">{r.bat_matches}</td>
@@ -99,7 +99,7 @@ export default function TournamentLeaderboard({ batting, bowling, fielding }) {
             </tr></thead>
             <tbody>
               {bowlingRows.map((r, i) => (
-                <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800">
+                <tr key={r.player_id ?? r.id} className="border-b border-gray-100 dark:border-gray-800">
                   <td className="py-2">{i + 1}</td>
                   <td className="py-2"><PlayerLink id={r.player_id} name={r.players?.name} /></td>
                   <td className="py-2 px-1 text-center">{r.bowl_matches}</td>
@@ -123,7 +123,7 @@ export default function TournamentLeaderboard({ batting, bowling, fielding }) {
             </tr></thead>
             <tbody>
               {fieldingRows.map((r, i) => (
-                <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800">
+                <tr key={r.player_id ?? r.id} className="border-b border-gray-100 dark:border-gray-800">
                   <td className="py-2">{i + 1}</td>
                   <td className="py-2"><PlayerLink id={r.player_id} name={r.players?.name} /></td>
                   <td className="py-2 px-1 text-center">{r.field_catches}</td>
