@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Share2, Trash2, ChevronDown } from 'lucide-react';
 import * as matchService from '../services/matchService';
-import { calcMotmScore, formatOvers, fmt, calcStrikeRate, calcEconomy } from '../lib/cricketUtils';
+import { calcMotmScore, formatOvers, fmt, calcStrikeRate, calcEconomy, buildScorecardsFromDeliveries } from '../lib/cricketUtils';
 import { useRole } from '../hooks/useRole';
 import PlayerLink from '../components/player/PlayerLink';
 import PlayerAvatar from '../components/player/PlayerAvatar';
@@ -273,9 +273,6 @@ export default function MatchSummary() {
   const [deliveriesMap, setDeliveriesMap] = useState({});
   const [playerMeta, setPlayerMeta] = useState(new Map());
   const [playersMap, setPlayersMap] = useState({});
-  const [battingCards, setBattingCards] = useState([]);
-  const [bowlingCards, setBowlingCards] = useState([]);
-  const [fieldingCards, setFieldingCards] = useState([]);
 
   const [activeTab, setActiveTab] = useState('summary');
   const [scorecardInningsIdx, setScorecardInningsIdx] = useState(0);
@@ -318,19 +315,6 @@ export default function MatchSummary() {
 
     matchService.getInnings(id).then(async list => {
       setInningsList(list);
-      try {
-        const results = await Promise.all(list.map(inn => matchService.getScorecards(inn.id)));
-        const allBatting = [], allBowling = [], allFielding = [];
-        results.forEach(cards => {
-          allBatting.push(...cards.batting);
-          allBowling.push(...cards.bowling);
-          allFielding.push(...(cards.fielding || []));
-        });
-        setBattingCards(allBatting);
-        setBowlingCards(allBowling);
-        setFieldingCards(allFielding);
-      } catch { toast.error('Failed to load scorecards'); }
-
       const delivMap = {};
       await Promise.all(list.map(async inn => {
         delivMap[inn.id] = await matchService.getDeliveries(inn.id);
@@ -338,6 +322,15 @@ export default function MatchSummary() {
       setDeliveriesMap(delivMap);
     });
   }, [id]);
+
+  // MoTM / summary stats are derived from the ball-by-ball deliveries (the source of
+  // truth that ties to the team total), NOT the stored *_scorecards aggregates which
+  // can drift from the deliveries during scoring (see Match-05 corruption: every
+  // batsman's stored row was +1 ball). Keeps the Summary tab consistent with Scorecard.
+  const { battingCards, bowlingCards, fieldingCards } = useMemo(
+    () => buildScorecardsFromDeliveries(Object.values(deliveriesMap).flat()),
+    [deliveriesMap]
+  );
 
   // Must be before early return (Rules of Hooks)
   const scoredPlayers = useMemo(() => {

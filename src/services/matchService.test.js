@@ -9,7 +9,7 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-import { incrementMatchesPlayed, addSubPlayer, getMatchNumber, createSuperOverInnings, startUpcomingMatch } from './matchService';
+import { incrementMatchesPlayed, addSubPlayer, getMatchNumber, createSuperOverInnings, startUpcomingMatch, getSeriesPlayerMotmBreakdown } from './matchService';
 import { supabase } from '../lib/supabase';
 
 describe('incrementMatchesPlayed', () => {
@@ -279,5 +279,57 @@ describe('startUpcomingMatch', () => {
   it('sets match status to live after saving toss data', async () => {
     await startUpcomingMatch('match-1', 'team1', 'bat');
     expect(matchUpdatePayloads[1]).toMatchObject({ status: 'live' });
+  });
+});
+
+describe('getSeriesPlayerMotmBreakdown', () => {
+  // Generic chainable thenable resolving to a per-table result
+  function q(result) {
+    const obj = {
+      select: vi.fn(() => obj),
+      eq:     vi.fn(() => obj),
+      in:     vi.fn(() => obj),
+      then:   (res) => Promise.resolve(result).then(res),
+    };
+    return obj;
+  }
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns zeroed result when the tournament has no completed matches', async () => {
+    supabase.from.mockImplementation(() => q({ data: [], error: null }));
+    const res = await getSeriesPlayerMotmBreakdown('tour-1', 'p1');
+    expect(res).toEqual({ total: 0, groups: [], matches: 0 });
+  });
+
+  it('aggregates scorecards and returns a breakdown whose total matches the formula', async () => {
+    const bat   = [{ player_id: 'p1', runs: 50, balls_faced: 30, fours: 1, sixes: 1, status: 'not_out' }];
+    const bowl  = [{ player_id: 'p1', wickets: 3, legal_balls: 12, runs_conceded: 9, maidens: 0 }];
+    const field = [{ player_id: 'p1', catches: 2, stumpings: 0, run_outs: 0 }];
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'matches')             return q({ data: [{ id: 'm1' }, { id: 'm2' }], error: null });
+      if (table === 'innings')             return q({ data: [{ id: 'i1' }, { id: 'i2' }], error: null });
+      if (table === 'batting_scorecards')  return q({ data: bat,   error: null });
+      if (table === 'bowling_scorecards')  return q({ data: bowl,  error: null });
+      if (table === 'fielding_scorecards') return q({ data: field, error: null });
+      return q({ data: [], error: null });
+    });
+
+    const res = await getSeriesPlayerMotmBreakdown('tour-1', 'p1');
+    // batting 85 + bowling 100 + fielding 16 = 201
+    expect(res.total).toBe(201);
+    expect(res.matches).toBe(2);
+    expect(res.groups.map(g => g.title)).toEqual(['BATTING', 'BOWLING', 'FIELDING']);
+  });
+
+  it('returns matches count but no groups when innings have no scorecards for the player', async () => {
+    supabase.from.mockImplementation(table => {
+      if (table === 'matches') return q({ data: [{ id: 'm1' }], error: null });
+      if (table === 'innings') return q({ data: [{ id: 'i1' }], error: null });
+      return q({ data: [], error: null }); // empty scorecards
+    });
+    const res = await getSeriesPlayerMotmBreakdown('tour-1', 'p1');
+    expect(res).toEqual({ total: 0, groups: [], matches: 1 });
   });
 });

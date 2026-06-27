@@ -7,7 +7,8 @@ import {
   deriveRunType, applyStrikerSwap,
   calcWinByWickets, calcWinByRuns,
   round, fmt,
-  computeBadges, calcMotmScore, calcMotmDetail, pickMotm,
+  computeBadges, calcMotmScore, calcMotmDetail, pickMotm, calcMotmBreakdown,
+  calcMvpScore, calcMvpBreakdown, buildScorecardsFromDeliveries,
   displayName,
 } from './cricketUtils';
 
@@ -429,6 +430,177 @@ describe('calcMotmScore', () => {
     const score = calcMotmScore(pid, battingCards, [], []);
     // 100 + 5×1 + 2×2 + 30(century) + 6(SR≥125) + 5(not-out) = 150
     expect(score).toBe(150);
+  });
+});
+
+// ── calcMotmBreakdown ─────────────────────────────────────────────────────────
+
+describe('calcMotmBreakdown', () => {
+  const pid = 'p1';
+
+  // The decomposition MUST sum to calcMotmScore for any input.
+  it('total equals calcMotmScore (batting + bowling + fielding combined)', () => {
+    const bat   = [{ player_id: pid, runs: 50, balls_faced: 30, fours: 1, sixes: 1, status: 'not_out' }];
+    const bowl  = [{ player_id: pid, wickets: 3, legal_balls: 12, runs_conceded: 9, maidens: 0 }];
+    const field = [{ player_id: pid, catches: 2, stumpings: 1, run_outs: 1 }];
+    const { total } = calcMotmBreakdown(pid, bat, bowl, field);
+    expect(total).toBe(calcMotmScore(pid, bat, bowl, field)); // 85 + 100 + 34 = 219
+    expect(total).toBe(219);
+  });
+
+  it('total equals calcMotmScore across multiple innings (series aggregate)', () => {
+    const bat = [
+      { player_id: pid, runs: 50, balls_faced: 30, fours: 4, sixes: 2, status: 'out' },
+      { player_id: pid, runs: 0,  balls_faced: 2,  fours: 0, sixes: 0, status: 'out' }, // duck
+      { player_id: pid, runs: 30, balls_faced: 18, fours: 3, sixes: 0, status: 'not_out' },
+    ];
+    const bowl = [
+      { player_id: pid, wickets: 5, legal_balls: 24, runs_conceded: 20, maidens: 1 },
+      { player_id: pid, wickets: 2, legal_balls: 12, runs_conceded: 8,  maidens: 0 },
+    ];
+    const { total } = calcMotmBreakdown(pid, bat, bowl, []);
+    expect(total).toBe(calcMotmScore(pid, bat, bowl, []));
+  });
+
+  it('builds batting line items with correct labels and points', () => {
+    const bat = [{ player_id: pid, runs: 50, balls_faced: 30, fours: 1, sixes: 1, status: 'not_out' }];
+    const { groups } = calcMotmBreakdown(pid, bat, [], []);
+    const batting = groups.find(g => g.title === 'BATTING');
+    expect(batting).toBeTruthy();
+    const byLabel = Object.fromEntries(batting.items.map(i => [i.label, i.pts]));
+    expect(byLabel['Runs']).toBe(50);
+    expect(byLabel['Fours']).toBe(1);
+    expect(byLabel['Sixes']).toBe(2);            // 1 × 2
+    expect(byLabel['Half-centuries']).toBe(15);
+    expect(byLabel['Strike-rate bonus']).toBe(12); // SR 166 → +12
+    expect(byLabel['Not-out bonus']).toBe(5);
+    expect(batting.subtotal).toBe(85);
+  });
+
+  it('shows a duck as a negative line item', () => {
+    const bat = [{ player_id: pid, runs: 0, balls_faced: 3, fours: 0, sixes: 0, status: 'out' }];
+    const { groups, total } = calcMotmBreakdown(pid, bat, [], []);
+    const duck = groups[0].items.find(i => i.label === 'Ducks');
+    expect(duck.pts).toBe(-5);
+    expect(total).toBe(-5);
+  });
+
+  it('omits empty groups (only includes categories with contributions)', () => {
+    const bowl = [{ player_id: pid, wickets: 3, legal_balls: 12, runs_conceded: 9, maidens: 0 }];
+    const { groups } = calcMotmBreakdown(pid, [], bowl, []);
+    expect(groups.map(g => g.title)).toEqual(['BOWLING']); // no BATTING / FIELDING
+  });
+
+  it('returns total 0 and no groups for a player with nothing', () => {
+    const { total, groups } = calcMotmBreakdown(pid, [], [], []);
+    expect(total).toBe(0);
+    expect(groups).toEqual([]);
+  });
+});
+
+// ── calcMvpScore / calcMvpBreakdown ────────────────────────────────────────────
+
+describe('calcMvpScore', () => {
+  it('applies the weighted MVP formula', () => {
+    const s = { bat_runs: 120, bowl_wickets: 5, bat_fours: 7, bat_sixes: 14, bat_thirties: 1, bat_fifties: 1, bat_hundreds: 0, field_catches: 4, field_stumpings: 0, field_run_outs: 1 };
+    // 60 + 100 + 7 + 28 + 5 + 10 + 0 + 20 + 0 + 3 = 233
+    expect(calcMvpScore(s)).toBe(233);
+  });
+  it('returns 0 for an empty stats row and tolerates missing fields', () => {
+    expect(calcMvpScore({})).toBe(0);
+    expect(calcMvpScore()).toBe(0);
+  });
+  it('halves runs (fractional contribution allowed)', () => {
+    expect(calcMvpScore({ bat_runs: 39 })).toBe(19.5);
+  });
+});
+
+describe('calcMvpBreakdown', () => {
+  it('total equals calcMvpScore (decomposition is faithful)', () => {
+    const s = { bat_runs: 120, bowl_wickets: 5, bat_fours: 7, bat_sixes: 14, bat_fifties: 1, field_catches: 4, field_run_outs: 1 };
+    const { total } = calcMvpBreakdown(s);
+    expect(total).toBe(calcMvpScore(s));
+  });
+  it('builds line items with correct labels, details and points', () => {
+    const s = { bat_runs: 120, bat_fours: 7, bat_sixes: 14, bat_fifties: 1, bowl_wickets: 5, field_catches: 4 };
+    const { groups } = calcMvpBreakdown(s);
+    const batting = groups.find(g => g.title === 'BATTING');
+    const byLabel = Object.fromEntries(batting.items.map(i => [i.label, i.pts]));
+    expect(byLabel['Runs']).toBe(60);              // 120 × 0.5
+    expect(byLabel['Fours']).toBe(7);
+    expect(byLabel['Sixes']).toBe(28);             // 14 × 2
+    expect(byLabel['Half-centuries']).toBe(10);
+    expect(batting.items.find(i => i.label === 'Runs').detail).toBe('120 × 0.5');
+    const bowling = groups.find(g => g.title === 'BOWLING');
+    expect(bowling.items[0]).toMatchObject({ label: 'Wickets', pts: 100 });
+  });
+  it('omits empty groups and returns 0/[] for an empty row', () => {
+    expect(calcMvpBreakdown({ bowl_wickets: 3 }).groups.map(g => g.title)).toEqual(['BOWLING']);
+    expect(calcMvpBreakdown({})).toEqual({ total: 0, groups: [] });
+  });
+});
+
+// ── buildScorecardsFromDeliveries ──────────────────────────────────────────────
+
+describe('buildScorecardsFromDeliveries', () => {
+  // Mirrors the real Match-05 corruption: deliveries are the truth (19 off 8, 3 sixes),
+  // a wide does not count as a ball faced, batsman ends up out.
+  const VIKI = 'viki';
+  const deliveries = [
+    { batsman_id: VIKI, bowler_id: 'b1', runs_off_bat: 6, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 6, over_number: 0 },
+    { batsman_id: VIKI, bowler_id: 'b1', runs_off_bat: 0, extra_type: 'wide', extra_runs: 1, is_legal_delivery: false, total_runs_on_delivery: 1, over_number: 0 },
+    { batsman_id: VIKI, bowler_id: 'b1', runs_off_bat: 6, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 6, over_number: 0 },
+    { batsman_id: VIKI, bowler_id: 'b1', runs_off_bat: 6, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 6, over_number: 0 },
+    { batsman_id: VIKI, bowler_id: 'b1', runs_off_bat: 1, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 1, over_number: 0 },
+    { batsman_id: VIKI, bowler_id: 'b1', runs_off_bat: 0, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 0, over_number: 0 },
+    { batsman_id: VIKI, bowler_id: 'b1', runs_off_bat: 0, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 0, over_number: 1 },
+    { batsman_id: VIKI, bowler_id: 'b1', runs_off_bat: 0, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 0, over_number: 1 },
+    // wicket: caught by fielder f1 off bowler b1
+    { batsman_id: VIKI, bowler_id: 'b1', fielder_id: 'f1', runs_off_bat: 0, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 0, is_wicket: true, wicket_type: 'caught', batsman_out_id: VIKI, over_number: 1 },
+  ];
+
+  it('builds batting from deliveries — runs/balls/sixes, wide not a ball faced, status out', () => {
+    const { battingCards } = buildScorecardsFromDeliveries(deliveries);
+    const v = battingCards.find(c => c.player_id === VIKI);
+    expect(v).toMatchObject({ runs: 19, balls_faced: 8, sixes: 3, fours: 0, status: 'out', is_not_out: false });
+  });
+
+  it('builds bowling — legal balls (wide excluded), runs conceded, wicket credited', () => {
+    const { bowlingCards } = buildScorecardsFromDeliveries(deliveries);
+    const b = bowlingCards.find(c => c.player_id === 'b1');
+    expect(b.legal_balls).toBe(8);        // 9 deliveries − 1 wide
+    expect(b.runs_conceded).toBe(20);     // 19 off bat + 1 wide
+    expect(b.wickets).toBe(1);            // caught
+  });
+
+  it('builds fielding — catch credited to the fielder', () => {
+    const { fieldingCards } = buildScorecardsFromDeliveries(deliveries);
+    expect(fieldingCards.find(c => c.player_id === 'f1')).toMatchObject({ catches: 1, stumpings: 0, run_outs: 0 });
+  });
+
+  it('counts a maiden over (no runs conceded by the bowler)', () => {
+    const dels = [
+      { bowler_id: 'b9', batsman_id: 'x', runs_off_bat: 0, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 0, over_number: 0 },
+      { bowler_id: 'b9', batsman_id: 'x', runs_off_bat: 0, extra_type: 'none', is_legal_delivery: true, total_runs_on_delivery: 0, over_number: 0 },
+    ];
+    expect(buildScorecardsFromDeliveries(dels).bowlingCards[0].maidens).toBe(1);
+  });
+
+  it('marks a not-out batsman correctly', () => {
+    const dels = [{ batsman_id: 'no', runs_off_bat: 12, extra_type: 'none', is_legal_delivery: true, over_number: 0 }];
+    const v = buildScorecardsFromDeliveries(dels).battingCards[0];
+    expect(v).toMatchObject({ runs: 12, status: 'not_out', is_not_out: true });
+  });
+
+  it('feeds calcMotmScore with the correct (deliveries-derived) numbers', () => {
+    const { battingCards, bowlingCards, fieldingCards } = buildScorecardsFromDeliveries(deliveries);
+    // Viki only bats in this fixture (bowler is b1, catch is f1's):
+    // 19 runs + 3 sixes×2 (+6) + SR 237.5 (+20) = 45
+    expect(calcMotmScore(VIKI, battingCards, bowlingCards, fieldingCards)).toBe(45);
+  });
+
+  it('returns empty arrays for no deliveries', () => {
+    expect(buildScorecardsFromDeliveries([])).toEqual({ battingCards: [], bowlingCards: [], fieldingCards: [] });
   });
 });
 

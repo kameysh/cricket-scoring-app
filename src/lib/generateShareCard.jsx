@@ -1,5 +1,5 @@
 import satori from 'satori';
-import { formatOvers } from './cricketUtils';
+import { formatOvers, calcMvpBreakdown } from './cricketUtils';
 
 // ── Font cache ────────────────────────────────────────────────────────────────
 let _fonts = null;
@@ -25,13 +25,38 @@ async function fetchPhotoAsDataUrl(url) {
   if (_photoCache[url]) return _photoCache[url];
   try {
     const blob = await fetch(url).then(r => r.blob());
-    const dataUrl = await new Promise(resolve => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.readAsDataURL(blob);
-    });
-    _photoCache[url] = dataUrl;
-    return dataUrl;
+    // Decode the image and re-encode to PNG via canvas. Satori can only read
+    // PNG/JPEG — WebP/HEIC/AVIF uploads (which the browser CAN decode) would
+    // otherwise make satori() throw and break the whole card. Using a blob
+    // object URL keeps the canvas same-origin (no taint). Also downscale to
+    // 512px max — avatars render small, so this keeps the data URL light.
+    const objUrl = URL.createObjectURL(blob);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const MAX = 512;
+            let w = img.naturalWidth || img.width;
+            let h = img.naturalHeight || img.height;
+            if (w > MAX || h > MAX) {
+              const s = MAX / Math.max(w, h);
+              w = Math.round(w * s); h = Math.round(h * s);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/png'));
+          } catch (e) { reject(e); }
+        };
+        img.onerror = () => reject(new Error('image decode failed'));
+        img.src = objUrl;
+      });
+      _photoCache[url] = dataUrl;
+      return dataUrl;
+    } finally {
+      URL.revokeObjectURL(objUrl);
+    }
   } catch {
     return null;
   }
@@ -577,6 +602,293 @@ export async function generateAuctionSoldCard({ player, teamName, basePrice, sol
   const element = buildAuctionSoldElement({ player, teamName, basePrice, soldPrice, auctionName, photoDataUrl });
   const svg = await satori(element, { width: 1080, height: 1080, fonts });
   return svgToPng(svg, 1080, 1080);
+}
+
+// ── MVP card ──────────────────────────────────────────────────────────────────
+
+// "27 Jun 2026" — pure, deterministic (exported for tests). Used as the card's
+// "as of" stamp so a shared snapshot is dated (MVP rankings change as matches play).
+const _CARD_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export function formatCardDate(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getDate()} ${_CARD_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// Rank-based styling for the top-3 MVP share card (pure — exported for tests).
+export function mvpRankMeta(rank) {
+  switch (rank) {
+    case 1: return { ordinal: '1st', title: 'MOST VALUABLE PLAYER', gradFrom: '#f59e0b', gradTo: '#d97706', accent: '#b45309', badgeBg: '#fde68a', badgeText: '#92400e' };
+    case 2: return { ordinal: '2nd', title: 'MVP · RUNNER-UP',      gradFrom: '#94a3b8', gradTo: '#64748b', accent: '#475569', badgeBg: '#e2e8f0', badgeText: '#334155' };
+    case 3: return { ordinal: '3rd', title: 'MVP · THIRD PLACE',    gradFrom: '#d97706', gradTo: '#b45309', accent: '#92400e', badgeBg: '#fed7aa', badgeText: '#7c2d12' };
+    default: return { ordinal: `${rank}th`, title: 'MVP RANKINGS',  gradFrom: GREEN, gradTo: TEAL, accent: GREEN, badgeBg: GREEN_LIGHT, badgeText: GREEN };
+  }
+}
+
+// "+60", "+19.5", "−5" — formats a points value, dropping a trailing .0
+function fmtPts(p) {
+  const n = Number.isInteger(p) ? p : Number(p.toFixed(1));
+  return (p < 0 ? '−' : '+') + Math.abs(n);
+}
+function fmtNum(p) {
+  return String(Number.isInteger(p) ? p : Number(p.toFixed(1)));
+}
+
+function buildMvpCardElement({ player, rank, stats, breakdown, photoDataUrl, asOf, height }) {
+  const initials = getInitials(player?.name);
+  const meta = mvpRankMeta(rank);
+  const matches = stats.matches_played ?? stats.bat_matches ?? 0;
+  const roleLabel = player?.role
+    ? player.role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    : null;
+  const groups = breakdown?.groups || [];
+  const total = breakdown?.total ?? 0;
+  const GROUP_COLOR = { BATTING: GREEN, BOWLING: SKY, FIELDING: GOLD };
+
+  const Item = ({ it }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: `1px solid ${INK_200}` }}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', fontSize: 30, fontWeight: 700, color: INK_900 }}>{it.label}</div>
+        <div style={{ display: 'flex', fontSize: 22, color: INK_400, marginTop: 2 }}>{it.detail}</div>
+      </div>
+      <div style={{ display: 'flex', fontSize: 34, fontWeight: 700, color: it.pts < 0 ? '#dc2626' : INK_900 }}>{fmtPts(it.pts)}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', width: 1080, height, background: CARD_BG, fontFamily: 'Inter' }}>
+
+      {/* Rank band */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '46px 64px',
+        background: `linear-gradient(120deg, ${meta.gradFrom} 0%, ${meta.gradTo} 100%)`,
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', fontSize: 30, fontWeight: 700, color: 'rgba(255,255,255,0.9)', letterSpacing: '2px' }}>{meta.title}</div>
+          <div style={{ display: 'flex', fontSize: 24, color: 'rgba(255,255,255,0.7)' }}>Leaderboard Rankings</div>
+        </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 120, height: 120, borderRadius: '50%',
+          background: meta.badgeBg, border: '5px solid rgba(255,255,255,0.6)',
+          fontSize: 50, fontWeight: 700, color: meta.badgeText, flexShrink: 0,
+        }}>
+          {meta.ordinal}
+        </div>
+      </div>
+
+      {/* Identity */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 40,
+        padding: '40px 64px 36px', background: SURFACE, borderBottom: `2px solid ${INK_200}`,
+      }}>
+        {photoDataUrl ? (
+          <img src={photoDataUrl} style={{ width: 150, height: 150, borderRadius: '50%', objectFit: 'cover', border: `5px solid ${meta.accent}`, flexShrink: 0 }} />
+        ) : (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 150, height: 150, borderRadius: '50%',
+            background: `linear-gradient(135deg, ${meta.gradFrom} 0%, ${meta.gradTo} 100%)`,
+            border: '5px solid rgba(255,255,255,0.7)', fontSize: 60, fontWeight: 700, color: '#fff', flexShrink: 0,
+          }}>{initials}</div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', fontSize: 58, fontWeight: 700, color: INK_900, letterSpacing: '-1px', lineHeight: '1' }}>{player?.name || ''}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {roleLabel ? (
+              <div style={{ display: 'flex', padding: '7px 24px', background: GREEN_LIGHT, borderRadius: 100, fontSize: 22, fontWeight: 600, color: GREEN }}>{roleLabel}</div>
+            ) : null}
+            <div style={{ display: 'flex', fontSize: 24, color: INK_400, fontWeight: 600 }}>{matches} matches</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Breakdown */}
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '28px 64px 0' }}>
+        <div style={{ display: 'flex', fontSize: 26, fontWeight: 700, color: INK_400, letterSpacing: '3px', marginBottom: 8 }}>HOW THE POINTS ADD UP</div>
+        {groups.map(g => (
+          <div key={g.title} style={{ display: 'flex', flexDirection: 'column', marginTop: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ display: 'flex', width: 8, height: 30, background: GROUP_COLOR[g.title] || GREEN, borderRadius: 4 }} />
+                <div style={{ display: 'flex', fontSize: 26, fontWeight: 700, color: GROUP_COLOR[g.title] || GREEN, letterSpacing: '2px' }}>{g.title}</div>
+              </div>
+              <div style={{ display: 'flex', fontSize: 26, fontWeight: 700, color: GROUP_COLOR[g.title] || GREEN }}>{fmtNum(g.subtotal)} pts</div>
+            </div>
+            {g.items.map(it => <Item key={it.label} it={it} />)}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flex: 1, minHeight: 24 }} />
+
+      {/* Total */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        margin: '24px 64px 0', padding: '28px 40px',
+        background: `linear-gradient(120deg, ${meta.gradFrom} 0%, ${meta.gradTo} 100%)`, borderRadius: 24,
+      }}>
+        <div style={{ display: 'flex', fontSize: 36, fontWeight: 700, color: '#fff', letterSpacing: '2px' }}>MVP POINTS</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
+          <div style={{ display: 'flex', fontSize: 80, fontWeight: 700, color: '#fff', lineHeight: '1' }}>{fmtNum(total)}</div>
+          <div style={{ display: 'flex', fontSize: 28, color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>pts</div>
+        </div>
+      </div>
+
+      {/* Footer — MVP keeps the "as of" date: rankings change as matches are played */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 8,
+        padding: '26px 64px', marginTop: 24, borderTop: `2px solid ${INK_200}`, background: SURFACE,
+      }}>
+        {asOf ? <div style={{ display: 'flex', fontSize: 22, color: meta.accent, fontWeight: 700, letterSpacing: '2px' }}>AS OF {asOf}</div> : null}
+        <div style={{ display: 'flex', fontSize: 22, color: INK_400, fontWeight: 600, letterSpacing: '3px' }}>CRICKET SCORING APP</div>
+      </div>
+    </div>
+  );
+}
+
+export async function generateMvpCard({ player, rank, stats, asOf }) {
+  const [fonts, photoDataUrl] = await Promise.all([
+    loadFonts(),
+    fetchPhotoAsDataUrl(player?.photo_url),
+  ]);
+  const breakdown = calcMvpBreakdown(stats || {});
+  const height = motmCardHeight(breakdown);
+  const element = buildMvpCardElement({
+    player, rank, stats: stats || {}, breakdown, photoDataUrl,
+    asOf: asOf || formatCardDate(), height,
+  });
+  const svg = await satori(element, { width: 1080, height, fonts });
+  return svgToPng(svg, 1080, height);
+}
+
+// ── Man of the Series card (with points breakdown) ──────────────────────────────
+
+const _MOTM_GROUP_COLOR = { BATTING: GREEN, BOWLING: SKY, FIELDING: GOLD };
+
+// Canvas height grows with the number of breakdown rows so the TOTAL + footer
+// are never clipped (Satori renders a fixed-size canvas; overflow is cut).
+export function motmCardHeight(breakdown) {
+  const groups = breakdown?.groups || [];
+  const itemCount = groups.reduce((n, g) => n + g.items.length, 0);
+  return Math.max(1350, 800 + groups.length * 58 + itemCount * 98);
+}
+
+function buildMotmSeriesElement({ player, seriesName, breakdown, photoDataUrl, height }) {
+  const initials = getInitials(player?.name);
+  const roleLabel = player?.role
+    ? player.role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    : null;
+  const groups = breakdown?.groups || [];
+  const total = breakdown?.total ?? 0;
+  const matches = breakdown?.matches ?? 0;
+
+  const Item = ({ it }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: `1px solid ${INK_200}` }}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', fontSize: 30, fontWeight: 700, color: INK_900 }}>{it.label}</div>
+        <div style={{ display: 'flex', fontSize: 22, color: INK_400, marginTop: 2 }}>{it.detail}</div>
+      </div>
+      <div style={{ display: 'flex', fontSize: 34, fontWeight: 700, color: it.pts < 0 ? '#dc2626' : INK_900 }}>
+        {it.pts < 0 ? `${it.pts}` : `+${it.pts}`}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', width: 1080, height, background: CARD_BG, fontFamily: 'Inter' }}>
+
+      {/* Gold band */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '46px 64px', background: 'linear-gradient(120deg, #f59e0b 0%, #d97706 100%)',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', fontSize: 32, fontWeight: 700, color: '#fff', letterSpacing: '2px' }}>MAN OF THE SERIES</div>
+          <div style={{ display: 'flex', fontSize: 24, color: 'rgba(255,255,255,0.8)' }}>{seriesName || 'Tournament'}</div>
+        </div>
+        <img src={TROPHY_DATA_URL} width={84} height={84} style={{ display: 'flex' }} />
+      </div>
+
+      {/* Identity */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 40,
+        padding: '40px 64px 36px', background: SURFACE, borderBottom: `2px solid ${INK_200}`,
+      }}>
+        {photoDataUrl ? (
+          <img src={photoDataUrl} style={{ width: 150, height: 150, borderRadius: '50%', objectFit: 'cover', border: '5px solid #d97706', flexShrink: 0 }} />
+        ) : (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 150, height: 150, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            border: '5px solid rgba(255,255,255,0.7)', fontSize: 60, fontWeight: 700, color: '#fff', flexShrink: 0,
+          }}>{initials}</div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', fontSize: 58, fontWeight: 700, color: INK_900, letterSpacing: '-1px', lineHeight: '1' }}>{player?.name || ''}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {roleLabel ? (
+              <div style={{ display: 'flex', padding: '7px 24px', background: GREEN_LIGHT, borderRadius: 100, fontSize: 22, fontWeight: 600, color: GREEN }}>{roleLabel}</div>
+            ) : null}
+            <div style={{ display: 'flex', fontSize: 24, color: INK_400, fontWeight: 600 }}>{matches} matches</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Breakdown */}
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '28px 64px 0' }}>
+        <div style={{ display: 'flex', fontSize: 26, fontWeight: 700, color: INK_400, letterSpacing: '3px', marginBottom: 8 }}>HOW THE POINTS ADD UP</div>
+        {groups.map(g => (
+          <div key={g.title} style={{ display: 'flex', flexDirection: 'column', marginTop: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ display: 'flex', width: 8, height: 30, background: _MOTM_GROUP_COLOR[g.title] || GREEN, borderRadius: 4 }} />
+                <div style={{ display: 'flex', fontSize: 26, fontWeight: 700, color: _MOTM_GROUP_COLOR[g.title] || GREEN, letterSpacing: '2px' }}>{g.title}</div>
+              </div>
+              <div style={{ display: 'flex', fontSize: 26, fontWeight: 700, color: _MOTM_GROUP_COLOR[g.title] || GREEN }}>{g.subtotal} pts</div>
+            </div>
+            {g.items.map(it => <Item key={it.label} it={it} />)}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flex: 1, minHeight: 24 }} />
+
+      {/* Total */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        margin: '24px 64px 0', padding: '28px 40px',
+        background: 'linear-gradient(120deg, #f59e0b 0%, #d97706 100%)', borderRadius: 24,
+      }}>
+        <div style={{ display: 'flex', fontSize: 38, fontWeight: 700, color: '#fff', letterSpacing: '2px' }}>TOTAL</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
+          <div style={{ display: 'flex', fontSize: 80, fontWeight: 700, color: '#fff', lineHeight: '1' }}>{total}</div>
+          <div style={{ display: 'flex', fontSize: 28, color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>pts</div>
+        </div>
+      </div>
+
+      {/* Footer — no "as of" date: Man of the Series is final once the tournament ends */}
+      <div style={{
+        display: 'flex', justifyContent: 'center', alignItems: 'center',
+        padding: '28px 64px', marginTop: 24, borderTop: `2px solid ${INK_200}`, background: SURFACE,
+      }}>
+        <div style={{ display: 'flex', fontSize: 22, color: INK_400, fontWeight: 600, letterSpacing: '3px' }}>CRICKET SCORING APP</div>
+      </div>
+    </div>
+  );
+}
+
+export async function generateMotmSeriesCard({ player, seriesName, breakdown }) {
+  const [fonts, photoDataUrl] = await Promise.all([
+    loadFonts(),
+    fetchPhotoAsDataUrl(player?.photo_url),
+  ]);
+  const height = motmCardHeight(breakdown);
+  const element = buildMotmSeriesElement({ player, seriesName, breakdown, photoDataUrl, height });
+  const svg = await satori(element, { width: 1080, height, fonts });
+  return svgToPng(svg, 1080, height);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

@@ -60,6 +60,23 @@ describe('computePartnerships', () => {
     expect(result[0].runs).toBeGreaterThan(result[result.length - 1].runs);
   });
 
+  it('captures the incoming batsman after a wicket (no "Unrecorded" partner)', () => {
+    const dels = [
+      // Opening stand: p1 & p2
+      D({ batsman_id: 'p1', non_striker_before: 'p2', total_runs_on_delivery: 4 }),
+      // p1 out → p3 comes in
+      D({ batsman_id: 'p1', non_striker_before: 'p2', is_wicket: true, batsman_out_id: 'p1', total_runs_on_delivery: 0 }),
+      // New stand: survivor p2 + incoming p3
+      D({ batsman_id: 'p3', non_striker_before: 'p2', total_runs_on_delivery: 6 }),
+      D({ batsman_id: 'p3', non_striker_before: 'p2', total_runs_on_delivery: 2 }),
+    ];
+    const result = computePartnerships(dels);
+    const second = result.find(p => !p.broken); // the unbroken p2/p3 stand
+    expect(second).toBeTruthy();
+    expect(second.batsman2Id).not.toBeNull();           // partner IS recorded now
+    expect(new Set([second.batsman1Id, second.batsman2Id])).toEqual(new Set(['p2', 'p3']));
+  });
+
   it('multiple wickets produce multiple partnerships', () => {
     const dels = [
       D({ total_runs_on_delivery: 5 }),

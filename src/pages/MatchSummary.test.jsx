@@ -9,7 +9,7 @@
  * never player.nickname, in every name-bearing data structure the page builds.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 // ── service mocks ──────────────────────────────────────────────────────────────
@@ -150,5 +150,34 @@ describe('MatchSummary — injured / substitute tags', () => {
     expect(screen.getAllByText('Normal Guy').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('Injured')).not.toBeInTheDocument();
     expect(screen.queryByText(/Sub in for/)).not.toBeInTheDocument();
+  });
+});
+
+describe('MatchSummary — MoTM card derives from deliveries (not stored scorecards)', () => {
+  const MOTM_PLAYER = { player_id: 'p1', team: 1, is_captain: false, is_active: true, players: { id: 'p1', name: 'Viki', photo_url: null } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    matchService.getMatch.mockResolvedValue({ ...MATCH, man_of_match_id: 'p1', man_of_match: { id: 'p1', name: 'Viki' } });
+    matchService.getInnings.mockResolvedValue([INN1]);
+    matchService.getMatchPlayers.mockResolvedValue([MOTM_PLAYER]);
+    // Corrupt stored scorecard (would show 25 off 9) — must be IGNORED now
+    matchService.getScorecards.mockResolvedValue({
+      batting: [{ player_id: 'p1', runs: 25, balls_faced: 9, fours: 0, sixes: 4, is_not_out: false }],
+      bowling: [], fielding: [],
+    });
+    // Deliveries are the truth: 18 runs off 3 balls (three sixes), all legal
+    matchService.getDeliveries.mockResolvedValue([
+      makeDelivery({ id: 'v1', batsman_id: 'p1', batsman: { id: 'p1', name: 'Viki' }, runs_off_bat: 6, total_runs_on_delivery: 6, over_number: 0, ball_number: 1 }),
+      makeDelivery({ id: 'v2', batsman_id: 'p1', batsman: { id: 'p1', name: 'Viki' }, runs_off_bat: 6, total_runs_on_delivery: 6, over_number: 0, ball_number: 2 }),
+      makeDelivery({ id: 'v3', batsman_id: 'p1', batsman: { id: 'p1', name: 'Viki' }, runs_off_bat: 6, total_runs_on_delivery: 6, over_number: 0, ball_number: 3 }),
+    ]);
+  });
+
+  it('shows the delivery-derived batting line (18 off 3), not the corrupt stored 25 (9)', async () => {
+    renderSummary();
+    // MoTM card + top-bat both derive from deliveries → "18* (3)" (not out, 3 balls)
+    await waitFor(() => expect(screen.getAllByText(/18\*? \(3\)/).length).toBeGreaterThanOrEqual(1));
+    expect(screen.queryByText(/25\*? \(9\)/)).not.toBeInTheDocument();
   });
 });

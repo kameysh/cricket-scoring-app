@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, ChevronUp, ChevronDown, Activity, X, Sparkles, Repeat2, Link2 } from 'lucide-react';
+import { Trophy, ChevronUp, ChevronDown, Activity, X, Sparkles, Repeat2, Link2, Share2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import * as playerService from '../services/playerService';
 import * as seriesService from '../services/seriesService';
@@ -10,22 +10,8 @@ import PlayerAvatar from '../components/player/PlayerAvatar';
 import LoadingSkeleton from '../components/shared/LoadingSkeleton';
 import EmptyState from '../components/shared/EmptyState';
 import PlayerName from '../components/shared/PlayerName';
-
-// ── MVP score formula ─────────────────────────────────────────────────────────
-function calcMvpScore(s) {
-  return (
-    (s.bat_runs || 0) * 0.5 +
-    (s.bowl_wickets || 0) * 20 +
-    (s.bat_fours || 0) * 1 +
-    (s.bat_sixes || 0) * 2 +
-    (s.bat_thirties || 0) * 5 +
-    (s.bat_fifties || 0) * 10 +
-    (s.bat_hundreds || 0) * 25 +
-    (s.field_catches || 0) * 5 +
-    (s.field_stumpings || 0) * 5 +
-    (s.field_run_outs || 0) * 3
-  );
-}
+import MvpCardSheet from '../components/player/MvpCardSheet';
+import { calcMvpScore } from '../lib/cricketUtils';
 
 // ── Stat helpers ──────────────────────────────────────────────────────────────
 const batAvg   = s => { const o = (s.bat_innings||0)-(s.bat_not_outs||0); return o>0 ? s.bat_runs/o : (s.bat_runs>0 ? 999 : 0); };
@@ -182,6 +168,7 @@ export default function Leaderboard() {
   const [seriesLoading, setSeriesLoading] = useState(false);
   const [partnerships, setPartnerships] = useState([]);
   const [partnershipsLoaded, setPartnershipsLoaded] = useState(false);
+  const [mvpCard, setMvpCard] = useState(null); // { row, rank } for the top-3 share card
 
   useEffect(() => {
     // Initial load — single query, all counters from player_career_stats
@@ -238,7 +225,7 @@ export default function Leaderboard() {
   }
 
   function resetSort() { setSortKey(null); setSortDir('desc'); }
-  useEffect(() => { setSortKey(null); setSortDir('desc'); }, [tab]);
+  useEffect(() => { setSortKey(null); setSortDir('desc'); setMvpCard(null); }, [tab]);
 
   // ── Derive rows per tab ───────────────────────────────────────────────────
   const sorter = key => {
@@ -291,6 +278,28 @@ export default function Leaderboard() {
       </button>
     </td>
   );
+
+  // MVP tab: top-3 names open a shareable MVP card; rank 4+ keeps profile navigation.
+  const mvpPlayerCell = (row, rank) => {
+    const isTop3 = rank <= 3;
+    return (
+      <td className={`sticky left-10 z-10 ${stickyBg} px-2 py-2.5 shadow-[1px_0_0_0_rgba(0,0,0,0.06)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.06)]`}>
+        <button
+          onClick={() =>
+            isTop3
+              ? setMvpCard({ row, rank })
+              : navigate(`/players/${row.players?.id}${selectedSeries ? `?series=${selectedSeries}` : ''}`)
+          }
+          className="flex items-center gap-2 text-left"
+          title={isTop3 ? 'Tap to view & share MVP card' : undefined}
+        >
+          <PlayerAvatar name={row.players?.name} photoUrl={row.players?.photo_url} size={28} />
+          <PlayerName player={row.players} nameClass="text-xs text-ink-900 dark:text-white" className="max-w-[80px]" />
+          {isTop3 && <Share2 size={11} className="text-brand-green shrink-0" />}
+        </button>
+      </td>
+    );
+  };
 
   return (
     <div className="p-4 space-y-4 page-transition">
@@ -381,9 +390,15 @@ export default function Leaderboard() {
                 <RankBadge rank={i + 1} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{p.player1?.name || '—'}</span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <PlayerAvatar name={p.player1?.name} photoUrl={p.player1?.photo_url} size={22} />
+                      <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{p.player1?.name || '—'}</span>
+                    </span>
                     <Link2 size={12} className="text-ink-300 shrink-0" />
-                    <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{p.player2?.name || 'Unrecorded'}</span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <PlayerAvatar name={p.player2?.name} photoUrl={p.player2?.photo_url} size={22} />
+                      <span className="text-sm font-semibold text-ink-900 dark:text-white truncate">{p.player2?.name || 'Unrecorded'}</span>
+                    </span>
                   </div>
                   <p className="text-xs text-ink-400 mt-0.5 truncate">
                     {p.team1} vs {p.team2} · {p.broken ? 'Broken' : 'Unbroken'}
@@ -492,7 +507,7 @@ export default function Leaderboard() {
                   {mvpRows.map((row, i) => (
                     <tr key={row.player_id} className="border-b border-ink-50 dark:border-white/5 last:border-0 hover:bg-ink-50 dark:hover:bg-white/5 transition-colors">
                       {rankCell(i+1)}
-                      {playerCell(row)}
+                      {mvpPlayerCell(row, i+1)}
                       <td className="px-2 py-2.5 text-right text-xs font-bold text-ink-900 dark:text-white tabular-nums whitespace-nowrap">{row._mvp.toFixed(1)}</td>
                       <td className="px-3 py-2.5 text-xs text-ink-500 dark:text-ink-400 whitespace-nowrap pr-4">
                         {[
@@ -510,6 +525,17 @@ export default function Leaderboard() {
           </table>
           </div>
         </div>
+      )}
+
+      {mvpCard && (
+        <MvpCardSheet
+          open
+          onClose={() => setMvpCard(null)}
+          player={mvpCard.row.players}
+          rank={mvpCard.rank}
+          mvpScore={mvpCard.row._mvp}
+          stats={mvpCard.row}
+        />
       )}
     </div>
   );

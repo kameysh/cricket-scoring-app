@@ -13,7 +13,7 @@ export async function listTournaments() {
 export async function getTournament(id) {
   const { data, error } = await supabase
     .from('tournaments')
-    .select('*, venues(name,city), man_of_series:man_of_series_id(id, name), series:series_id(id,name)')
+    .select('*, venues(name,city), man_of_series:man_of_series_id(id, name, photo_url, role), series:series_id(id,name)')
     .eq('id', id)
     .single();
   if (error) throw error;

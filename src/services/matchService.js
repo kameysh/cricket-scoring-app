@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { pickMotm } from '../lib/cricketUtils';
+import { pickMotm, calcMotmBreakdown } from '../lib/cricketUtils';
 
 export async function listMatches() {
   const { data, error } = await supabase
@@ -274,6 +274,29 @@ export async function autoAssignManOfSeries(tournamentId) {
     const { error } = await supabase.from('tournaments').update({ man_of_series_id: bestId }).eq('id', tournamentId);
     if (error) throw error;
   }
+}
+
+// Itemised Man-of-the-Series points for one player across a tournament's completed matches.
+// Returns { total, groups, matches } — `groups` is the calcMotmBreakdown decomposition.
+export async function getSeriesPlayerMotmBreakdown(tournamentId, playerId) {
+  const empty = { total: 0, groups: [], matches: 0 };
+  const { data: tourMatches } = await supabase
+    .from('matches').select('id').eq('tournament_id', tournamentId).eq('status', 'completed');
+  if (!tourMatches?.length) return empty;
+
+  const matchIds = tourMatches.map(m => m.id);
+  const { data: innings } = await supabase.from('innings').select('id').in('match_id', matchIds);
+  const inningsIds = (innings || []).map(i => i.id);
+  if (!inningsIds.length) return { ...empty, matches: matchIds.length };
+
+  const [batRes, bowlRes, fieldRes] = await Promise.all([
+    supabase.from('batting_scorecards').select('*').in('innings_id', inningsIds).eq('player_id', playerId),
+    supabase.from('bowling_scorecards').select('*').in('innings_id', inningsIds).eq('player_id', playerId),
+    supabase.from('fielding_scorecards').select('*').in('innings_id', inningsIds).eq('player_id', playerId),
+  ]);
+
+  const { total, groups } = calcMotmBreakdown(playerId, batRes.data || [], bowlRes.data || [], fieldRes.data || []);
+  return { total, groups, matches: matchIds.length };
 }
 
 export async function getDistinctTeamNames() {

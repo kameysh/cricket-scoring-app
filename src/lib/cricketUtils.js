@@ -429,3 +429,195 @@ export function pickMotm(playerIds, battingCards, bowlingCards, fieldingCards, p
   }
   return best && best.pts > 0 ? best.pid : null;
 }
+
+// Itemised decomposition of calcMotmScore — explains how a MoTM/MoS total is built.
+// Returns { total, groups: [{ title, subtotal, items: [{ label, detail, pts }] }] }.
+// MUST stay in lockstep with calcMotmScore: the sum of all item pts equals calcMotmScore.
+export function calcMotmBreakdown(playerId, battingCards = [], bowlingCards = [], fieldingCards = []) {
+  // ── Batting aggregates ──
+  let runs = 0, fours = 0, sixes = 0;
+  let m30 = 0, m50 = 0, m100 = 0, srBonus = 0, notOutBonus = 0, duckPenalty = 0;
+  for (const b of battingCards.filter(c => c.player_id === playerId)) {
+    const r = b.runs || 0, balls = b.balls_faced || 0;
+    runs += r; fours += b.fours || 0; sixes += b.sixes || 0;
+    if (r >= 100) m100++; else if (r >= 50) m50++; else if (r >= 30) m30++;
+    if (balls >= 6) {
+      const sr = calcStrikeRate(r, balls);
+      if (sr >= 200) srBonus += 20; else if (sr >= 150) srBonus += 12; else if (sr >= 125) srBonus += 6;
+    }
+    const isNotOut = b.status && b.status !== 'out' && b.status !== 'retired_out';
+    if (isNotOut && r >= 10) notOutBonus += 5;
+    if (r === 0 && b.status === 'out') duckPenalty += 5;
+  }
+  const batItems = [];
+  if (runs)        batItems.push({ label: 'Runs',            detail: `${runs} × 1`,  pts: runs });
+  if (fours)       batItems.push({ label: 'Fours',           detail: `${fours} × 1`, pts: fours });
+  if (sixes)       batItems.push({ label: 'Sixes',           detail: `${sixes} × 2`, pts: sixes * 2 });
+  if (m100)        batItems.push({ label: 'Centuries',       detail: `${m100} × 30`, pts: m100 * 30 });
+  if (m50)         batItems.push({ label: 'Half-centuries',  detail: `${m50} × 15`,  pts: m50 * 15 });
+  if (m30)         batItems.push({ label: 'Thirties',        detail: `${m30} × 5`,   pts: m30 * 5 });
+  if (srBonus)     batItems.push({ label: 'Strike-rate bonus', detail: 'fast scoring', pts: srBonus });
+  if (notOutBonus) batItems.push({ label: 'Not-out bonus',   detail: '10+ & unbeaten', pts: notOutBonus });
+  if (duckPenalty) batItems.push({ label: 'Ducks',           detail: 'out for 0',    pts: -duckPenalty });
+
+  // ── Bowling aggregates ──
+  let wickets = 0, maidens = 0, haul3 = 0, haul5 = 0, econBonus = 0;
+  for (const bwl of bowlingCards.filter(c => c.player_id === playerId)) {
+    const wk = bwl.wickets || 0, legal = bwl.legal_balls || 0;
+    wickets += wk; maidens += bwl.maidens || 0;
+    if (wk >= 5) haul5++; else if (wk >= 3) haul3++;
+    if (legal >= 6) {
+      const econ = calcEconomy(bwl.runs_conceded, legal);
+      if (econ !== null && econ <= 5) econBonus += 15;
+      else if (econ !== null && econ <= 6) econBonus += 10;
+      else if (econ !== null && econ <= 8) econBonus += 5;
+    }
+  }
+  const bowlItems = [];
+  if (wickets)   bowlItems.push({ label: 'Wickets',       detail: `${wickets} × 25`, pts: wickets * 25 });
+  if (maidens)   bowlItems.push({ label: 'Maiden overs',  detail: `${maidens} × 6`,  pts: maidens * 6 });
+  if (haul5)     bowlItems.push({ label: '5-wicket hauls', detail: `${haul5} × 20`,  pts: haul5 * 20 });
+  if (haul3)     bowlItems.push({ label: '3-wicket hauls', detail: `${haul3} × 10`,  pts: haul3 * 10 });
+  if (econBonus) bowlItems.push({ label: 'Economy bonus', detail: 'tight bowling',   pts: econBonus });
+
+  // ── Fielding aggregates ──
+  let catches = 0, stumpings = 0, runOuts = 0;
+  for (const f of fieldingCards.filter(c => c.player_id === playerId)) {
+    catches += f.catches || 0; stumpings += f.stumpings || 0; runOuts += f.run_outs || 0;
+  }
+  const fieldItems = [];
+  if (catches)   fieldItems.push({ label: 'Catches',   detail: `${catches} × 8`,   pts: catches * 8 });
+  if (stumpings) fieldItems.push({ label: 'Stumpings', detail: `${stumpings} × 10`, pts: stumpings * 10 });
+  if (runOuts)   fieldItems.push({ label: 'Run outs',  detail: `${runOuts} × 8`,   pts: runOuts * 8 });
+
+  const sub = items => items.reduce((s, it) => s + it.pts, 0);
+  const groups = [
+    { title: 'BATTING',  subtotal: sub(batItems),   items: batItems },
+    { title: 'BOWLING',  subtotal: sub(bowlItems),  items: bowlItems },
+    { title: 'FIELDING', subtotal: sub(fieldItems), items: fieldItems },
+  ].filter(g => g.items.length > 0);
+
+  return { total: groups.reduce((s, g) => s + g.subtotal, 0), groups };
+}
+
+// Build calcMotmScore-shaped scorecards from raw deliveries (the immutable source
+// of truth). Use instead of the stored *_scorecards aggregates when those may have
+// drifted from the ball-by-ball log. Returns { battingCards, bowlingCards, fieldingCards }
+// with the same field names the stored rows use, so it's a drop-in replacement.
+const _BOWLER_WICKET_TYPES = ['bowled', 'caught', 'lbw', 'stumped', 'hit_wicket', 'hit_twice', 'obstructing', 'timed_out', 'handled_ball'];
+export function buildScorecardsFromDeliveries(deliveries = []) {
+  const bat = new Map(), bowl = new Map(), field = new Map();
+  const dismissed = new Set();
+
+  for (const d of deliveries) {
+    if (d.batsman_id) {
+      const b = bat.get(d.batsman_id) || { player_id: d.batsman_id, runs: 0, balls_faced: 0, fours: 0, sixes: 0, status: 'not_out', is_not_out: true };
+      if (d.extra_type !== 'wide') {
+        b.balls_faced += 1;
+        const r = d.runs_off_bat || 0;
+        b.runs += r;
+        if (r === 4) b.fours += 1;
+        if (r === 6) b.sixes += 1;
+      }
+      bat.set(d.batsman_id, b);
+    }
+    if (d.bowler_id) {
+      const w = bowl.get(d.bowler_id) || { player_id: d.bowler_id, wickets: 0, legal_balls: 0, runs_conceded: 0, maidens: 0 };
+      if (d.is_legal_delivery) w.legal_balls += 1;
+      const isBye = d.extra_type === 'bye' || d.extra_type === 'leg_bye';
+      w.runs_conceded += isBye ? 0 : (d.total_runs_on_delivery ?? ((d.runs_off_bat || 0) + (d.extra_runs || 0)));
+      if (d.is_wicket && _BOWLER_WICKET_TYPES.includes(d.wicket_type)) w.wickets += 1;
+      bowl.set(d.bowler_id, w);
+    }
+    if (d.is_wicket && d.fielder_id) {
+      const f = field.get(d.fielder_id) || { player_id: d.fielder_id, catches: 0, stumpings: 0, run_outs: 0 };
+      if (d.wicket_type === 'caught') f.catches += 1;
+      else if (d.wicket_type === 'stumped') f.stumpings += 1;
+      else if (d.wicket_type === 'run_out') f.run_outs += 1;
+      field.set(d.fielder_id, f);
+    }
+    if (d.is_wicket) {
+      const o = d.batsman_out_id || d.batsman_id;
+      if (o) dismissed.add(o);
+    }
+  }
+
+  // Maidens: an over (per bowler) with 0 runs conceded (byes/leg-byes don't count against the bowler)
+  const overRuns = new Map();
+  for (const d of deliveries) {
+    if (!d.bowler_id) continue;
+    const key = `${d.bowler_id}_${d.over_number}`;
+    const isBye = d.extra_type === 'bye' || d.extra_type === 'leg_bye';
+    overRuns.set(key, (overRuns.get(key) || 0) + (isBye ? 0 : (d.total_runs_on_delivery ?? ((d.runs_off_bat || 0) + (d.extra_runs || 0)))));
+  }
+  for (const [key, runs] of overRuns) {
+    if (runs === 0) {
+      const bid = key.split('_')[0];
+      const w = bowl.get(bid);
+      if (w) w.maidens += 1;
+    }
+  }
+
+  for (const pid of dismissed) {
+    const b = bat.get(pid);
+    if (b) { b.status = 'out'; b.is_not_out = false; }
+  }
+
+  return {
+    battingCards: [...bat.values()],
+    bowlingCards: [...bowl.values()],
+    fieldingCards: [...field.values()],
+  };
+}
+
+// ── MVP score (career/series leaderboard) ──────────────────────────────────────
+// Weighted aggregate across all of a player's matches (from player_career_stats /
+// player_tournament_stats rows). Distinct from calcMotmScore (per-innings impact).
+export function calcMvpScore(s = {}) {
+  return (
+    (s.bat_runs || 0) * 0.5 +
+    (s.bowl_wickets || 0) * 20 +
+    (s.bat_fours || 0) * 1 +
+    (s.bat_sixes || 0) * 2 +
+    (s.bat_thirties || 0) * 5 +
+    (s.bat_fifties || 0) * 10 +
+    (s.bat_hundreds || 0) * 25 +
+    (s.field_catches || 0) * 5 +
+    (s.field_stumpings || 0) * 5 +
+    (s.field_run_outs || 0) * 3
+  );
+}
+
+// Itemised decomposition of calcMvpScore — same shape as calcMotmBreakdown.
+// The sum of all item pts equals calcMvpScore (test-enforced).
+export function calcMvpBreakdown(s = {}) {
+  const runs = s.bat_runs || 0, fours = s.bat_fours || 0, sixes = s.bat_sixes || 0;
+  const thirties = s.bat_thirties || 0, fifties = s.bat_fifties || 0, hundreds = s.bat_hundreds || 0;
+  const wickets = s.bowl_wickets || 0;
+  const catches = s.field_catches || 0, stumpings = s.field_stumpings || 0, runOuts = s.field_run_outs || 0;
+
+  const batItems = [];
+  if (runs)     batItems.push({ label: 'Runs',           detail: `${runs} × 0.5`,    pts: runs * 0.5 });
+  if (fours)    batItems.push({ label: 'Fours',          detail: `${fours} × 1`,     pts: fours });
+  if (sixes)    batItems.push({ label: 'Sixes',          detail: `${sixes} × 2`,     pts: sixes * 2 });
+  if (hundreds) batItems.push({ label: 'Centuries',      detail: `${hundreds} × 25`, pts: hundreds * 25 });
+  if (fifties)  batItems.push({ label: 'Half-centuries', detail: `${fifties} × 10`,  pts: fifties * 10 });
+  if (thirties) batItems.push({ label: 'Thirties',       detail: `${thirties} × 5`,  pts: thirties * 5 });
+
+  const bowlItems = [];
+  if (wickets)  bowlItems.push({ label: 'Wickets',       detail: `${wickets} × 20`,  pts: wickets * 20 });
+
+  const fieldItems = [];
+  if (catches)   fieldItems.push({ label: 'Catches',    detail: `${catches} × 5`,    pts: catches * 5 });
+  if (stumpings) fieldItems.push({ label: 'Stumpings',  detail: `${stumpings} × 5`,  pts: stumpings * 5 });
+  if (runOuts)   fieldItems.push({ label: 'Run outs',   detail: `${runOuts} × 3`,    pts: runOuts * 3 });
+
+  const sub = items => items.reduce((acc, it) => acc + it.pts, 0);
+  const groups = [
+    { title: 'BATTING',  subtotal: sub(batItems),   items: batItems },
+    { title: 'BOWLING',  subtotal: sub(bowlItems),  items: bowlItems },
+    { title: 'FIELDING', subtotal: sub(fieldItems), items: fieldItems },
+  ].filter(g => g.items.length > 0);
+
+  return { total: groups.reduce((acc, g) => acc + g.subtotal, 0), groups };
+}

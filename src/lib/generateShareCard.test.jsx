@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getInitials, calcSR, calcEcon, dismissalText } from './generateShareCard';
+import { getInitials, calcSR, calcEcon, dismissalText, mvpRankMeta, formatCardDate, motmCardHeight } from './generateShareCard';
 
 describe('getInitials', () => {
   it('returns first letter of each word, up to 2', () => {
@@ -68,5 +68,68 @@ describe('dismissalText', () => {
   });
   it('formats retired hurt', () => {
     expect(dismissalText({ type: 'retired_hurt' })).toBe('Retired Hurt');
+  });
+});
+
+describe('mvpRankMeta', () => {
+  it('returns the right ordinal for ranks 1–3', () => {
+    expect(mvpRankMeta(1).ordinal).toBe('1st');
+    expect(mvpRankMeta(2).ordinal).toBe('2nd');
+    expect(mvpRankMeta(3).ordinal).toBe('3rd');
+  });
+  it('gives a distinct title per top-3 rank', () => {
+    expect(mvpRankMeta(1).title).toMatch(/MOST VALUABLE/i);
+    expect(mvpRankMeta(2).title).toMatch(/RUNNER-UP/i);
+    expect(mvpRankMeta(3).title).toMatch(/THIRD/i);
+  });
+  it('always provides gradient + accent + badge colors', () => {
+    for (const r of [1, 2, 3]) {
+      const m = mvpRankMeta(r);
+      expect(m.gradFrom).toMatch(/^#/);
+      expect(m.gradTo).toMatch(/^#/);
+      expect(m.accent).toMatch(/^#/);
+      expect(m.badgeBg).toMatch(/^#/);
+      expect(m.badgeText).toMatch(/^#/);
+    }
+  });
+  it('falls back gracefully for ranks beyond 3', () => {
+    expect(mvpRankMeta(7).ordinal).toBe('7th');
+    expect(mvpRankMeta(7).title).toBeTruthy();
+  });
+});
+
+describe('formatCardDate', () => {
+  it('formats a date as "D Mon YYYY"', () => {
+    expect(formatCardDate(new Date(2026, 5, 27))).toBe('27 Jun 2026'); // month is 0-indexed → 5 = Jun
+    expect(formatCardDate(new Date(2025, 0, 1))).toBe('1 Jan 2025');
+    expect(formatCardDate(new Date(2024, 11, 31))).toBe('31 Dec 2024');
+  });
+  it('accepts an ISO string', () => {
+    expect(formatCardDate('2026-06-27T00:00:00')).toBe('27 Jun 2026');
+  });
+  it('returns empty string for an invalid date', () => {
+    expect(formatCardDate('not-a-date')).toBe('');
+  });
+  it('defaults to today when called with no argument', () => {
+    const today = new Date();
+    expect(formatCardDate()).toBe(formatCardDate(today));
+  });
+});
+
+describe('motmCardHeight', () => {
+  it('returns the minimum height for an empty / tiny breakdown', () => {
+    expect(motmCardHeight({ groups: [] })).toBe(1350);
+    expect(motmCardHeight(null)).toBe(1350);
+  });
+  it('grows with the number of groups and line items', () => {
+    const small = { groups: [{ title: 'BATTING', items: [{}, {}] }] };                       // 1 group, 2 items
+    const big   = { groups: [
+      { title: 'BATTING', items: [{}, {}, {}, {}, {}, {}, {}] },
+      { title: 'BOWLING', items: [{}, {}, {}] },
+      { title: 'FIELDING', items: [{}, {}] },
+    ] };                                                                                       // 3 groups, 12 items
+    expect(motmCardHeight(big)).toBeGreaterThan(motmCardHeight(small));
+    // 800 + 3*58 + 12*98 = 2150
+    expect(motmCardHeight(big)).toBe(2150);
   });
 });

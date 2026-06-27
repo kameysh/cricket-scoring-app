@@ -8,16 +8,17 @@ export function computePartnerships(deliveries) {
   const partnerships = [];
   let currentRuns = 0;
   let currentBalls = 0;
-  let pair = null; // Set of two player IDs
+  let pair = new Set(); // the two batsmen currently at the crease
 
   for (const d of deliveries) {
     const b1 = d.batsman_id;
-    const b2 = d.non_striker_before ?? d.striker_after ?? null; // best guess at partner
+    const b2 = d.non_striker_before ?? d.striker_after ?? null; // partner this ball
 
-    // Initialise pair on first delivery
-    if (!pair && b1) {
-      pair = new Set([b1, ...(b2 ? [b2] : [])]);
-    }
+    // Add both batsmen on every ball. After a wicket the pair holds only the
+    // survivor; this is how the *incoming* batsman gets recorded (previously the
+    // new partner was never captured → "Unrecorded" on every post-wicket stand).
+    if (b1) pair.add(b1);
+    if (b2) pair.add(b2);
 
     const runsThisBall = d.total_runs_on_delivery ?? 0;
     const isWide = d.extra_type === 'wide';
@@ -26,21 +27,22 @@ export function computePartnerships(deliveries) {
 
     if (d.is_wicket) {
       // Record this partnership
-      if (pair) {
+      if (pair.size > 0) {
         const [p1, p2] = Array.from(pair);
         partnerships.push({ batsman1Id: p1, batsman2Id: p2 || null, runs: currentRuns, balls: currentBalls, broken: true });
       }
-      // Start new partnership: the survivor + incoming batsman
+      // Start new partnership: the survivor stays; the incoming batsman is added
+      // on the next delivery via the b1/b2 accumulation above.
       const outId = d.batsman_out_id || d.batsman_id;
       const survivor = b1 === outId ? (d.non_striker_before || null) : b1;
-      pair = survivor ? new Set([survivor]) : null;
+      pair = survivor ? new Set([survivor]) : new Set();
       currentRuns = 0;
       currentBalls = 0;
     }
   }
 
   // Unbroken partnership at end
-  if (pair && (currentRuns > 0 || currentBalls > 0)) {
+  if (pair.size > 0 && (currentRuns > 0 || currentBalls > 0)) {
     const [p1, p2] = Array.from(pair);
     partnerships.push({ batsman1Id: p1, batsman2Id: p2 || null, runs: currentRuns, balls: currentBalls, broken: false });
   }

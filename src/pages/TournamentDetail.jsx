@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BarChart3, Pencil, Trophy, Repeat2 } from 'lucide-react';
+import { BarChart3, Pencil, Trophy, Repeat2, Info, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as tournamentService from '../services/tournamentService';
 import * as matchService from '../services/matchService';
@@ -8,6 +8,8 @@ import PointsTable from '../components/tournament/PointsTable';
 import FixtureList from '../components/tournament/FixtureList';
 import KnockoutBracket from '../components/tournament/KnockoutBracket';
 import BottomSheet from '../components/shared/BottomSheet';
+import MotmFormulaSheet from '../components/shared/MotmFormulaSheet';
+import MotmCardSheet from '../components/tournament/MotmCardSheet';
 import { useRole } from '../hooks/useRole';
 import { useAuthStore } from '../stores/authStore';
 
@@ -39,6 +41,9 @@ export default function TournamentDetail() {
   const [teams, setTeams] = useState([]);
 
   const [completing, setCompleting] = useState(false);
+  const [mosFormulaOpen, setMosFormulaOpen] = useState(false);
+  const [mosCard, setMosCard] = useState(null);   // { breakdown } once loaded
+  const [mosCardLoading, setMosCardLoading] = useState(false);
 
   // Toss sheet state
   const [startMatchId, setStartMatchId] = useState(null);
@@ -66,6 +71,20 @@ export default function TournamentDetail() {
       toast.error(e.message || 'Failed to complete tournament');
     } finally {
       setCompleting(false);
+    }
+  }
+
+  async function openMosCard() {
+    const mos = tournament?.man_of_series;
+    if (!mos?.id || mosCardLoading) return;
+    setMosCardLoading(true);
+    try {
+      const breakdown = await matchService.getSeriesPlayerMotmBreakdown(id, mos.id);
+      setMosCard({ breakdown });
+    } catch (e) {
+      toast.error(e.message || 'Could not load points breakdown');
+    } finally {
+      setMosCardLoading(false);
     }
   }
 
@@ -152,13 +171,48 @@ export default function TournamentDetail() {
 
       {/* Man of the Series */}
       {tournament.man_of_series && (
-        <div className="flex items-center gap-3 p-4 rounded-2xl bg-cricket-gold/10 border border-cricket-gold/30">
-          <Trophy size={20} className="text-cricket-gold shrink-0" />
-          <div>
-            <p className="text-[11px] font-semibold text-cricket-gold uppercase tracking-wider">Man of the Series</p>
-            <p className="font-bold text-ink-900 dark:text-white">{tournament.man_of_series.name}</p>
+        <div className="p-4 rounded-2xl bg-cricket-gold/10 border border-cricket-gold/30 space-y-3">
+          <div className="flex items-center gap-3">
+            <Trophy size={20} className="text-cricket-gold shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold text-cricket-gold uppercase tracking-wider">Man of the Series</p>
+              <p className="font-bold text-ink-900 dark:text-white">{tournament.man_of_series.name}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openMosCard}
+              disabled={mosCardLoading}
+              className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-cricket-gold py-2 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              {mosCardLoading
+                ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <Share2 size={13} />}
+              {mosCardLoading ? 'Loading…' : 'Share Card'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMosFormulaOpen(true)}
+              className="flex items-center gap-1 text-xs font-semibold text-cricket-gold px-3 py-2 rounded-xl bg-cricket-gold/15 hover:bg-cricket-gold/25 transition-colors"
+              title="How is Man of the Series calculated?"
+            >
+              <Info size={13} /> How it's picked
+            </button>
           </div>
         </div>
+      )}
+
+      {mosFormulaOpen && <MotmFormulaSheet onClose={() => setMosFormulaOpen(false)} />}
+
+      {mosCard && tournament.man_of_series && (
+        <MotmCardSheet
+          open
+          onClose={() => setMosCard(null)}
+          player={tournament.man_of_series}
+          seriesName={tournament.name}
+          breakdown={mosCard.breakdown}
+        />
       )}
 
       {/* Setup banner — series not yet created */}
